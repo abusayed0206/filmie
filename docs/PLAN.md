@@ -144,7 +144,7 @@ Trakt's policy allows combining scores only if the app labels the result as its 
 ### Distribution (checked 2026-11-02)
 - **Servers:** release builds include no video servers (`DEFAULT_SOURCES` is empty), which keeps §8's "nothing bundled" decision. Users add their own in Settings.
 - **Installer:** `cargo tauri build --bundles nsis` with the default WebView2 `downloadBootstrapper` mode, which adds about 0 MB but needs internet: https://tauri.app/distribute/windows-installer/. Crates.io's newest `tauri-cli` is a 3.x alpha, so the workflow pins `^2`.
-- **Website:** a static-assets Worker in `site/`, using `cf`: https://developers.cloudflare.com/cf/ci/. `cf` is in beta. An assets-only project keeps its asset folder in a generated `wrangler.config.ts`, and `cf deploy --prebuilt --mode production` refuses a build made without `--mode production`.
+- **Website:** a static-assets Worker in `site/`, configured in `wrangler.jsonc` and deployed locally with `npx wrangler deploy`. `filmie.sayed.app` is attached as a Workers custom domain (`routes` with `custom_domain: true`), so Cloudflare creates the DNS record and certificate on deploy: https://developers.cloudflare.com/workers/configuration/routing/custom-domains/. Static assets: https://developers.cloudflare.com/workers/static-assets/.
 - **Still needed:** TMDB's terms ask for its logo as well as the attribution text, and the app only shows the text.
 
 ### Local database and performance (checked 2026-11-02)

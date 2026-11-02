@@ -33,9 +33,9 @@ nav a.active { color: var(--text); background: var(--surface-3); }
 .search .i { position: absolute; left: 11px; width: 16px; height: 16px; color: var(--muted); pointer-events: none; }
 #q { width: 300px; padding-left: 34px; border-radius: 999px; background: var(--surface); }
 #account { display: flex; align-items: center; gap: 8px; text-decoration: none; font-weight: 600; white-space: nowrap; padding: 4px 12px 4px 4px; border-radius: 999px; }
-#account:not(:has(.avatar)) { padding: 7px 16px; background: var(--accent); color: #fff; }
+#account:not(:has(.avatar)) { padding: 7px 16px; background: #d02f36; color: #fff; }
 #account:hover { background: var(--surface-2); }
-#account:not(:has(.avatar)):hover { background: var(--accent-2); }
+#account:not(:has(.avatar)):hover { background: #bb2930; }
 #account.active { background: var(--surface-3); }
 body.playing header { display: none; }
 
@@ -59,8 +59,8 @@ button, .btn { cursor: pointer; text-decoration: none; display: inline-flex; ali
 button:hover, .btn:hover { background: var(--surface-3); }
 button:disabled { opacity: .55; cursor: default; }
 .btn.big { height: 42px; padding: 0 22px; font-size: 15.5px; }
-.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 650; }
-.primary:hover { background: var(--accent-2); border-color: var(--accent-2); }
+.primary { background: #d02f36; border-color: #d02f36; color: #fff; font-weight: 650; }
+.primary:hover { background: #bb2930; border-color: #bb2930; }
 .ghost { background: transparent; border-color: transparent; }
 .ghost:hover { background: var(--surface-2); }
 .btn.on { background: var(--accent-soft); border-color: #e5484d66; color: #ffb3b5; }
@@ -251,6 +251,7 @@ textarea { width: 100%; min-height: 110px; font: 13px/1.6 Consolas, monospace; r
   #q { width: 100%; }
   .profile, .account-row, .field { flex-wrap: wrap; }
   .stats, .row-actions { margin-left: 0; }
+  .stats { flex-wrap: wrap; }
   .summary-inner { flex-direction: column; }
   .summary-poster { width: 160px; }
   .episodes li { flex-direction: column; }

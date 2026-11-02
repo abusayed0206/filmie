@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Filmy",
+  "productName": "Filmie",
   "version": "0.1.0",
-  "identifier": "app.filmy.desktop",
+  "identifier": "app.filmie.desktop",
   "build": {
     "frontendDist": "../ui"
   },

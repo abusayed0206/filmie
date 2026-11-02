@@ -2,27 +2,21 @@ const { invoke } = window.__TAURI__.core;
 const app = document.getElementById('app');
 const IMG = 'https://image.tmdb.org/t/p/';
 
-// Session caches. TMDB metadata rarely changes; Trakt lists are reused for 10 minutes.
-const tmdbCache = new Map();
-function tmdb(path, query) {
-  const key = path + JSON.stringify(query ?? {});
-  if (!tmdbCache.has(key)) tmdbCache.set(key, invoke('tmdb', { path, query }).catch(e => { tmdbCache.delete(key); throw e; }));
-  return tmdbCache.get(key);
+// Rust caches responses in SQLite, so this only shares requests that are already in flight.
+const inFlight = new Map();
+function once(key, start) {
+  if (!inFlight.has(key)) inFlight.set(key, start().finally(() => inFlight.delete(key)));
+  return inFlight.get(key);
 }
-const traktCache = new Map();
-function traktGet(path) {
-  const hit = traktCache.get(path);
-  if (hit && Date.now() - hit.t < 10 * 60e3) return hit.p;
-  const p = invoke('trakt', { method: 'GET', path, body: null }).catch(e => { traktCache.delete(path); throw e; });
-  traktCache.set(path, { t: Date.now(), p });
-  return p;
-}
+const tmdb = (path, query) => once(`tmdb ${path}${JSON.stringify(query ?? {})}`, () => invoke('tmdb', { path, query }));
+const traktGet = path => once(`trakt ${path}`, () => invoke('trakt', { method: 'GET', path, body: null }));
 const trakt = (method, path, body) => invoke('trakt', { method, path, body });
 
 let user = null;      // Trakt /users/settings, null when signed out
 let lib = null;       // Trakt library mirror from `sync`
 let avatarUrl = null; // blob: URL of the cached Trakt avatar
 let routeToken = 0;   // ignores async results that arrive after the page changed
+let nowPlaying = null; // { entry, runtime } while the player is open
 
 // ---------- helpers
 const traktType = type => type === 'tv' ? 'show' : 'movie';
@@ -95,6 +89,16 @@ document.addEventListener('fullscreenchange', async () => {
   else if (!el && fullscreenByPlayer) { fullscreenByPlayer = false; await setFullscreen(false); }
 });
 
+// ---------- recently played: local progress, reported by the script injected into the player's frames
+const savePlayed = () => nowPlaying && invoke('history_save', { entry: nowPlaying.entry }).catch(console.warn);
+window.addEventListener('message', ev => {
+  const progress = nowPlaying && validProgress(ev.data?.__filmieProgress, nowPlaying.runtime);
+  if (!progress) return;
+  nowPlaying.entry.position = progress.t;
+  nowPlaying.entry.duration = progress.d;
+  savePlayed();
+});
+
 // ---------- Trakt library lookups (TMDB ids)
 const watchedMovie = id => lib?.watched_movies?.some(m => m.movie.ids.tmdb === id);
 const watchedShow = id => lib?.watched_shows?.find(x => x.show.ids.tmdb === id);
@@ -115,8 +119,8 @@ async function refreshProgress() {
 
 async function refreshUser() {
   user = await invoke('status');
-  lib = user ? await invoke('sync') : null;
-  traktCache.clear();
+  lib = user ? await invoke('library') : null;
+  if (user && !lib?.activities) lib = await invoke('sync'); // first sign-in: no local copy to draw from yet
   await refreshProgress().catch(console.warn);
   if (avatarUrl) URL.revokeObjectURL(avatarUrl);
   avatarUrl = null;
@@ -124,6 +128,16 @@ async function refreshUser() {
   if (url) avatarUrl = await invoke('avatar', { url }).then(b => URL.createObjectURL(new Blob([b])), () => null);
   const account = document.getElementById('account');
   account.innerHTML = user ? `${avatar('small')}<span>${esc(user.user.username)}</span>` : 'Sign in with Trakt';
+}
+
+// Checks Trakt in the background. A change refreshes the page unless that would interrupt the user.
+async function syncInBackground() {
+  if (!user) return;
+  const before = lib?.activities?.all;
+  lib = await invoke('sync');
+  if (lib?.activities?.all === before) return;
+  await refreshProgress();
+  if (!nowPlaying && scrollY < 50) route();
 }
 
 function avatar(size) {
@@ -152,7 +166,6 @@ async function listPicker(el, tt, id) {
     el.disabled = true;
     try {
       const r = await trakt('POST', `/users/me/lists/${list.ids.trakt}/items`, { [`${tt}s`]: [ids(id)] });
-      traktCache.clear();
       toast(`${r?.added?.[`${tt}s`] ? 'Added to' : 'Already in'} ${list.name}`);
     } catch (e) { toast(e); }
     el.disabled = false;
@@ -178,12 +191,13 @@ function poster(it, label) {
 const posters = (items, type, label) => (items ?? []).map(x => [norm(x, type), x]).filter(([it]) => it).map(([it, x]) => poster(it, label?.(x))).join('');
 const traktPosters = (path, type, label) => async () => posters(await traktGet(path), type, label);
 
-function epCard(it, s, e, title, pct, note) {
-  return `<a class="ep-card" href="#/play/tv/${it.id}/${s}/${e}" data-type="tv" data-id="${it.id}" data-art="backdrop">
+function progressCard(href, it, line, pct, note) {
+  return `<a class="ep-card" href="${href}" data-type="${it.type}" data-id="${it.id}" data-art="backdrop">
     <div class="art"><span class="play-icon">${icon('play')}</span></div>
-    <b>${esc(it.title)}</b><span>S${s}E${e}${title ? ` · ${esc(title)}` : ''}</span>
-    <div class="bar"><i style="width:${Math.min(100, Math.round(pct))}%"></i></div><small>${esc(note)}</small></a>`;
+    <b>${esc(it.title)}</b><span>${esc(line)}</span>
+    ${pct === null ? '' : `<div class="bar"><i style="width:${Math.min(100, Math.round(pct))}%"></i></div>`}<small>${esc(note)}</small></a>`;
 }
+const epCard = (it, s, e, title, pct, note) => progressCard(`#/play/tv/${it.id}/${s}/${e}`, it, `S${s}E${e}${title ? ` · ${title}` : ''}`, pct, note);
 
 const upNextCards = async () => upNext.map(p => {
   const ep = p.progress.next_episode;
@@ -194,9 +208,16 @@ const upNextCards = async () => upNext.map(p => {
 const playbackCards = type => async () => (lib?.playback ?? []).filter(p => !type || p.type === type).map(p => {
   if (p.type === 'episode') return epCard(norm(p.show, 'show'), p.episode.season, p.episode.number, p.episode.title, p.progress, `${Math.round(p.progress)}% watched`);
   const it = norm(p);
-  return it ? `<a class="ep-card" href="#/play/movie/${it.id}" data-type="movie" data-id="${it.id}" data-art="backdrop">
-    <div class="art"><span class="play-icon">${icon('play')}</span></div><b>${esc(it.title)}</b><span>${esc(it.year ?? '')}</span>
-    <div class="bar"><i style="width:${Math.round(p.progress)}%"></i></div><small>${Math.round(p.progress)}% watched</small></a>` : '';
+  return it ? progressCard(`#/play/movie/${it.id}`, it, it.year ?? '', p.progress, `${Math.round(p.progress)}% watched`) : '';
+}).join('');
+
+// This PC's own list, kept in SQLite and separate from Trakt's "Continue watching".
+const recentCards = async () => (await invoke('history_list', { limit: 30 })).map(p => {
+  const it = { type: p.kind, id: p.id, title: p.title };
+  const pct = p.duration > 0 ? 100 * p.position / p.duration : null;
+  return p.kind === 'tv'
+    ? epCard(it, p.season, p.episode, '', pct, playedNote(p))
+    : progressCard(`#/play/movie/${p.id}`, it, 'Movie', pct, playedNote(p));
 }).join('');
 
 const watchlistTile = () => `<a class="list-tile" href="#/watchlist"><b>Watchlist</b><span>${watchlistItems(['movies', 'shows']).length} items</span><p>Movies and shows you want to watch.</p></a>`;
@@ -257,10 +278,11 @@ const anticipated = x => `${num(x.list_count)} lists`;
 const pages = {
   async home() {
     if (!user) {
-      app.innerHTML = `<div class="page"><section class="callout"><h2>Welcome to Filmy</h2>
+      app.innerHTML = `<div class="page"><section class="callout"><h2>Welcome to Filmie</h2>
         <p>Sign in with Trakt to see your up next, watchlist, lists and recommendations, and track what you watch.</p>
         <a class="btn primary" href="#/settings">Sign in with Trakt</a></section></div>`;
       return renderRows([
+        ['Recently played', recentCards],
         ['Trending movies', traktPosters('/movies/trending?limit=30', null, watchers)],
         ['Trending shows', traktPosters('/shows/trending?limit=30', null, watchers)],
         ['Popular movies', traktPosters('/movies/popular?limit=30', 'movie')],
@@ -269,12 +291,12 @@ const pages = {
       ], app.firstElementChild);
     }
     app.innerHTML = `<div class="page">${profileHeader()}</div>`;
-    const lists = await traktGet('/users/me/lists').catch(() => []);
     await renderRows([
+      ['Recently played', recentCards],
       ['Up next', upNextCards, '#/shows'],
       ['Continue watching', playbackCards()],
       ['Watchlist', async () => posters(watchlistItems(['movies', 'shows'])), '#/watchlist'],
-      ['Your lists', async () => watchlistTile() + lists.map(listTile).join(''), '#/lists'],
+      ['Your lists', async () => watchlistTile() + (await traktGet('/users/me/lists').catch(() => [])).map(listTile).join(''), '#/lists'],
       ['Recommended movies', traktPosters('/recommendations/movies?limit=30', 'movie'), '#/movies'],
       ['Recommended shows', traktPosters('/recommendations/shows?limit=30', 'show'), '#/shows'],
       ['Trending movies', traktPosters('/movies/trending?limit=30', null, watchers)],
@@ -372,11 +394,14 @@ const pages = {
       return;
     }
     [id, s, e] = [+id, +s, +e];
+    const token = routeToken;
     const server = getServer(sources.length);
     const tt = traktType(type);
     const d = await tmdb(`/${type}/${id}`);
     const next = type === 'tv' ? episodeAfter(d, s, e) : null;
-    const epName = type === 'tv' ? (await tmdb(`/tv/${id}/season/${s}`).catch(() => null))?.episodes?.find(x => x.episode_number === e)?.name : null;
+    const episode = type === 'tv' ? (await tmdb(`/tv/${id}/season/${s}`).catch(() => null))?.episodes?.find(x => x.episode_number === e) : null;
+    if (token !== routeToken) return;
+    const epName = episode?.name;
     const src = fillTemplate(sources[server][type === 'movie' ? 'movie' : 'tv'], { tmdb_id: id, season: s, episode: e });
     const backHref = type === 'tv' ? `#/title/tv/${id}/${s}` : `#/title/movie/${id}`;
     const seasonOptions = (d.seasons ?? []).map(x => `<option value="${x.season_number}" ${x.season_number === s ? 'selected' : ''}>${esc(x.name)} (${x.episode_count})</option>`).join('');
@@ -421,12 +446,17 @@ const pages = {
         ${fsButton}
       </div>
       <iframe class="player" src="${esc(src)}" title="Video player" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="origin"></iframe></div>`;
+    nowPlaying = {
+      entry: { kind: type, id, title: d.title ?? d.name, season: type === 'tv' ? s : null, episode: type === 'tv' ? e : null, position: 0, duration: 0 },
+      runtime: type === 'movie' ? d.runtime : episode?.runtime,
+    };
+    savePlayed();
     const serverBtn = document.getElementById('server');
     const serverMenu = document.getElementById('server-menu');
     const playerPage = app.querySelector('.player-page');
     const playerFrame = app.querySelector('.player');
     const sendQuality = () => {
-      try { playerFrame.contentWindow.postMessage({ __filmyQuality: getQuality() }, '*'); } catch {}
+      try { playerFrame.contentWindow.postMessage({ __filmieQuality: getQuality() }, '*'); } catch {}
     };
     const syncQuality = () => {
       sendQuality();
@@ -548,22 +578,31 @@ const pages = {
       </section>
       <section class="card">
         <div class="card-head"><h2>Video servers</h2>
-          <p class="muted">Filmy includes no servers. Only add ones you have the right to use. One per line: <code>Name | movie URL | TV URL | note | #rrggbb</code>, using <code>{tmdb_id}</code>, <code>{season}</code> and <code>{episode}</code>. The note and accent are optional and saved with that server.</p></div>
+          <p class="muted">Filmie includes no servers. Only add ones you have the right to use. One per line: <code>Name | movie URL | TV URL | note | #rrggbb</code>, using <code>{tmdb_id}</code>, <code>{season}</code> and <code>{episode}</code>. The note and accent are optional and saved with that server.</p></div>
         <textarea id="sources" aria-label="Video servers" spellcheck="false" rows="6">${esc(sourceText(sources))}</textarea>
         <div class="card-actions"><button id="save-sources" class="btn primary">Save servers</button></div>
       </section>
+      <section class="card">
+        <div class="card-head"><h2>Saved on this PC</h2><p class="muted">Pages load faster and work offline from a local database.</p></div>
+        ${field('Cache', '<span id="cache-info">Checking…</span>', '<button id="clear-cache" class="btn">Clear cache</button>')}
+        ${field('Recently played', 'Your local list and progress, separate from Trakt and never sent anywhere.', '<button id="clear-recent" class="btn">Clear list</button>')}
+      </section>
       <section class="card about">
         <div class="card-head"><h2>About</h2></div>
-        <p>Filmy uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB.
+        <p>Filmie uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB.
         <a href="https://www.themoviedb.org/" target="_blank">themoviedb.org</a></p>
-        <p>Filmy uses Trakt but is not endorsed or certified by Trakt.</p>
+        <p>Filmie uses Trakt but is not endorsed or certified by Trakt.</p>
         <p>Streaming availability data by <a href="https://www.justwatch.com/" target="_blank">JustWatch</a>.</p>
         <p>Ad blocking by uBlock Origin Lite (GPLv3), <a href="https://github.com/uBlockOrigin/uBOL-home" target="_blank">source</a>.</p>
-        <p class="muted">Privacy: your Trakt tokens are kept in Windows Credential Manager, and your library copy and avatar in this app's data folder. Signing out deletes all of them.</p></section></div>`;
+        <p class="muted">Privacy: your Trakt tokens are kept in Windows Credential Manager, and your library copy and avatar in this app's data folder. Signing out deletes all of them. Cached pages and your Recently played list are kept in a local database, and you can clear them above.</p></section></div>`;
     const $ = id => document.getElementById(id);
     busy($('connect'), () => connectTrakt($('trakt-box')).catch(e => { route(); throw e; }));
     busy($('signout'), async () => { await invoke('sign_out'); await refreshUser(); route(); });
-    busy($('sync'), async () => { lib = await invoke('sync'); await refreshProgress(); traktCache.clear(); toast('Synced'); });
+    busy($('sync'), async () => { lib = await invoke('sync'); await refreshProgress(); toast('Synced'); });
+    const showCache = () => invoke('cache_info').then(c => { $('cache-info').textContent = `${num(c.count)} saved responses, ${(c.bytes / 1048576).toFixed(1)} MB.`; }, console.warn);
+    showCache();
+    busy($('clear-cache'), async () => { await invoke('cache_clear'); await showCache(); toast('Cache cleared'); });
+    busy($('clear-recent'), async () => { await invoke('history_clear'); toast('Recently played cleared'); });
     $('default-server').onchange = ev => { setServer(ev.target.value); toast('Default server saved'); };
     $('quality').onchange = ev => { setQuality(ev.target.value); toast('Preferred quality saved'); };
     $('save-sources').onclick = () => {
@@ -702,6 +741,7 @@ const searchBox = document.getElementById('q');
 
 async function route() {
   routeToken++;
+  nowPlaying = null;
   const [page, ...args] = location.hash.slice(2).split('/');
   document.querySelectorAll('[data-nav]').forEach(a => a.classList.toggle('active', a.dataset.nav === (page || '')));
   document.body.classList.toggle('playing', page === 'play');
@@ -724,5 +764,5 @@ searchBox.addEventListener('input', () => {
 });
 
 window.addEventListener('hashchange', route);
-setInterval(() => user && invoke('sync').then(l => { lib = l; return refreshProgress(); }).catch(console.warn), 15 * 60e3);
-refreshUser().catch(toast).finally(route);
+setInterval(() => syncInBackground().catch(console.warn), 15 * 60e3);
+refreshUser().catch(toast).finally(() => { route(); syncInBackground().catch(console.warn); });

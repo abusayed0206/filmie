@@ -1,10 +1,10 @@
 # Third-party notices
 
-Filmy's own code is under the [MIT License](LICENSE). These components keep their own licenses.
+Filmie's own code is under the [MIT License](LICENSE). These components keep their own licenses.
 
 ## uBlock Origin Lite
 
-The Windows installer bundles an unmodified copy of uBlock Origin Lite for ad blocking. It runs as a separate browser extension and isn't part of Filmy's MIT-licensed code.
+The Windows installer bundles an unmodified copy of uBlock Origin Lite for ad blocking. It runs as a separate browser extension and isn't part of Filmie's MIT-licensed code.
 
 - License: [GNU General Public License v3.0](https://www.gnu.org/licenses/gpl-3.0.html)
 - Version: 2026.1026.1812, the Edge build
@@ -19,6 +19,6 @@ The app is built with [Tauri](https://tauri.app) and other open-source crates, l
 
 ## Data and services
 
-- Movie and TV data: [TMDB](https://www.themoviedb.org). Filmy uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB.
-- Watch tracking: [Trakt](https://trakt.tv). Filmy uses Trakt but is not endorsed or certified by Trakt.
+- Movie and TV data: [TMDB](https://www.themoviedb.org). Filmie uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB.
+- Watch tracking: [Trakt](https://trakt.tv). Filmie uses Trakt but is not endorsed or certified by Trakt.
 - Streaming availability: [JustWatch](https://www.justwatch.com).

@@ -54,8 +54,10 @@ jobs:
           trakt: ${{ secrets.TRAKT }}
           trakt-redirect-uri: ${{ secrets.TRAKT_REDIRECT_URI }}
 
-      # rust-cache keeps ~/.cargo/bin, so this only compiles when the cache is cold.
-      - run: cargo install tauri-cli --version "^2" --locked
+      # Tauri publishes prebuilt binaries. Compiling the CLI took 20 minutes on a cold cache.
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: tauri-cli@2
 
       - run: cargo tauri build --bundles nsis --ci
         working-directory: src-tauri
@@ -65,13 +67,13 @@ jobs:
         shell: bash
         run: |
           mkdir dist
-          cp src-tauri/target/release/bundle/nsis/*-setup.exe dist/Filmy-Setup-x64.exe
-          (cd dist && sha256sum Filmy-Setup-x64.exe > Filmy-Setup-x64.exe.sha256)
-          cat dist/Filmy-Setup-x64.exe.sha256
+          cp src-tauri/target/release/bundle/nsis/*-setup.exe dist/Filmie-Setup-x64.exe
+          (cd dist && sha256sum Filmie-Setup-x64.exe > Filmie-Setup-x64.exe.sha256)
+          cat dist/Filmie-Setup-x64.exe.sha256
 
       - uses: actions/upload-artifact@v7
         with:
-          name: filmy-windows
+          name: filmie-windows
           path: dist/
           if-no-files-found: error
           retention-days: 14
@@ -88,7 +90,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8
         with:
-          name: filmy-windows
+          name: filmie-windows
           path: dist
       - name: Create the release
         env:

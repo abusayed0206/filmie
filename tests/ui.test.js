@@ -1,7 +1,7 @@
 // Run: node --test tests/ui.test.js
 const test = require('node:test');
 const assert = require('node:assert');
-const { DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, episodeAfter, norm } = require('../ui/lib.js');
+const { validProgress, playedNote, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, episodeAfter, norm } = require('../ui/lib.js');
 
 test('norm', () => {
   const ids = { trakt: 1, tmdb: 272 };
@@ -54,6 +54,26 @@ test('formatSources round-trips note and accent', () => {
 test('fillTemplate', () => {
   assert.equal(fillTemplate('https://h/tv/{tmdb_id}/{season}/{episode}', { tmdb_id: 1396, season: 1, episode: 2 }), 'https://h/tv/1396/1/2');
   assert.equal(fillTemplate('https://h/{tmdb_id}', { tmdb_id: 'a/b?c' }), 'https://h/a%2Fb%3Fc');
+});
+
+test('validProgress trusts only sensible reports from player frames', () => {
+  assert.deepEqual(validProgress({ t: 600, d: 2400 }, 47), { t: 600, d: 2400 });
+  assert.deepEqual(validProgress({ t: 0, d: 300 }), { t: 0, d: 300 });
+  assert.equal(validProgress({ t: 10, d: 30 }), null); // shorter than a minute
+  assert.equal(validProgress({ t: 10, d: 600 }, 47), null); // 10 minutes in a 47-minute title: an ad
+  assert.equal(validProgress({ t: 900, d: 600 }), null);
+  assert.equal(validProgress({ t: -1, d: 600 }), null);
+  for (const bad of [null, undefined, 'x', {}, { t: '1', d: '600' }, { t: NaN, d: 600 }, { t: 1, d: Infinity }]) assert.equal(validProgress(bad), null);
+});
+
+test('playedNote', () => {
+  const now = 1_000_000;
+  assert.equal(playedNote({ position: 600, duration: 2400 }, now), '30 min left');
+  assert.equal(playedNote({ position: 2395, duration: 2400 }, now), 'Finished');
+  assert.equal(playedNote({ position: 0, duration: 0, updated_at: now }, now), 'Opened just now');
+  assert.equal(playedNote({ position: 0, duration: 0, updated_at: now - 300 }, now), 'Opened 5 min ago');
+  assert.equal(playedNote({ position: 0, duration: 0, updated_at: now - 7200 }, now), 'Opened 2 h ago');
+  assert.equal(playedNote({ position: 0, duration: 0, updated_at: now - 172800 }, now), 'Opened 2 d ago');
 });
 
 test('no video servers are bundled', () => assert.deepEqual(DEFAULT_SOURCES, []));

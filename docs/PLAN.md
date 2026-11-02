@@ -1,4 +1,4 @@
-# Filmy: plan
+# Filmie: plan
 
 Windows desktop app for browsing movies and TV (TMDB), tracking what you watch (Trakt), seeing ratings and links (IMDb, Letterboxd, Rotten Tomatoes, Metacritic, Trakt), and playing video in a built-in player with adblocking.
 
@@ -21,7 +21,7 @@ Last verified against official docs: **2026-11-01**. Re-check the sources at the
 ## 2. Layout
 
 ```
-filmy/
+filmie/
   .env.local          TMDB=..., TRAKT=... (never committed)
   docs/PLAN.md        this file
   src-tauri/
@@ -52,7 +52,7 @@ The Trakt client ID is public by design (it appears in every sign-in URL), so em
 
 ### Facts from the official docs
 - **Hosts:** API calls use `https://api.trakt.tv`. **All OAuth calls** (authorize, device code, token, refresh, revoke) use `https://auth.trakt.tv`.
-- **Headers:** `Content-Type: application/json`, `User-Agent: Filmy/<version>`, `trakt-api-key: <client id>`, `trakt-api-version: 2`, plus `Authorization: Bearer <token>` when signed in.
+- **Headers:** `Content-Type: application/json`, `User-Agent: Filmie/<version>`, `trakt-api-key: <client id>`, `trakt-api-version: 2`, plus `Authorization: Bearer <token>` when signed in.
 - **Client secret:** deprecated for user sign-in. Never ship it in a desktop app. PKCE or device flow only.
 - **Access token:** valid 7 days.
 - **Refresh tokens are single-use:** each refresh returns a new pair and kills the old one. `invalid_grant` + `session not found` means the user must sign in again (this also affects tokens issued before the migration).
@@ -70,7 +70,7 @@ The Trakt client ID is public by design (it appears in every sign-in URL), so em
 - **App terms:**
   - Trakt data can't be used in apps that promote piracy.
   - Watch the `trakt/trakt-api` GitHub discussions.
-  - Add "Filmy uses Trakt but is not endorsed or certified by Trakt" to the About page.
+  - Add "Filmie uses Trakt but is not endorsed or certified by Trakt" to the About page.
   - Write a privacy note.
 - **App deletion:** Trakt deletes app registrations after 30 days with no use, or if used only for testing during the first 30 days.
 
@@ -146,6 +146,13 @@ Trakt's policy allows combining scores only if the app labels the result as its 
 - **Installer:** `cargo tauri build --bundles nsis` with the default WebView2 `downloadBootstrapper` mode, which adds about 0 MB but needs internet: https://tauri.app/distribute/windows-installer/. Crates.io's newest `tauri-cli` is a 3.x alpha, so the workflow pins `^2`.
 - **Website:** a static-assets Worker in `site/`, using `cf`: https://developers.cloudflare.com/cf/ci/. `cf` is in beta. An assets-only project keeps its asset folder in a generated `wrangler.config.ts`, and `cf deploy --prebuilt --mode production` refuses a build made without `--mode production`.
 - **Still needed:** TMDB's terms ask for its logo as well as the attribution text, and the app only shows the text.
+
+### Local database and performance (checked 2026-11-02)
+- **SQLite:** `filmie.sqlite3` caches TMDB and Trakt GET responses and holds Recently played. Lifetimes are in `cache_policy` (`trakt.rs`) and the `tmdb` command (`main.rs`): movies 7 days, TV 1 day, public Trakt lists 1 hour, search and related 1 day, user data 1 day but cleared by any write or activity change.
+- **Trakt sync:** `/sync/last_activities` has a timestamp per area (`movies.watched_at`, `movies.rated_at`, `movies.watchlisted_at`, `movies.paused_at`, `episodes.watched_at`, `episodes.paused_at`, `shows.rated_at`, `shows.watchlisted_at`), so only changed sections refetch: https://github.com/trakt/trakt-api/blob/main/projects/api/src/contracts/sync/schema/response/lastActivitiesResponseSchema.ts
+- **Local progress:** the player is cross-origin, so `app.js` can't read it. WebView2 runs `INJECT_PLAYER` in every frame, and that script reports the longest `<video>` over 60 seconds. Nothing is reported for players that hide their video, such as those using closed shadow DOM or DRM-only pages.
+- **Measured:** 1,000 cache lookups of 20 KB took about 10 ms in a release test. Time to first page in a browser test with 300 ms of simulated network delay fell from about 1,350 ms to about 290 ms, with no network call blocking the first page once the cache is warm. Lighthouse on the website scored 100 in all four categories on mobile and desktop (7 KB total, LCP 1.0 s on mobile).
+- **CI:** compiling the Tauri CLI took 20 of the first release run's 31 minutes, so the workflow now installs Tauri's prebuilt binary.
 
 ## 7. Phases
 0. **Test (about 1 day):**

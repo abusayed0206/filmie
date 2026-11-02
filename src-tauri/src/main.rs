@@ -1,9 +1,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod db;
 mod trakt;
 
 use serde_json::Value;
-use std::collections::HashMap;
+use std::collections::BTreeMap;
 use tauri::{Manager, Url, WebviewUrl, WebviewWindowBuilder, webview::NewWindowResponse};
 use tauri_plugin_opener::OpenerExt;
 
@@ -163,31 +164,45 @@ const INJECT_PLAYER: &str = r##"
   const relay = q => {
     try {
       document.querySelectorAll('iframe').forEach(f => {
-        try { f.contentWindow.postMessage({ __filmyQuality: q }, '*'); } catch {}
+        try { f.contentWindow.postMessage({ __filmieQuality: q }, '*'); } catch {}
       });
     } catch {}
   };
   const watchFrames = () => {
     try {
       document.querySelectorAll('iframe').forEach(f => {
-        if (f.__filmyQ) return;
-        f.__filmyQ = 1;
+        if (f.__filmieQ) return;
+        f.__filmieQ = 1;
         f.addEventListener('load', () => relay(quality));
       });
       new MutationObserver(ms => {
         for (const m of ms) for (const n of m.addedNodes) {
           if (n.nodeType !== 1) continue;
-          if (n.tagName === 'IFRAME') { if (!n.__filmyQ) { n.__filmyQ = 1; n.addEventListener('load', () => relay(quality)); } }
-          else if (n.querySelectorAll) n.querySelectorAll('iframe').forEach(f => { if (!f.__filmyQ) { f.__filmyQ = 1; f.addEventListener('load', () => relay(quality)); } });
+          if (n.tagName === 'IFRAME') { if (!n.__filmieQ) { n.__filmieQ = 1; n.addEventListener('load', () => relay(quality)); } }
+          else if (n.querySelectorAll) n.querySelectorAll('iframe').forEach(f => { if (!f.__filmieQ) { f.__filmieQ = 1; f.addEventListener('load', () => relay(quality)); } });
         }
       }).observe(document.documentElement, { childList: true, subtree: true });
     } catch {}
   };
   rootReady(watchFrames);
+
+  // Reports playback to the app for its local "Recently played" list. Short videos are usually ads.
+  let reported = -1;
+  setInterval(() => {
+    try {
+      const list = document.querySelectorAll('video');
+      const videos = list.length ? [...list] : deep(document, 'video');
+      const v = videos.filter(x => Number.isFinite(x.duration) && x.duration >= 60).sort((a, b) => b.duration - a.duration)[0];
+      if (!v || v.currentTime < 1 || v.currentTime === reported) return;
+      reported = v.currentTime;
+      window.top.postMessage({ __filmieProgress: { t: v.currentTime, d: v.duration } }, '*');
+    } catch {}
+  }, 5000);
+
   window.addEventListener('message', e => {
     const d = e.data;
-    if (!d || typeof d !== 'object' || !('__filmyQuality' in d)) return;
-    const q = norm(d.__filmyQuality);
+    if (!d || typeof d !== 'object' || !('__filmieQuality' in d)) return;
+    const q = norm(d.__filmieQuality);
     if (q !== quality) { quality = q; applied = null; tickN = 0; uiN = 0; stop(); }
     relay(q);
     if (q === 'auto') { applied = 'auto'; stop(); return; }
@@ -210,26 +225,32 @@ fn is_app_page(url: &Url) -> bool {
 }
 
 #[tauri::command]
-async fn tmdb(s: tauri::State<'_, trakt::State>, path: String, query: Option<HashMap<String, String>>) -> Result<Value, String> {
+async fn tmdb(s: tauri::State<'_, trakt::State>, path: String, query: Option<BTreeMap<String, String>>) -> Result<Value, String> {
     if !path.starts_with('/') {
         return Err("bad path".into());
     }
-    // shortcut: no response cache, add one if TMDB starts rate limiting us.
-    let res = s
-        .http
-        .get(format!("https://api.themoviedb.org/3{path}"))
-        .query(&[("api_key", TMDB_KEY)])
-        .query(&query.unwrap_or_default())
-        .send()
-        .await
-        .map_err(|e| e.to_string())?;
-    let status = res.status();
-    let body: Value = res.json().await.map_err(|e| e.to_string())?;
-    if status.is_success() {
-        Ok(body)
-    } else {
-        Err(format!("{} TMDB: {}", status.as_u16(), body["status_message"].as_str().unwrap_or("request failed")))
-    }
+    let query = query.unwrap_or_default();
+    // Airing shows gain episodes; a movie's details rarely change. TMDB's terms allow caching for up to 6 months.
+    let ttl = if path.starts_with("/movie/") { 7 * 86_400 } else { 86_400 };
+    let fetch = async {
+        let res = s
+            .http
+            .get(format!("https://api.themoviedb.org/3{path}"))
+            .query(&[("api_key", TMDB_KEY)])
+            .query(&query)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?;
+        let status = res.status();
+        let body: Value = res.json().await.map_err(|e| e.to_string())?;
+        if status.is_success() {
+            Ok(body)
+        } else {
+            Err(format!("{} TMDB: {}", status.as_u16(), body["status_message"].as_str().unwrap_or("request failed")))
+        }
+    };
+    // The key leaves out the API key, and BTreeMap keeps the query in a stable order.
+    s.db.through(&format!("tmdb {path} {}", serde_json::to_string(&query).map_err(|e| e.to_string())?), ttl, false, fetch).await
 }
 
 fn main() {
@@ -239,11 +260,11 @@ fn main() {
             keyring_core::set_default_store(windows_native_keyring_store::Store::new()?);
             let data_dir = app.path().app_data_dir()?;
             std::fs::create_dir_all(&data_dir)?;
-            app.manage(trakt::State::new(data_dir.join("library.json")));
+            app.manage(trakt::State::new(data_dir.join("library.json"), db::Db::open(data_dir.join("filmie.sqlite3"))));
 
             let handle = app.handle().clone();
             let mut window = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
-                .title("Filmy")
+                .title("Filmie")
                 .inner_size(1280.0, 820.0)
                 .min_inner_size(800.0, 500.0)
                 .initialization_script_for_all_frames(INJECT_PLAYER)
@@ -273,10 +294,16 @@ fn main() {
             trakt::sign_out,
             trakt::status,
             trakt::sync,
-            trakt::avatar
+            trakt::library,
+            trakt::avatar,
+            db::history_save,
+            db::history_list,
+            db::history_clear,
+            db::cache_info,
+            db::cache_clear
         ])
         .run(tauri::generate_context!())
-        .expect("error while running Filmy");
+        .expect("error while running Filmie");
 }
 
 #[cfg(test)]

@@ -1,20 +1,22 @@
-# Filmy
+# Filmie
 
-[![CI](https://github.com/abusayed0206/filmy/actions/workflows/ci.yml/badge.svg)](https://github.com/abusayed0206/filmy/actions/workflows/ci.yml)
-[![Latest release](https://img.shields.io/github/v/release/abusayed0206/filmy)](https://github.com/abusayed0206/filmy/releases/latest)
+[![CI](https://github.com/abusayed0206/filmie/actions/workflows/ci.yml/badge.svg)](https://github.com/abusayed0206/filmie/actions/workflows/ci.yml)
+[![Latest release](https://img.shields.io/github/v/release/abusayed0206/filmie)](https://github.com/abusayed0206/filmie/releases/latest)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-Filmy is a lightweight Windows app for browsing movies and TV shows and keeping your [Trakt](https://trakt.tv) history up to date. It can also play video in a built-in player from servers you add yourself.
+Filmie is a lightweight Windows app for browsing movies and TV shows and keeping your [Trakt](https://trakt.tv) history up to date. It can also play video in a built-in player from servers you add yourself.
 
-**[Download for Windows](https://github.com/abusayed0206/filmy/releases/latest/download/Filmy-Setup-x64.exe)** · [Website](https://filmy.sayed.app) · [All releases](https://github.com/abusayed0206/filmy/releases)
+**[Download for Windows](https://github.com/abusayed0206/filmie/releases/latest/download/Filmie-Setup-x64.exe)** · [Website](https://filmie.sayed.app) · [All releases](https://github.com/abusayed0206/filmie/releases)
 
-> **Filmy doesn't host, store or serve any content.** It includes no video servers. It only shows information from TMDB and Trakt, and opens servers you add yourself. See the [Terms of Use](TERMS.md).
+> **Filmie doesn't host, store or serve any content.** It includes no video servers. It only shows information from TMDB and Trakt, and opens servers you add yourself. See the [Terms of Use](TERMS.md).
 
 ## Features
 
 - **Browse:** trending, popular and most anticipated titles, with search, cast, trailers and where to stream.
 - **Track with Trakt:** up next, continue watching, watchlist, your lists, ratings and recommendations.
 - **Stay in control:** nothing is marked as watched until you press **Mark watched**.
+- **Recently played:** your own list and progress, kept on your PC and separate from Trakt. Progress shows when the player exposes its video.
+- **Fast and offline-friendly:** TMDB and Trakt responses are cached in a local SQLite database.
 - **Move around a show:** switch seasons and jump straight to any episode from the player.
 - **Use your own servers:** add as many as you like and switch between them while watching.
 - **Find more info:** links to IMDb, Letterboxd, TMDB, Rotten Tomatoes, Metacritic and Trakt.
@@ -22,10 +24,10 @@ Filmy is a lightweight Windows app for browsing movies and TV shows and keeping 
 
 ## Install
 
-1. Download [`Filmy-Setup-x64.exe`](https://github.com/abusayed0206/filmy/releases/latest/download/Filmy-Setup-x64.exe). Each release also lists its SHA-256 checksum.
+1. Download [`Filmie-Setup-x64.exe`](https://github.com/abusayed0206/filmie/releases/latest/download/Filmie-Setup-x64.exe). Each release also lists its SHA-256 checksum.
 2. Run the installer.
 
-Filmy needs 64-bit Windows 10 or 11. The installer adds Microsoft's WebView2 runtime if it's missing.
+Filmie needs 64-bit Windows 10 or 11. The installer adds Microsoft's WebView2 runtime if it's missing.
 
 The installer isn't code-signed yet, so Windows SmartScreen may warn you. To continue, choose **More info**, then **Run anyway**.
 
@@ -110,4 +112,4 @@ These repository secrets are needed:
 - [Privacy](PRIVACY.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
 
-Filmy uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB. Filmy uses Trakt but is not endorsed or certified by Trakt. Streaming availability data is provided by JustWatch.
+Filmie uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB. Filmie uses Trakt but is not endorsed or certified by Trakt. Streaming availability data is provided by JustWatch.

@@ -1,6 +1,7 @@
 //! Trakt API (2026): device-code sign-in, single-use refresh tokens, rate-limited writes.
 //! Docs: github.com/trakt/trakt-api (projects/developer guides, projects/api contracts).
 
+use crate::db::Db;
 use reqwest::{Method, header::CONTENT_TYPE};
 use serde_json::{Value, json};
 use std::{
@@ -17,18 +18,44 @@ const REDIRECT_URI: &str = match option_env!("TRAKT_REDIRECT_URI") {
     Some(uri) => uri,
     None => "urn:ietf:wg:oauth:2.0:oob",
 };
-const USER_AGENT: &str = concat!("Filmy/", env!("CARGO_PKG_VERSION"));
+const USER_AGENT: &str = concat!("Filmie/", env!("CARGO_PKG_VERSION"));
 
-// shortcut: any activity change refetches every section; compare per-section timestamps if rate limits bite.
-const SECTIONS: &[(&str, &str)] = &[
-    ("watched_movies", "/sync/watched/movies"),
-    ("watched_shows", "/sync/watched/shows"),
-    ("watchlist_movies", "/sync/watchlist/movies/rank/asc"),
-    ("watchlist_shows", "/sync/watchlist/shows/rank/asc"),
-    ("ratings_movies", "/sync/ratings/movies"),
-    ("ratings_shows", "/sync/ratings/shows"),
-    ("playback", "/sync/playback"),
+// Library sections and the /sync/last_activities timestamps that say when each one changed.
+const SECTIONS: &[(&str, &str, &[&str])] = &[
+    ("watched_movies", "/sync/watched/movies", &["/movies/watched_at"]),
+    ("watched_shows", "/sync/watched/shows", &["/episodes/watched_at"]),
+    ("watchlist_movies", "/sync/watchlist/movies/rank/asc", &["/movies/watchlisted_at"]),
+    ("watchlist_shows", "/sync/watchlist/shows/rank/asc", &["/shows/watchlisted_at"]),
+    ("ratings_movies", "/sync/ratings/movies", &["/movies/rated_at"]),
+    ("ratings_shows", "/sync/ratings/shows", &["/shows/rated_at"]),
+    ("playback", "/sync/playback", &["/movies/paused_at", "/episodes/paused_at"]),
 ];
+
+const HOUR: i64 = 3600;
+const DAY: i64 = 24 * HOUR;
+
+/// How long a GET may be reused, and whether it depends on the signed-in user. User responses can live long
+/// because any write or new Trakt activity clears them.
+fn cache_policy(path: &str) -> (i64, bool) {
+    if path.starts_with("/recommendations") {
+        (6 * HOUR, true)
+    } else if path.starts_with("/sync/") || path.starts_with("/users/") || path.contains("/progress/") {
+        (DAY, true)
+    } else if path.starts_with("/search/") || path.contains("/related") {
+        (DAY, false)
+    } else {
+        (HOUR, false)
+    }
+}
+
+/// True when the section is missing or any timestamp behind it moved. A missing timestamp counts as moved.
+fn section_changed(lib: &Value, key: &str, stamps: &[&str], activities: &Value) -> bool {
+    lib.get(key).is_none_or(Value::is_null)
+        || stamps.iter().any(|p| {
+            let new = activities.pointer(p);
+            new.is_none() || lib["activities"].pointer(p) != new
+        })
+}
 
 #[derive(Clone)]
 struct Tokens {
@@ -42,6 +69,7 @@ pub struct State {
     tokens: Mutex<Option<Tokens>>,
     last_write: Mutex<Instant>,
     library_path: PathBuf,
+    pub db: Db,
 }
 
 fn err(e: impl std::fmt::Display) -> String {
@@ -62,7 +90,7 @@ fn tokens_from(v: &Value) -> Option<Tokens> {
 
 // Windows Credential Manager caps a secret at 2560 bytes, so each token gets its own entry.
 fn entry(name: &str) -> Result<keyring_core::Entry, String> {
-    keyring_core::Entry::new("filmy", name).map_err(err)
+    keyring_core::Entry::new("filmie", name).map_err(err)
 }
 
 fn load_tokens() -> Option<Tokens> {
@@ -86,8 +114,16 @@ fn clear_tokens() {
 }
 
 impl State {
-    pub fn new(library_path: PathBuf) -> Self {
-        Self { http: reqwest::Client::new(), tokens: Mutex::new(None), last_write: Mutex::new(Instant::now()), library_path }
+    pub fn new(library_path: PathBuf, db: Db) -> Self {
+        Self { http: reqwest::Client::new(), tokens: Mutex::new(None), last_write: Mutex::new(Instant::now()), library_path, db }
+    }
+
+    fn read_library(&self) -> Value {
+        std::fs::read(&self.library_path)
+            .ok()
+            .and_then(|b| serde_json::from_slice(&b).ok())
+            .filter(Value::is_object)
+            .unwrap_or_else(|| json!({}))
     }
 
     async fn auth_post(&self, path: &str, body: Value) -> Result<reqwest::Response, String> {
@@ -115,7 +151,12 @@ impl State {
                     "grant_type": "refresh_token",
                 }),
             )
-            .await?;
+            .await;
+        let res = match res {
+            Ok(res) => res,
+            Err(_) if t.expires_at > now() => return Ok(Some(t.access)), // offline; the current token still works
+            Err(e) => return Err(e),
+        };
         let status = res.status();
         let body: Value = res.json().await.unwrap_or(Value::Null);
         if let Some(new) = status.is_success().then(|| tokens_from(&body)).flatten() {
@@ -191,7 +232,14 @@ pub async fn trakt(s: tauri::State<'_, State>, method: String, path: String, bod
     if !path.starts_with('/') {
         return Err("bad path".into());
     }
-    s.request(Method::from_bytes(method.as_bytes()).map_err(err)?, &path, body).await
+    let method = Method::from_bytes(method.as_bytes()).map_err(err)?;
+    if method == Method::GET {
+        let (ttl, user_scoped) = cache_policy(&path);
+        return s.db.through(&format!("trakt {path}"), ttl, user_scoped, s.request(Method::GET, &path, None)).await;
+    }
+    let result = s.request(method, &path, body).await;
+    s.db.clear_user();
+    result
 }
 
 #[tauri::command]
@@ -248,6 +296,7 @@ pub async fn avatar(s: tauri::State<'_, State>, url: String) -> Result<tauri::ip
 pub async fn sign_out(s: tauri::State<'_, State>) -> Result<(), String> {
     let tokens = s.tokens.lock().await.take().or_else(load_tokens);
     clear_tokens();
+    s.db.clear_user();
     let _ = std::fs::remove_file(&s.library_path);
     if let Some(dir) = s.library_path.parent().and_then(|d| std::fs::read_dir(d).ok()) {
         for f in dir.flatten().filter(|f| f.file_name().to_string_lossy().starts_with("avatar-")) {
@@ -266,7 +315,13 @@ pub async fn status(s: tauri::State<'_, State>) -> Result<Value, String> {
     if s.access_token().await?.is_none() {
         return Ok(Value::Null);
     }
-    s.request(Method::GET, "/users/settings", None).await
+    s.db.through("trakt /users/settings", HOUR, true, s.request(Method::GET, "/users/settings", None)).await
+}
+
+/// The last library copy on disk, without touching the network, so the first page can draw at once.
+#[tauri::command]
+pub fn library(s: tauri::State<'_, State>) -> Value {
+    s.read_library()
 }
 
 /// Mirrors the user's Trakt library to disk, refetching only when Trakt reports new activity.
@@ -275,18 +330,18 @@ pub async fn sync(s: tauri::State<'_, State>) -> Result<Value, String> {
     if s.access_token().await?.is_none() {
         return Ok(Value::Null);
     }
-    let mut lib: Value = std::fs::read(&s.library_path)
-        .ok()
-        .and_then(|b| serde_json::from_slice(&b).ok())
-        .filter(Value::is_object)
-        .unwrap_or_else(|| json!({}));
+    let mut lib = s.read_library();
     let activities = s.request(Method::GET, "/sync/last_activities", None).await?;
     if lib["activities"]["all"] == activities["all"] {
         return Ok(lib);
     }
+    s.db.clear_user();
     // Trakt pages sync lists (100 items by default) even where the docs call paging optional.
     const PAGE: usize = 100;
-    for (key, path) in SECTIONS {
+    for (key, path, stamps) in SECTIONS {
+        if !section_changed(&lib, key, stamps, &activities) {
+            continue;
+        }
         let mut items = Vec::new();
         for page in 1.. {
             let batch = s.request(Method::GET, &format!("{path}?page={page}&limit={PAGE}"), None).await?;
@@ -317,5 +372,28 @@ mod tests {
         .unwrap();
         assert_eq!((t.access.as_str(), t.refresh.as_str(), t.expires_at), ("a", "r", 1_800_604_800));
         assert!(tokens_from(&json!({ "access_token": "a" })).is_none());
+    }
+
+    #[test]
+    fn only_changed_sections_refetch() {
+        let stamps =
+            |rated: &str| json!({ "all": rated, "movies": { "watched_at": "w", "rated_at": rated }, "episodes": { "paused_at": "p" } });
+        let lib = json!({ "ratings_movies": [], "watched_movies": [], "playback": [], "activities": stamps("r1") });
+        let new = stamps("r2");
+        assert!(section_changed(&lib, "ratings_movies", &["/movies/rated_at"], &new));
+        assert!(!section_changed(&lib, "watched_movies", &["/movies/watched_at"], &new));
+        assert!(section_changed(&lib, "missing", &["/movies/watched_at"], &new), "no local copy yet");
+        assert!(section_changed(&lib, "playback", &["/movies/paused_at"], &new), "unknown timestamp counts as changed");
+        assert!(!section_changed(&lib, "playback", &["/episodes/paused_at"], &new));
+    }
+
+    #[test]
+    fn cache_policy_separates_user_and_public_data() {
+        assert_eq!(cache_policy("/users/me/lists"), (DAY, true));
+        assert_eq!(cache_policy("/sync/progress/watched?hide_completed=true"), (DAY, true));
+        assert_eq!(cache_policy("/shows/1/progress/watched"), (DAY, true));
+        assert_eq!(cache_policy("/recommendations/movies?limit=30"), (6 * HOUR, true));
+        assert_eq!(cache_policy("/movies/trending?limit=30"), (HOUR, false));
+        assert_eq!(cache_policy("/search/tmdb/1?type=movie"), (DAY, false));
     }
 }

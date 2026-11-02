@@ -2,7 +2,7 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-Filmy is a Windows desktop app (Tauri 2, WebView2) for browsing movies and TV via TMDB, tracking with Trakt, and playing video from configurable servers in an iframe.
+Filmie is a Windows desktop app (Tauri 2, WebView2) for browsing movies and TV via TMDB, tracking with Trakt, and playing video from configurable servers in an iframe.
 
 ## Commands
 
@@ -30,9 +30,9 @@ node --test --test-name-pattern=episodeAfter tests/ui.test.js # one UI test
 ## Running changes
 
 - `ui/` is embedded in the binary at compile time and there is no dev server, so UI edits only appear after a rebuild.
-- `cargo build` fails with `Access is denied` on `filmy.exe` while the app is open. Close it first, or the old build keeps running.
+- `cargo build` fails with `Access is denied` on `filmie.exe` while the app is open. Close it first, or the old build keeps running.
 - `ui/app.js` needs `window.__TAURI__`, so opening `ui/index.html` in a plain browser fails unless that object is mocked.
-- A process started from inside the Claude desktop app can see its own sandboxed copy of app data under `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Local\app.filmy.desktop`. It can differ from the real `%LOCALAPPDATA%\app.filmy.desktop`, so check which one you are reading.
+- A process started from inside the Claude desktop app can see its own sandboxed copy of app data under `%LOCALAPPDATA%\Packages\Claude_*\LocalCache\Local\app.filmie.desktop`. It can differ from the real `%LOCALAPPDATA%\app.filmie.desktop`, so check which one you are reading.
 
 ## Architecture
 
@@ -44,11 +44,18 @@ node --test --test-name-pattern=episodeAfter tests/ui.test.js # one UI test
 - Pages render with `innerHTML`, so interpolated data must pass through `esc()`. `routeToken` lets async work drop results after the page has changed.
 - Icons are SVG symbols in `index.html`, used through `icon(name)`. A test fails if a symbol is missing.
 
+**Local database (`src-tauri/src/db.rs`, `filmie.sqlite3` in the app data folder)**
+- `Db::through` caches `tmdb` and `trakt` GET responses, and falls back to an expired copy when a fetch fails, except on 401. `ui/app.js` keeps no response cache of its own and only shares in-flight requests.
+- User-specific Trakt responses are cleared by any Trakt write, a change in `/sync/last_activities`, and sign-out. `cache_policy` in `trakt.rs` sets the lifetimes.
+- The `history` table holds Recently played, one row per movie or show, and survives sign-out. The script in `INJECT_PLAYER` posts `{ __filmieProgress: { t, d } }` to the top frame, where `validProgress` in `lib.js` checks it. It stays at 0 for players that hide their `<video>`.
+
+**Startup:** `refreshUser` draws from the local copies with no network wait, then `syncInBackground` asks Trakt whether anything changed.
+
 **Trakt (`src-tauri/src/trakt.rs`)**
 - Sign-in is the device-code flow, with no client secret.
 - Tokens live in Windows Credential Manager. Refresh tokens are single-use.
 - `State::request` serializes writes to Trakt's limit of 1 per second and retries once on 429.
-- `sync` keeps a library mirror in `library.json`, refetched only when `/sync/last_activities` changes. The frontend's `write()` re-syncs after every write, and the lookups in `app.js` read that mirror.
+- `sync` keeps a library mirror in `library.json`. It compares `/sync/last_activities` and refetches only the sections whose timestamps moved. The frontend's `write()` re-syncs after every write, and the lookups in `app.js` read that mirror.
 - Items are identified by TMDB id.
 - Up next comes from `/sync/progress/watched`, because `/sync/watched/shows` no longer includes episodes.
 
@@ -57,14 +64,14 @@ node --test --test-name-pattern=episodeAfter tests/ui.test.js # one UI test
 **Player**
 - The iframe is cross-origin, so `app.js` can't read or change it. The toolbar sits above the iframe, and menus overlay it only while open.
 - `INJECT_PLAYER` in `main.rs` runs in every frame through `initialization_script_for_all_frames` and does nothing in the top frame. It removes ad nodes, retries autoplay and applies the preferred quality.
-- `app.js` sends the quality as a `{ __filmyQuality }` `postMessage`, which the script relays to nested frames.
+- `app.js` sends the quality as a `{ __filmieQuality }` `postMessage`, which the script relays to nested frames.
 
 **Window lockdown (`main.rs`)**
 - `on_navigation` keeps the top frame on app pages, and `on_new_window` denies every pop-up.
 - Links only open, in the system browser, if their host is in `EXTERNAL_HOSTS`. A new `target="_blank"` destination must be added there.
 - `capabilities/default.json` grants IPC to local pages only. Any new Tauri JS API needs its permission added.
 
-**Server list and preferences** live in `localStorage` (`sources`, `server`, `quality`). `DEFAULT_SOURCES` is empty: Filmy ships with no video servers and users add their own. The README, `TERMS.md` and the website all state this, so keep them in step with the code. A saved `sources` value replaces the defaults entirely.
+**Server list and preferences** live in `localStorage` (`sources`, `server`, `quality`). `DEFAULT_SOURCES` is empty: Filmie ships with no video servers and users add their own. The README, `TERMS.md` and the website all state this, so keep them in step with the code. A saved `sources` value replaces the defaults entirely.
 
 ## Docs
 
@@ -76,4 +83,4 @@ node --test --test-name-pattern=episodeAfter tests/ui.test.js # one UI test
 
 - `.github/workflows/`: `ci.yml` (format, UI tests, Clippy, Rust tests), `audit.yml` (`cargo audit`), `release.yml` (`v*` tags) and `site.yml` (website deploy). `.github/actions/setup` holds the shared Rust, cache, uBlock and key setup.
 - CI compiles with placeholder keys. Only `release.yml` uses the real `TMDB`, `TRAKT` and `TRAKT_REDIRECT_URI` secrets.
-- A release tag must match `version` in `src-tauri/tauri.conf.json`. The installer is published as `Filmy-Setup-x64.exe`, and the website and README link to that fixed name through `releases/latest/download/`.
+- A release tag must match `version` in `src-tauri/tauri.conf.json`. The installer is published as `Filmie-Setup-x64.exe`, and the website and README link to that fixed name through `releases/latest/download/`.

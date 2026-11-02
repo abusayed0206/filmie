@@ -1,4 +1,4 @@
-name: Set up Filmy build
+name: Set up Filmie build
 description: Rust toolchain, Cargo cache, uBlock Origin Lite and the compile-time keys.
 
 inputs:

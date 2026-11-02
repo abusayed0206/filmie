@@ -1,6 +1,6 @@
 // Pure helpers, shared by app.js and tests/ui.test.js.
 
-// Filmy ships with no video servers: each user adds their own in Settings.
+// Filmie ships with no video servers: each user adds their own in Settings.
 const DEFAULT_SOURCES = [];
 
 const QUALITIES = ['auto', '1080p', '720p', '480p'];
@@ -55,4 +55,25 @@ function norm(x, bareType) {
   return m?.ids?.tmdb && tt ? { type: tt === 'show' ? 'tv' : 'movie', id: m.ids.tmdb, title: m.title, year: m.year } : null;
 }
 
-if (typeof module !== 'undefined') module.exports = { DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, episodeAfter, norm };
+// A progress report comes from a third-party page, so only well-formed numbers count. Anything much shorter
+// than the title's runtime is probably an ad.
+function validProgress(p, runtimeMinutes) {
+  const { t, d } = p ?? {};
+  if (!Number.isFinite(t) || !Number.isFinite(d) || t < 0 || t > d) return null;
+  return d >= Math.max(60, (runtimeMinutes ?? 0) * 30) ? { t, d } : null;
+}
+
+// The small print on a Recently played card.
+function playedNote(p, now = Date.now() / 1000) {
+  if (p.duration > 0) {
+    if (p.position / p.duration >= 0.95) return 'Finished';
+    return `${Math.max(1, Math.round((p.duration - p.position) / 60))} min left`;
+  }
+  const mins = Math.floor((now - p.updated_at) / 60);
+  if (mins < 1) return 'Opened just now';
+  if (mins < 60) return `Opened ${mins} min ago`;
+  if (mins < 1440) return `Opened ${Math.floor(mins / 60)} h ago`;
+  return `Opened ${Math.floor(mins / 1440)} d ago`;
+}
+
+if (typeof module !== 'undefined') module.exports = { validProgress, playedNote, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, episodeAfter, norm };

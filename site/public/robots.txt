@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://filmy.sayed.app/sitemap.xml
+Sitemap: https://filmie.sayed.app/sitemap.xml

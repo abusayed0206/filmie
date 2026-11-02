@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "filmie-site",
+  "compatibility_date": "2026-10-06",
+  "assets": {
+    "directory": "./public",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page"
+  },
+  "routes": [{ "pattern": "filmie.sayed.app", "custom_domain": true }],
+  "workers_dev": false,
+  "preview_urls": false
+}

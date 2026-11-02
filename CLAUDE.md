@@ -25,7 +25,7 @@ node --test --test-name-pattern=episodeAfter tests/ui.test.js # one UI test
 - `scripts/fetch-ubol.ps1` downloads the pinned uBlock Origin Lite into the git-ignored `src-tauri/extensions/`. Without it the app still runs, with no extension adblocking.
 - The installer needs the Tauri CLI: `cargo install tauri-cli --version "^2" --locked`, then `cargo tauri build --bundles nsis`. Crates.io's newest tauri-cli is a 3.x alpha, so keep the `^2`.
 - `cargo fmt` uses `src-tauri/rustfmt.toml` (140 columns). CI runs `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings`.
-- The website is in `site/`, a static-assets Cloudflare Worker managed with the `cf` CLI: `npm ci`, `npx cf dev`, `npx cf build --mode production`, then `npx cf deploy --prebuilt --mode production`. The deploy needs the build's `--mode` to match.
+- The website is in `site/`, a static-assets Cloudflare Worker configured in `site/wrangler.jsonc` and served on the custom domain `filmie.sayed.app`: `npm ci`, `npx wrangler dev`, then `npx wrangler deploy` (run locally; CI only dry-runs it).
 
 ## Running changes
 
@@ -81,6 +81,6 @@ node --test --test-name-pattern=episodeAfter tests/ui.test.js # one UI test
 
 ## CI and releases
 
-- `.github/workflows/`: `ci.yml` (format, UI tests, Clippy, Rust tests), `audit.yml` (`cargo audit`), `release.yml` (`v*` tags) and `site.yml` (website deploy). `.github/actions/setup` holds the shared Rust, cache, uBlock and key setup.
+- `.github/workflows/`: `ci.yml` (format, UI tests, Clippy, Rust tests), `audit.yml` (`cargo audit`), `release.yml` (`v*` tags) and `site.yml` (website dry-run deploy check). `.github/actions/setup` holds the shared Rust, cache, uBlock and key setup.
 - CI compiles with placeholder keys. Only `release.yml` uses the real `TMDB`, `TRAKT` and `TRAKT_REDIRECT_URI` secrets.
 - A release tag must match `version` in `src-tauri/tauri.conf.json`. The installer is published as `Filmie-Setup-x64.exe`, and the website and README link to that fixed name through `releases/latest/download/`.

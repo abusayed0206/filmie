@@ -16,14 +16,12 @@ permissions:
   contents: read
 
 jobs:
-  deploy:
+  check:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     defaults:
       run:
         working-directory: site
-    env:
-      CF_SEND_TELEMETRY: "false"
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -32,16 +30,7 @@ jobs:
           cache: npm
           cache-dependency-path: site/package-lock.json
       - run: npm ci
-      - run: npx cf build --mode production
-      - run: npx cf deploy --prebuilt --mode production --dry-run
-      # Only this step sees the secrets, and pull requests never reach it.
-      - if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
-        run: |
-          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
-            echo "::warning::Skipped the website deploy: add the CLOUDFLARE_API_TOKEN and CLOUDFLARE_ACCOUNT_ID secrets."
-            exit 0
-          fi
-          npx cf deploy --prebuilt --mode production
+      # Checks the config and assets only. The site is deployed locally with `npx wrangler deploy`.
+      - run: npx wrangler deploy --dry-run
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          WRANGLER_SEND_METRICS: "false"

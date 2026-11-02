@@ -1,0 +1,58 @@
+name: Set up Filmy build
+description: Rust toolchain, Cargo cache, uBlock Origin Lite and the compile-time keys.
+
+inputs:
+  components:
+    description: Extra rustup components
+    default: ""
+  tmdb:
+    description: TMDB v3 API key
+    default: ci-placeholder
+  trakt:
+    description: Trakt client ID
+    default: ci-placeholder
+  trakt-redirect-uri:
+    description: Redirect URI registered on the Trakt app
+    default: ""
+  cache-key:
+    description: Keeps profiles with different build settings in separate caches
+    default: dev
+
+runs:
+  using: composite
+  steps:
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        components: ${{ inputs.components }}
+
+    - uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: src-tauri -> target
+        shared-key: ${{ inputs.cache-key }}
+        cache-on-failure: true
+        # Pull requests read main's cache but don't write their own, so they can't evict it.
+        save-if: ${{ github.event_name != 'pull_request' }}
+
+    # tauri.conf.json bundles this folder, and the build fails if it is missing.
+    - id: ubol
+      uses: actions/cache@v6
+      with:
+        path: src-tauri/extensions
+        key: ubol-${{ hashFiles('scripts/fetch-ubol.ps1') }}
+
+    - if: steps.ubol.outputs.cache-hit != 'true'
+      shell: pwsh
+      run: ./scripts/fetch-ubol.ps1
+
+    # build.rs reads these at compile time. Passed through env so values never reach a command line.
+    - shell: bash
+      env:
+        TMDB: ${{ inputs.tmdb }}
+        TRAKT: ${{ inputs.trakt }}
+        TRAKT_REDIRECT_URI: ${{ inputs.trakt-redirect-uri }}
+      run: |
+        {
+          printf 'TMDB=%s\n' "$TMDB"
+          printf 'TRAKT=%s\n' "$TRAKT"
+          if [ -n "$TRAKT_REDIRECT_URI" ]; then printf 'TRAKT_REDIRECT_URI=%s\n' "$TRAKT_REDIRECT_URI"; fi
+        } > .env.local

@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["**.md", "LICENSE", "docs/**", "site/**", ".github/workflows/site.yml"]
+  pull_request:
+    paths-ignore: ["**.md", "LICENSE", "docs/**", "site/**", ".github/workflows/site.yml"]
+  workflow_dispatch:
+
+# A newer push to the same branch makes the running checks pointless.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  # CI builds from scratch or from rust-cache, so incremental data only adds size. Less debug info links faster.
+  CARGO_INCREMENTAL: 0
+  CARGO_PROFILE_DEV_DEBUG: 0
+  CARGO_PROFILE_TEST_DEBUG: 0
+  RUST_BACKTRACE: short
+
+jobs:
+  # The two quick checks run on Linux and need no dependencies, so they fail within seconds.
+  fmt:
+    name: Rustfmt
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - run: cargo fmt --check
+        working-directory: src-tauri
+
+  ui:
+    name: UI tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - run: node --test tests/ui.test.js
+
+  # The app only targets Windows and depends on the Windows credential store.
+  rust:
+    name: Clippy and tests
+    needs: [fmt, ui]
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/setup
+        with:
+          components: clippy
+      - run: cargo clippy --locked --all-targets -- -D warnings
+        working-directory: src-tauri
+      - run: cargo test --locked
+        working-directory: src-tauri

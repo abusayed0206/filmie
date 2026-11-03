@@ -88,6 +88,42 @@ document.addEventListener('change', ev => {
   if (ev.target.closest('.segmented')) segmentedChanges.get(ev.target.name)?.(ev.target.value);
 });
 
+// Five half-step stars on Trakt's 10-point scale. A range input gives it arrow keys, a name for screen readers and dragging.
+const starRating = (value, label) => `<span class="stars" style="--v:${value ?? 0}" title="${value ? `Your rating: ${value}/10` : 'Not rated'}">
+  <input type="range" min="0" max="10" step="1" value="${value ?? 0}" aria-label="${esc(label)}, out of 10"></span>`;
+function bindStars(root, onRate) {
+  const box = root.querySelector('.stars');
+  if (!box) return;
+  const input = box.querySelector('input');
+  const show = v => box.style.setProperty('--v', v);
+  let saved = +input.value;
+  // Hovering previews a rating, and only a press or a key saves it.
+  box.addEventListener('mousemove', ev => {
+    const r = box.getBoundingClientRect();
+    const v = Math.max(1, Math.min(10, Math.ceil(10 * (ev.clientX - r.left) / r.width)));
+    input.value = v;
+    show(v);
+    box.classList.add('preview');
+    box.title = `${v}/10`;
+  });
+  box.addEventListener('mouseleave', () => { input.value = saved; show(saved); box.classList.remove('preview'); });
+  input.addEventListener('input', () => show(input.value));
+  input.addEventListener('change', async () => {
+    const v = +input.value;
+    if (v === saved) return;
+    try {
+      await onRate(v);
+      saved = v;
+      box.classList.remove('preview');
+      box.title = v ? `Your rating: ${v}/10` : 'Not rated';
+    } catch (e) {
+      input.value = saved;
+      show(saved);
+      toast(e);
+    }
+  });
+}
+
 // A min and max slider from two range inputs. value is 'a-b'; grades, when given, name the positions.
 function rangeSlider(def, label, value) {
   const [lo, hi] = def.range;

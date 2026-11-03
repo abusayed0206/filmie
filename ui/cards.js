@@ -89,8 +89,8 @@ const recentCards = async () => (await invoke('history_list', { limit: 30 })).fi
     : progressCard(`#/play/movie/${p.id}`, it, 'Movie', pct, playedNote(p));
 }).join('');
 
-const personCard = c => `<div class="person"><div class="art"${c.profile_path ? ` style="background-image:url('${IMG}w185${esc(c.profile_path)}')"` : ''}>${c.profile_path ? '' : icon('user')}</div>
-  <b>${esc(c.name)}</b><span>${esc(c.character)}</span></div>`;
+const personCard = c => `<a class="person" href="#/person/${+c.id}"><div class="art"${c.profile_path ? ` style="background-image:url('${IMG}w185${esc(c.profile_path)}')"` : ''}>${c.profile_path ? '' : icon('user')}</div>
+  <b>${esc(c.name)}</b><span>${esc(c.character)}</span></a>`;
 
 const watchlistTile = () => `<a class="list-tile" href="#/watchlist"><b>Watchlist</b><span>${watchlistItems(['movies', 'shows']).length} items</span><p>Movies and shows you want to watch.</p></a>`;
 const listTile = l => `<a class="list-tile" href="#/list/${l.ids.trakt}"><b>${esc(l.name)}</b><span>${num(l.item_count)} items · ${esc(l.privacy)}</span>${l.description ? `<p>${esc(l.description)}</p>` : ''}</a>`;
@@ -146,12 +146,12 @@ function skeleton(kind) {
   const body = {
     rows: `<div class="page">${row.repeat(3)}</div>`,
     grid: `<div class="page"><div class="grid">${skeletonCards(18)}</div></div>`,
-    title: `<section class="summary"><div class="summary-inner"><div class="sk summary-poster sk-poster"></div>
+    title: `<section class="summary"><div class="summary-inner"><div class="hero-poster"><div class="sk summary-poster"></div></div>
       <div class="summary-info sk-info"><div class="sk sk-heading"></div><p class="sk"></p><p class="sk"></p><p class="sk"></p></div></div></section>`,
   }[kind];
   return body ? `<div aria-hidden="true">${body}</div>` : '';
 }
-const SKELETONS = { home: 'rows', discover: 'rows', progress: 'grid', title: 'title', lists: 'grid', watchlist: 'grid', list: 'grid', search: 'grid' };
+const SKELETONS = { home: 'rows', discover: 'rows', progress: 'grid', title: 'title', person: 'title', lists: 'grid', watchlist: 'grid', list: 'grid', search: 'grid' };
 
 // ---------- rows
 function collapsedRows() {

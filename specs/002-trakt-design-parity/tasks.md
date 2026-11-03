@@ -139,18 +139,18 @@ description: "Task list for Trakt design parity with filters"
 
 **Independent Test**: Open a show, change season, open an episode drawer, mark it watched, rate it, read comments and press Play. Scenarios 18 to 22 in `quickstart.md`.
 
-- [ ] T051 [US5] Rebuild the `showTitle` header in `ui/pages-title.js` and `ui/style.css`: poster up to 320 px radius 24, middle column in Trakt's order, 320 px right column, dropping below 1024 px
-- [ ] T052 [US5] Fetch `extended=full,colors` and replace the backdrop with the radial glow in the title's colour, falling back to the accent, in `ui/pages-title.js` and `ui/style.css`
-- [ ] T053 [US5] Add the floating action bar in `ui/pages-title.js` with Play first, then Track, watchlist, trailer and More, with More's panel for list, notes, history, drop and collection
-- [ ] T054 [US5] Add the Track drawer with Just now, Release date and Other date posting to `/sync/history`, and a confirmation when already watched, in `ui/pages-title.js`. No check-in
-- [ ] T055 [US5] Add the rating row with 5 half-step stars on a 10-point scale and Favourite, keyboard-operable, in `ui/pages-title.js` and `ui/style.css`
-- [ ] T056 [US5] Add the ratings row and Ratings drawer with text labels for Trakt, IMDb and Rotten Tomatoes and the distribution, plus Details drawer from `/stats`, `/studios`, `/aliases`, `/translations` and `/releases/{country}`, in `ui/pages-title.js`
-- [ ] T057 [US5] Rework Where to Watch into 96 × 96 tiles on existing TMDB data with the JustWatch line and a drawer, and add Sentiment below it, in `ui/pages-title.js`
-- [ ] T058 [US5] Replace the episode list with a season rail opening on the next episode, a season dropdown and View All with a Seasons drawer, in `ui/pages-title.js`, keeping per-episode watched state
-- [ ] T059 [US5] Add the episode drawer with details, Play, Track and rating, opened from episode cards, in `ui/pages-title.js`
-- [ ] T060 [US5] Add Actors, Comments, Videos, Related and Lists in Trakt's order in `ui/pages-title.js`, leaving out any without data. Comments are plain text through `esc()`, with spoilers hidden until pressed and initials instead of avatars, marked with a `shortcut:` comment
-- [ ] T061 [US5] Add `#/person/{id}` with details, TMDB photo, and movies and shows rows in `ui/pages-title.js`, opening from cast cards via `/search/tmdb/{id}?type=person`
-- [ ] T062 [US5] Add any new external hosts to `EXTERNAL_HOSTS` in `src-tauri/src/main.rs` if links from these pages need them
+- [X] T051 [US5] Rebuild the `showTitle` header in `ui/pages-title.js` and `ui/style.css`: poster up to 320 px radius 24, middle column in Trakt's order, 320 px right column, dropping below 1024 px
+- [X] T052 [US5] Fetch `extended=full,colors` and replace the backdrop with the radial glow in the title's colour, falling back to the accent, in `ui/pages-title.js` and `ui/style.css`
+- [X] T053 [US5] Add the floating action bar in `ui/pages-title.js` with Play first, then Track, watchlist, trailer and More, with More's panel for list, notes, history, drop and collection
+- [X] T054 [US5] Add the Track drawer with Just now, Release date and Other date posting to `/sync/history`, and a confirmation when already watched, in `ui/pages-title.js`. No check-in
+- [X] T055 [US5] Add the rating row with 5 half-step stars on a 10-point scale and Favourite, keyboard-operable, in `ui/pages-title.js` and `ui/style.css`
+- [X] T056 [US5] Add the ratings row and Ratings drawer with text labels for Trakt, IMDb and Rotten Tomatoes and the distribution, plus Details drawer from `/stats`, `/studios`, `/aliases`, `/translations` and `/releases/{country}`, in `ui/pages-title.js`
+- [X] T057 [US5] Rework Where to Watch into 96 × 96 tiles on existing TMDB data with the JustWatch line and a drawer, and add Sentiment below it, in `ui/pages-title.js`
+- [X] T058 [US5] Replace the episode list with a season rail opening on the next episode, a season dropdown and View All with a Seasons drawer, in `ui/pages-title.js`, keeping per-episode watched state
+- [X] T059 [US5] Add the episode drawer with details, Play, Track and rating, opened from episode cards, in `ui/pages-title.js`
+- [X] T060 [US5] Add Actors, Comments, Videos, Related and Lists in Trakt's order in `ui/pages-title.js`, leaving out any without data. Comments are plain text through `esc()`, with spoilers hidden until pressed and initials instead of avatars, marked with a `shortcut:` comment
+- [X] T061 [US5] Add `#/person/{id}` with details, TMDB photo, and movies and shows rows in `ui/pages-title.js`, opening from cast cards via `/search/tmdb/{id}?type=person`
+- [X] T062 [US5] Add any new external hosts to `EXTERNAL_HOSTS` in `src-tauri/src/main.rs` if links from these pages need them
 
 **Checkpoint**: Title pages match Trakt. Review with the user.
 

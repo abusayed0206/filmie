@@ -70,10 +70,12 @@ Object.assign(pages, {
     observeArt(app);
   },
 
-  async list(id) {
-    if (!user) { app.innerHTML = signInPrompt('lists'); return; }
+  // scope is "public" for lists reached from a title or person, which may belong to anyone.
+  async list(id, scope) {
+    if (!user && scope !== 'public') { app.innerHTML = signInPrompt('lists'); return; }
     const token = routeToken;
-    const meta = await traktGet(`/users/me/lists/${+id}`);
+    const base = scope === 'public' ? `/lists/${+id}` : `/users/me/lists/${+id}`;
+    const meta = await traktGet(base);
     if (token !== routeToken) return;
     setBarTitle(meta.name);
     app.innerHTML = `<div class="page"><h1 class="sr-only">${esc(meta.name)}</h1>
@@ -84,7 +86,7 @@ Object.assign(pages, {
     const PAGE = 60;
     let page = 1;
     const load = async () => {
-      const items = await traktGet(withFilters(`/users/me/lists/${+id}/items/${forMode('movie,show', 'show', 'movie')}?page=${page++}&limit=${PAGE}`));
+      const items = await traktGet(withFilters(`${base}/items/${forMode('movie,show', 'show', 'movie')}?page=${page++}&limit=${PAGE}`));
       if (token !== routeToken) return;
       grid.insertAdjacentHTML('beforeend', posters(items));
       observeArt(grid);

@@ -132,6 +132,43 @@ function startWatching(items, today, showsInProgress) {
   });
 }
 
+// The rows of a title's ratings from /ratings?extended=all. `main` ones go in the header, the rest only in the drawer.
+function ratingRows(r) {
+  const rows = [];
+  const add = (label, value, votes, link, main) => { if (value) rows.push({ label, value, votes, link, main }); };
+  add('Trakt', r?.trakt?.rating && `${Math.round(r.trakt.rating * 10)}%`, r?.trakt?.votes, '', true);
+  add('IMDb', r?.imdb?.rating?.toFixed(1), r?.imdb?.votes, r?.imdb?.link, true);
+  add('MAL', r?.mal?.rating?.toFixed(1), r?.mal?.votes, r?.mal?.link, true);
+  add('RT Critics', r?.rotten_tomatoes?.rating && `${r.rotten_tomatoes.rating}%`, null, r?.rotten_tomatoes?.link, true);
+  add('RT Audience', r?.rotten_tomatoes?.user_rating && `${r.rotten_tomatoes.user_rating}%`, null, r?.rotten_tomatoes?.link, true);
+  add('TMDB', r?.tmdb?.rating?.toFixed(1), r?.tmdb?.votes, r?.tmdb?.link, false);
+  add('Metacritic', r?.metascore?.rating && `${Math.round(r.metascore.rating)}`, null, r?.metascore?.link, false);
+  add('Letterboxd', r?.letterboxd?.rating?.toFixed(1), r?.letterboxd?.votes, r?.letterboxd?.link, false);
+  return rows;
+}
+
+// What goes to /sync/history. watchedAt is left out for "now", or is a UTC time or 'released'.
+function historyBody({ type, id, season, episode }, watchedAt) {
+  const at = watchedAt ? { watched_at: watchedAt } : {};
+  if (type === 'movie') return { movies: [{ ids: { tmdb: id }, ...at }] };
+  if (season === undefined) return { shows: [{ ids: { tmdb: id }, ...at }] };
+  return { shows: [{ ids: { tmdb: id }, seasons: [{ number: season, episodes: [{ number: episode, ...at }] }] }] };
+}
+
+// A title's colour goes into a style attribute, so only a plain hex colour gets through.
+const safeColor = c => /^#[0-9a-f]{6}$/i.test(c ?? '') ? c : null;
+const youtubeUrl = u => /^https:\/\/(www\.)?youtube\.com\/\S+$/.test(u ?? '') ? u : null;
+// A person's credits, newest first, with each title once however many characters they played.
+function newestCredits(credits) {
+  const seen = new Set();
+  return [...(credits ?? [])].sort((a, b) => ((b.movie ?? b.show)?.year ?? 0) - ((a.movie ?? a.show)?.year ?? 0)).filter(x => {
+    const id = (x.movie ?? x.show)?.ids?.tmdb;
+    if (!id || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+}
+
 const runtimeText = min => !min ? '' : [Math.floor(min / 60) && `${Math.floor(min / 60)}h`, min % 60 && `${min % 60}m`].filter(Boolean).join(' ');
 
 // A card shows one status at most, in Trakt's order of importance.
@@ -247,4 +284,4 @@ function playedNote(p, now = Date.now() / 1000) {
   return `Opened ${Math.floor(mins / 1440)} d ago`;
 }
 
-if (typeof module !== 'undefined') module.exports = { validProgress, playedNote, isoDate, shortDate, mergeContinue, startWatching, runtimeText, statusTag, navFor, modeOf, FILTERS, decadeOptions, cleanFilters, filterQuery, filterCount, addQuery, fitsSimple, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm };
+if (typeof module !== 'undefined') module.exports = { validProgress, playedNote, ratingRows, historyBody, safeColor, youtubeUrl, newestCredits, isoDate, shortDate, mergeContinue, startWatching, runtimeText, statusTag, navFor, modeOf, FILTERS, decadeOptions, cleanFilters, filterQuery, filterCount, addQuery, fitsSimple, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm };

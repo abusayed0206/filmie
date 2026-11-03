@@ -213,8 +213,17 @@ const INJECT_PLAYER: &str = r##"
 "##;
 
 // Every pop-up is denied. Only links to these sites open, in the system browser.
-const EXTERNAL_HOSTS: &[&str] =
-    &["imdb.com", "letterboxd.com", "trakt.tv", "themoviedb.org", "rottentomatoes.com", "metacritic.com", "youtube.com", "justwatch.com"];
+const EXTERNAL_HOSTS: &[&str] = &[
+    "imdb.com",
+    "letterboxd.com",
+    "trakt.tv",
+    "themoviedb.org",
+    "rottentomatoes.com",
+    "metacritic.com",
+    "youtube.com",
+    "justwatch.com",
+    "myanimelist.net",
+];
 
 fn is_external_allowed(url: &Url) -> bool {
     url.scheme() == "https" && url.host_str().is_some_and(|h| EXTERNAL_HOSTS.iter().any(|d| h == *d || h.ends_with(&format!(".{d}"))))

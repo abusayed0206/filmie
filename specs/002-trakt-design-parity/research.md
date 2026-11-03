@@ -10,15 +10,20 @@ Checked 2026-11-03 against trakt-web `9ebdbff` and trakt-api `090d333`. Design m
   - Per-title streaming lookup (`/movies/:id/watchnow/:country`, shows, episodes) and `/watchnow/sources` are Limited Access. Where to watch stays on TMDB's JustWatch data, as it is today.
   - `/users/:id/stats` and saved server-side filters are VIP Only. Stats are worked out locally, and saved filters stay in `localStorage`.
   - `/shows/:id/progress/watched/reset` is VIP Only, so there is no "reset progress" control.
-- **Limit of this check**: the script reads text around each path, so a nested route can be mislabelled. For example, two `/stats` and `/watching` rows under `shows` read as Limited, and these look like season or episode routes. Step 1 therefore probes the real API with a free account before anything is built on it. `/sync/progress/up_next_nitro` is the one to watch, because trakt-web uses it and its name suggests an internal route, though it carries no Limited tag. `/sync/progress/up_next` is the fallback.
+- **Probe on 2026-11-03**: 156 read-only requests with a real account, without a token for public paths, plus a follow-up. All used paths returned 200 or 204, except as noted in [contracts/api-usage.md](contracts/api-usage.md).
+  - **Confirmed free:** `/sync/progress/up_next_nitro`, `/media/recommendations`, `extended=colors`, `extended=full` on history, and season and episode `/stats` and `/watching`, which the script had mislabelled.
+  - **Confirmed blocked:** `/watchnow/sources` and per-title `/watchnow` return 403. `/users/me/stats` returns 204.
+  - **Not found:** `/movies/hot` and `/streaming/{period}` return 404, so they're out.
 - **Alternatives rejected**: asking for Limited Access approval, because the spec requires every flow to work without it.
 
 ## 2. Filters
 
 - **Decision**: Define filters as data in `ui/lib.js`, with a pure function that turns the active set into a query string. Send filters on endpoints tagged as supporting them.
 - **Parameters confirmed in the contracts** (`mediaFilterParamsSchema`): `watchnow`, `genres`, `subgenres`, `years`, `ratings`, `runtimes`, `countries`, `statuses`, `certifications`, `parental_nudity`, `parental_violence`, `parental_profanity`, `parental_alcohol`, `parental_frightening`, `parental_include_unrated`. Also `ignore_watched` and `ignore_watchlisted` (`ignoreQuerySchema`), and `imdb_ratings`, `rt_meters`, `rt_user_meters` for Advanced ratings.
-- **Availability**: `subscriptions`, `free` and `any` are available. The service list comes from a Limited Access endpoint, so individual service chips are left out unless the probe shows otherwise.
-- **`status` or `statuses`**: `filters.md` says `status` and the schema says `statuses`. Follow the schema, which trakt-web also uses, and confirm in the probe.
+- **Availability**: `subscriptions` and `free` narrowed results in the probe, and `any` wasn't tested. The service list returned 403, so individual service chips are left out.
+- **`status` or `statuses`**: confirmed. `filters.md` says `status`, but only `statuses` works.
+- **Parental guide**: values are numeric ranges, `0-0` for None up to `0-3` for Severe. Words such as `none` are silently ignored. The None-to-Severe scale past `0-1` comes from trakt-web's four labels, and was not probed beyond Mild.
+- **Recommended**: filters are ignored, confirmed by identical results, so the Recommended row and grid don't take them.
 - **Rejected**: mapping filters per page, because the same set applies everywhere and only the endpoint changes.
 
 ## 3. Where mode and filters live
@@ -117,4 +122,4 @@ Checked 2026-11-03 against trakt-web `9ebdbff` and trakt-api `090d333`. Design m
 
 ## Resolved unknowns
 
-All Technical Context items are resolved. Step 1's probe covers what reading alone can't confirm: `up_next_nitro`, the `statuses` name, `extended=colors`, and the mislabelled rows.
+All Technical Context items are resolved, and the probe confirmed `up_next_nitro`, `statuses`, `extended=colors` and the mislabelled rows. Three small items are left to check while building: filters on the watchlist (T031), the Shared lists path (T067), and the notes write routes (T053).

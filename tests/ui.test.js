@@ -153,11 +153,15 @@ test('episodeAfter', () => {
   assert.equal(episodeAfter(show, 2, 2), null);
 });
 
-// lib.js alone passing says nothing about app.js: one bad line there leaves the app blank.
-test('app.js parses and every icon it uses is in the sprite', () => {
+// lib.js alone passing says nothing about the page scripts: one bad line there leaves the app blank.
+test('every script parses, loads from index.html, and its icons are in the sprite', () => {
   const read = f => require('node:fs').readFileSync(require('node:path').join(__dirname, '../ui', f), 'utf8');
-  const js = read('app.js');
-  new (require('node:vm').Script)(js);
   const html = read('index.html');
-  for (const [, name] of js.matchAll(/icon\('([\w-]+)'\)/g)) assert.ok(html.includes(`id="i-${name}"`), `missing icon ${name}`);
+  const scripts = require('node:fs').readdirSync(require('node:path').join(__dirname, '../ui')).filter(f => f.endsWith('.js'));
+  for (const file of scripts) {
+    const js = read(file);
+    new (require('node:vm').Script)(js, { filename: file });
+    assert.ok(html.includes(`src="${file}"`), `${file} is not loaded`);
+    for (const [, name] of js.matchAll(/icon\('([\w-]+)'\)/g)) assert.ok(html.includes(`id="i-${name}"`), `missing icon ${name} in ${file}`);
+  }
 });

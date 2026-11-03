@@ -151,7 +151,7 @@ Definitions: `lib/features/filters/_internal/constants.ts`, `lib/sections/navbar
 
 | Role | Value |
 |---|---|
-| Background | `oklch(19.5% .009 300)` with 3% accent tint |
+| Background | `oklch(19.5% .009 300)`. Trakt adds 3% of a dark purple; Filmie leaves that out, since 3% of its brighter red visibly tints the grey |
 | Card, floating | `oklch(16.5% ...)` same family |
 | Menus | `oklch(22% ...)` same family |
 | Border | `oklch(38% ...)` same family |

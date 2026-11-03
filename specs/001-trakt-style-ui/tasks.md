@@ -87,7 +87,7 @@ No project setup is needed: no new files, dependencies or build steps.
 
 - [X] T027 [P] Update the Frontend and Player notes in `CLAUDE.md` for the rail, `route({ soft })` and scroll memory
 - [X] T028 [P] Check whether `site/public/og.png` shows the old header, and tell the user if so
-- [ ] T029 Run all of `specs/001-trakt-style-ui/quickstart.md`, including the licence and branding check, in the real app
+- [X] T029 Run all of `specs/001-trakt-style-ui/quickstart.md`, including the licence and branding check, in the real app The user confirmed launch, real artwork, Back and Forward, the rail and playing from a saved server on 2026-11-03. Remaining scenarios are covered by scenario 37 in `specs/002-trakt-design-parity/quickstart.md`.
 
 ---
 

@@ -206,7 +206,16 @@ Run tests with `cargo test` (in `src-tauri/`) and `node --test tests/ui.test.js`
 
 **Trakt-style UI (planned 2026-11-03):** recreate Trakt's desktop layout in `ui/`, keeping Filmie's brand. trakt-web is GPLv3 and SvelteKit, so no code is copied. The API use policy (updated 2026-10-20) makes the Trakt logo optional and requires the "not endorsed or certified" sentence, which Settings has. Measurements, platform checks and links are in `specs/001-trakt-style-ui/research.md`.
 
-**Trakt design parity (specified 2026-11-03):** follow Trakt's desktop design as is, with Filmie's red accent and name. Checked against trakt-web `9ebdbff` and trakt-api `090d333`. Desktop uses the side rail plus `NavbarActions`; `TopNavbar` only renders at 768 px and below. Standard tier is free; Limited Access endpoints may need approval, and VIP Only returns `426`. `/users/:id/stats` is VIP only, so stats come from local data. Limits are 500 GET per 5 minutes and 1 write per second. Measurements are in `specs/002-trakt-design-parity/trakt-design-reference.md`. Per-page endpoints are in `specs/002-trakt-design-parity/contracts/api-usage.md`. Limited Access covers per-title `/watchnow` and `/watchnow/sources`, so where to watch stays on TMDB's JustWatch data. These classifications come from contract tags; the probe with a real free account is still to be recorded here.
+**Trakt design parity (specified 2026-11-03):** follow Trakt's desktop design as is, with Filmie's red accent and name. Checked against trakt-web `9ebdbff` and trakt-api `090d333`. Desktop uses the side rail plus `NavbarActions`; `TopNavbar` only renders at 768 px and below. Standard tier is free; Limited Access endpoints may need approval, and VIP Only returns `426`. `/users/:id/stats` is VIP only, so stats come from local data. Limits are 500 GET per 5 minutes and 1 write per second. Measurements are in `specs/002-trakt-design-parity/trakt-design-reference.md`. Per-page endpoints are in `specs/002-trakt-design-parity/contracts/api-usage.md`. Limited Access covers per-title `/watchnow` and `/watchnow/sources`, so where to watch stays on TMDB's JustWatch data. 
+
+**Trakt API probe (2026-11-03), with a real account:**
+- 156 read-only paths, then a follow-up, using the app's client ID. Public paths ran with no token.
+- **Free and working:** `/media/{trending,anticipated,popular,recommendations}`, `/sync/progress/up_next_nitro`, `/sync/history?extended=full` (runtime and genres included, `start_at` works), `extended=colors`, `/{type}/{id}/ratings?extended=all`, `/{type}/{id}/sentiments`, season and episode stats, `/search/recent_by_id/global/{type}`, `/sync/collection/media`, `/sync/favorites/media/rank/asc`, `/users/hidden/dropped`, `/users/me/notes/all`.
+- **Blocked:** `/watchnow/sources` and `/{type}/{id}/watchnow/{country}` return 403. `/users/me/stats` returns 204.
+- **Missing:** `/movies/hot` and `/{movies,shows}/streaming/{period}` return 404. `/shows/hot` works.
+- **Filters:** `statuses` works and `status` is ignored, unlike `filters.md`. Parental filters take numeric ranges such as `0-1`; `none` is ignored. `/recommendations` ignores filters. `/calendars/*` ignores `limit`, and one 30-day response held 1,182 items.
+- **Requests need `Content-Type: application/json`** even on GET, or some return 412.
+- Full table in `specs/002-trakt-design-parity/contracts/api-usage.md`.
 
 **Original options:**
 1. **Video sources:** user-configured templates, nothing bundled. TMDB and Trakt terms both forbid use in apps that promote piracy, and Trakt can revoke the client ID.

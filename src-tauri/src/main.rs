@@ -268,7 +268,7 @@ fn main() {
                 .inner_size(1280.0, 820.0)
                 .min_inner_size(800.0, 500.0)
                 // Matches --bg in style.css, so the window never flashes white or gets a light title bar.
-                .background_color(Color(15, 16, 20, 255))
+                .background_color(Color(21, 20, 24, 255))
                 .theme(Some(Theme::Dark))
                 // shortcut: browser accelerator keys (reload, find) stay on, turning them off needs webview2-com through with_webview.
                 .initialization_script_for_all_frames(INJECT_PLAYER)

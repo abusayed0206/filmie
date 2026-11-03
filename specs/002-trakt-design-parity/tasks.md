@@ -25,10 +25,10 @@ description: "Task list for Trakt design parity with filters"
 
 **Purpose**: Confirm what the API really allows, and that the base from feature 001 works, before building on either.
 
-- [ ] T001 Write a throwaway probe outside the repo that calls every endpoint in `specs/002-trakt-design-parity/contracts/api-usage.md` with a free account, using keys read from `.env.local` and never printing them, then record each status in `docs/PLAN.md` with the date. Include `/sync/progress/up_next_nitro`, `statuses` as a filter name, `extended=colors`, the `/sync/watchlist` sort path, filters on `/recommendations`, the notes routes, the search empty state, and the `/stats` and `/watching` rows that research flagged. This needs a signed-in session, so ask the user to run it or to approve running it
-- [ ] T002 Correct `specs/002-trakt-design-parity/contracts/api-usage.md` from T001's results, replacing or removing anything that isn't free, and note in `specs/002-trakt-design-parity/research.md` any decision that changed
-- [ ] T003 Ask the user to run the remaining checks in `specs/001-trakt-style-ui/quickstart.md` in the real app, fix what fails in `ui/app.js` or `ui/style.css`, and mark T029 in `specs/001-trakt-style-ui/tasks.md`
-- [ ] T004 [P] Add `roboto-latin-wght-normal.woff2` from `@fontsource-variable/roboto` 5.3.0 to `ui/fonts/`, and add a Roboto entry with its OFL 1.1 licence and source to `THIRD_PARTY_NOTICES.md`
+- [X] T001 Write a throwaway probe outside the repo that calls every endpoint in `specs/002-trakt-design-parity/contracts/api-usage.md` with a free account, using keys read from `.env.local` and never printing them, then record each status in `docs/PLAN.md` with the date. Include `/sync/progress/up_next_nitro`, `statuses` as a filter name, `extended=colors`, the `/sync/watchlist` sort path, filters on `/recommendations`, the notes routes, the search empty state, and the `/stats` and `/watching` rows that research flagged. This needs a signed-in session, so ask the user to run it or to approve running it
+- [X] T002 Correct `specs/002-trakt-design-parity/contracts/api-usage.md` from T001's results, replacing or removing anything that isn't free, and note in `specs/002-trakt-design-parity/research.md` any decision that changed
+- [X] T003 Ask the user to run the remaining checks in `specs/001-trakt-style-ui/quickstart.md` in the real app, fix what fails in `ui/app.js` or `ui/style.css`, and mark T029 in `specs/001-trakt-style-ui/tasks.md`
+- [X] T004 [P] Add `roboto-latin-wght-normal.woff2` from `@fontsource-variable/roboto` 5.3.0 to `ui/fonts/`, and add a Roboto entry with its OFL 1.1 licence and source to `THIRD_PARTY_NOTICES.md`
 
 **Checkpoint**: The API is known and feature 001 is confirmed. If T001 removes something large, tell the user before continuing.
 
@@ -38,14 +38,14 @@ description: "Task list for Trakt design parity with filters"
 
 **Purpose**: Blocks all stories.
 
-- [ ] T005 Split `ui/app.js` without changing behaviour into `ui/core.js`, `ui/controls.js`, `ui/cards.js`, `ui/pages-browse.js`, `ui/pages-title.js` and `ui/pages-me.js` as listed in `specs/002-trakt-design-parity/plan.md`, leaving router, start-up and the player in `ui/app.js`, and load them in order from `ui/index.html`
-- [ ] T006 Update `tests/ui.test.js` so that the parse and icon checks read every script in `ui/`, not only `app.js`
-- [ ] T007 Replace the tokens in `ui/style.css` with the reference's colours, type, gaps, radii, shadow and motion, using Filmie's `#e5484d` red in every accent role with hover and text shades derived from it, declare Roboto with `font-display: swap` and a Segoe UI fallback, and set the type scale of text 14, small 12, tag 10, title 18
-- [ ] T008 Update `.background_color(...)` in `src-tauri/src/main.rs` to the sRGB value of the new `--bg`
-- [ ] T009 Remove the cross-fade from `route()` in `ui/app.js` and the view transition rules from `ui/style.css`, keeping placeholders, scroll memory, `aria-busy`, focus handling and soft refresh, and update the skeleton pulse to opacity .4 to .8 over 750 ms
-- [ ] T010 Restyle buttons, inputs, checkboxes and toasts in `ui/style.css` to the reference's button heights, radii, flat style, action buttons, switch and snackbar, and test `appearance: base-select` for `select` in the running app, keeping the styled native select as a fallback under `@supports not`
-- [ ] T011 Add `drawer({ title, width, body, onClose })` and `modal({ title, body, actions })` on native `<dialog>` with `showModal()` to `ui/controls.js`, with the reference's slide and scale behaviour in `ui/style.css`, closing via Escape and the area outside, and returning focus
-- [ ] T012 Add `menu(button, items)` using the `popover` attribute and `segmented(name, options, value, onChange)` using radio inputs with a sliding indicator to `ui/controls.js`, with styles in `ui/style.css`
+- [X] T005 Split `ui/app.js` without changing behaviour into `ui/core.js`, `ui/controls.js`, `ui/cards.js`, `ui/pages-browse.js`, `ui/pages-title.js` and `ui/pages-me.js` as listed in `specs/002-trakt-design-parity/plan.md`, leaving router, start-up and the player in `ui/app.js`, and load them in order from `ui/index.html`
+- [X] T006 Update `tests/ui.test.js` so that the parse and icon checks read every script in `ui/`, not only `app.js`
+- [X] T007 Replace the tokens in `ui/style.css` with the reference's colours, type, gaps, radii, shadow and motion, using Filmie's `#e5484d` red in every accent role with hover and text shades derived from it, declare Roboto with `font-display: swap` and a Segoe UI fallback, and set the type scale of text 14, small 12, tag 10, title 18
+- [X] T008 Update `.background_color(...)` in `src-tauri/src/main.rs` to the sRGB value of the new `--bg`
+- [X] T009 Remove the cross-fade from `route()` in `ui/app.js` and the view transition rules from `ui/style.css`, keeping placeholders, scroll memory, `aria-busy`, focus handling and soft refresh, and update the skeleton pulse to opacity .4 to .8 over 750 ms
+- [X] T010 Restyle buttons, inputs, checkboxes and toasts in `ui/style.css` to the reference's button heights, radii, flat style, action buttons, switch and snackbar, and test `appearance: base-select` for `select` in the running app, keeping the styled native select as a fallback under `@supports not`
+- [X] T011 Add `drawer({ title, width, body, onClose })` and `modal({ title, body, actions })` on native `<dialog>` with `showModal()` to `ui/controls.js`, with the reference's slide and scale behaviour in `ui/style.css`, closing via Escape and the area outside, and returning focus
+- [X] T012 Add `menu(button, items)` using the `popover` attribute and `segmented(name, options, value, onChange)` using radio inputs with a sliding indicator to `ui/controls.js`, with styles in `ui/style.css`
 
 **Checkpoint**: The app looks closer to Trakt and everything still works.
 
@@ -80,7 +80,7 @@ description: "Task list for Trakt design parity with filters"
 - [ ] T022 [US1] Put the segmented switch in `.topbar-center` from `ui/app.js` when a page's `bar.mode` is `'bar'`, with an icon and label for each option, and draw the three icons in `ui/index.html`
 - [ ] T023 [US1] Make the existing rows on Home, Discover and Up next use `forMode` per `specs/002-trakt-design-parity/contracts/api-usage.md`, in `ui/pages-browse.js`, and merge results for Media where there's no Media endpoint
 - [ ] T024 [US1] Add a type icon tag to cards in Media mode in `ui/cards.js`
-- [ ] T025 [US1] Add `FILTERS` to `ui/lib.js` with every filter in the reference's table: key, label, group, Simple options with preset expansion, Advanced control and valid modes, leaving out individual streaming services unless T001 showed otherwise
+- [ ] T025 [US1] Add `FILTERS` to `ui/lib.js` with every filter in the reference's table: key, label, group, Simple options with preset expansion, Advanced control and valid modes, leaving out individual streaming services, which returned 403 in the probe, and using `statuses` and numeric parental ranges as recorded in `contracts/api-usage.md`
 - [ ] T026 [US1] Add pure `cleanFilters(obj)`, `filterQuery(filters, mode)` and `filterCount(filters, mode)` to `ui/lib.js`, exported and tested in `tests/ui.test.js` for preset expansion, ranges at full width counting as no filter, exclusion, invert on Watched and Watchlisted, unknown keys dropped, filters invalid for a mode skipped, and URL encoding
 - [ ] T027 [US1] Add filter state to `ui/core.js`: `localStorage` keys `filters` and `filters-default` as "JSON object", default `{}`, "Unknown keys and values are dropped through `cleanFilters`", and `filters-tab` as "`simple` or `advanced`", default `simple`. Add `activeFilters()` following `bar.filters` scope: `'global'` uses `localStorage`, `'local'` an in-memory set per route
 - [ ] T028 [US1] Add the filter button with a count badge to `.topbar-right` in `ui/app.js`, disabled and faded when `bar.filters` is false

@@ -569,7 +569,7 @@ const pages = {
       </section>
       <section class="card">
         <div class="card-head"><h2>Playback</h2><p class="muted">Nothing is marked watched on Trakt until you press Mark watched.</p></div>
-        ${field('Default server', 'Used when you press Play. Six direct providers are built in; you can switch servers from the player too.',
+        ${field('Default server', 'Used when you press Play. You can switch servers from the player too.',
           `<select id="default-server" aria-label="Default server">${sources.map((x, i) => `<option value="${i}" ${i === getServer(sources.length) ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>`)}
         ${field('Preferred quality', 'The player starts at this quality when the server supports it. Default: 1080p.',
           `<select id="quality" aria-label="Preferred quality">${QUALITIES.map(q => `<option value="${q}" ${q === getQuality() ? 'selected' : ''}>${q === 'auto' ? 'Auto' : q}</option>`).join('')}</select>`)}

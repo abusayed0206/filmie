@@ -76,52 +76,8 @@ test('playedNote', () => {
   assert.equal(playedNote({ position: 0, duration: 0, updated_at: now - 172800 }, now), 'Opened 2 d ago');
 });
 
-test('bundled video servers match the configured defaults', () => {
-  assert.deepEqual(DEFAULT_SOURCES, [
-    {
-      name: 'Rakan',
-      movie: 'https://vixsrc.to/movie/{tmdb_id}?autoPlay=true&lang=en',
-      tv: 'https://vixsrc.to/tv/{tmdb_id}/{season}/{episode}?autoPlay=true&lang=en',
-      note: 'VixSrc · generally better quality.',
-      accent: '#e5484d',
-    },
-    {
-      name: 'Bard',
-      movie: 'https://moviesapi.to/movie/{tmdb_id}',
-      tv: 'https://moviesapi.to/tv/{tmdb_id}-{season}-{episode}',
-      note: 'MoviesAPI · recommended for recent movies.',
-      accent: '#d4a72c',
-    },
-    {
-      name: 'Xayah',
-      movie: 'https://vidsrc.sh/embed/movie?tmdb={tmdb_id}&autoplay=1',
-      tv: 'https://vidsrc.sh/embed/tv?tmdb={tmdb_id}&season={season}&episode={episode}&autoplay=1',
-      note: 'VidSrc · current domain.',
-      accent: '#8b5cf6',
-    },
-    {
-      name: 'Ekko',
-      movie: 'https://cinesrc.st/embed/movie/{tmdb_id}?autoPlay=true',
-      tv: 'https://cinesrc.st/embed/tv/{tmdb_id}?s={season}&e={episode}&autoPlay=true',
-      note: 'CineSrc · may have 4K.',
-      accent: '#22c55e',
-    },
-    {
-      name: 'Naafiri',
-      movie: 'https://vidfast.vc/movie/{tmdb_id}?autoPlay=true',
-      tv: 'https://vidfast.vc/tv/{tmdb_id}/{season}/{episode}?autoPlay=true',
-      note: 'VidFast · may have 4K.',
-      accent: '#06b6d4',
-    },
-    {
-      name: 'Ryze',
-      movie: 'https://vidlink.pro/movie/{tmdb_id}?title=true&poster=true&autoplay=true&player=jw',
-      tv: 'https://vidlink.pro/tv/{tmdb_id}/{season}/{episode}?title=true&poster=true&autoplay=true&nextbutton=true&player=jw',
-      note: 'VidLink · newer titles only.',
-      accent: '#f97316',
-    },
-  ]);
-});
+// The README, TERMS.md and the website all state this, so a bundled server fails CI.
+test('Filmie ships with no video servers', () => assert.deepEqual(DEFAULT_SOURCES, []));
 
 test('preferred quality is 1080p unless chosen', () => {
   assert.deepEqual(QUALITIES, ['auto', '1080p', '720p', '480p']);

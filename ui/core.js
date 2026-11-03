@@ -51,6 +51,10 @@ function getSources() {
 function getServer(count) {
   try { return Math.min(+localStorage.getItem('server') || 0, count - 1); } catch { return 0; }
 }
+function getMode() {
+  try { return modeOf(localStorage.getItem('mode')); } catch { return 'media'; }
+}
+const setMode = m => { try { localStorage.setItem('mode', modeOf(m)); } catch {} };
 const setServer = i => { try { localStorage.setItem('server', i); } catch {} };
 const setSources = list => localStorage.setItem('sources', JSON.stringify(list));
 function getQuality() {
@@ -132,7 +136,10 @@ async function refreshUser() {
   const url = user?.user?.images?.avatar?.full;
   if (url) avatarUrl = await invoke('avatar', { url }).then(b => URL.createObjectURL(new Blob([b])), () => null);
   const account = document.getElementById('account');
-  account.innerHTML = user ? `${avatar('small')}<span class="nav-label">${esc(user.user.username)}</span>` : `${icon('user')}<span class="nav-label">Sign in &amp; settings</span>`;
+  account.innerHTML = user ? `${avatar('small')}<span class="nav-label">${esc(user.user.username)}</span>` : `${icon('user')}<span class="nav-label">Sign in</span>`;
+  account.href = user ? '#/profile' : '#/settings';
+  account.setAttribute('aria-label', user ? `Profile: ${user.user.username}` : 'Sign in');
+  document.body.classList.toggle('signed-in', !!user);
 }
 
 // Checks Trakt in the background. A change refreshes the page unless that would interrupt the user.

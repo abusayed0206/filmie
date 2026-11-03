@@ -1,7 +1,7 @@
 // Run: node --test tests/ui.test.js
 const test = require('node:test');
 const assert = require('node:assert');
-const { validProgress, playedNote, navFor, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm } = require('../ui/lib.js');
+const { validProgress, playedNote, navFor, modeOf, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm } = require('../ui/lib.js');
 
 test('norm', () => {
   const ids = { trakt: 1, tmdb: 272 };
@@ -112,10 +112,20 @@ test('validProgress trusts only sensible reports from player frames', () => {
 
 test('navFor picks the rail items for a route', () => {
   assert.deepEqual(navFor(''), ['']);
-  assert.deepEqual(navFor('movies'), ['movies']);
+  assert.deepEqual(navFor('discover'), ['discover']);
+  assert.deepEqual(navFor('discover', 'trending'), ['discover/trending', 'discover']);
+  assert.deepEqual(navFor('discover', 'recommended'), ['discover/recommended', '']);
+  assert.deepEqual(navFor('progress'), ['progress', '']);
   assert.deepEqual(navFor('list'), ['lists']);
+  assert.deepEqual(navFor('lists', 'liked'), ['lists/liked', 'lists']);
   assert.deepEqual(navFor('watchlist'), ['watchlist', 'lists']);
-  for (const page of ['title', 'play', 'nope', 'constructor']) assert.deepEqual(navFor(page), []);
+  assert.deepEqual(navFor('history'), ['history']);
+  for (const page of ['title', 'play', 'shows', 'movies', 'nope', 'constructor']) assert.deepEqual(navFor(page), []);
+});
+
+test('modeOf falls back to Media', () => {
+  for (const m of ['media', 'show', 'movie']) assert.equal(modeOf(m), m);
+  for (const m of [null, undefined, 'tv', 'constructor']) assert.equal(modeOf(m), 'media');
 });
 
 test('scrollTarget restores only on back and forward', () => {

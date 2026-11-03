@@ -57,14 +57,14 @@ description: "Task list for Trakt design parity with filters"
 
 **Independent Test**: Reach every destination from the rail in both widths and watch the top bar while scrolling. Scenarios 10, 11 and 12 in `quickstart.md`.
 
-- [ ] T013 [US2] Add `header.topbar` with `.topbar-left`, `.topbar-center` and `.topbar-right` to `ui/index.html`, styled in `ui/style.css` as fixed, inset by `--rail` and hidden while playing
-- [ ] T014 [US2] Add a passive scroll listener in `ui/app.js` that sets `body.scrolled`, turning on the blurred layer in `ui/style.css`
-- [ ] T015 [US2] Make `route()` in `ui/app.js` read `pages.x.bar = { title, meta, back, mode, filters }` before running a page and fill the top bar from it, and give each existing page a `bar`, with a `.sr-only` `<h1>` where the bar shows the title
-- [ ] T016 [US2] Replace the rail items in `ui/index.html` with Search; Home with Continue Watching, Calendar and Recommended; Discover with Trending, Releases, Anticipated and Popular; Lists with Watchlist, My Lists, Liked and Shared; and History, Library, Settings and profile at the bottom, adding sprite symbols drawn for Filmie
-- [ ] T017 [US2] Update `navFor` in `ui/lib.js` for the new routes in `specs/002-trakt-design-parity/contracts/ui-shell.md`, with cases in `tests/ui.test.js`
-- [ ] T018 [US2] Make the rail's bottom group a hover menu when narrow, closing 150 ms after leaving and also opening on keyboard focus, in `ui/app.js` and `ui/style.css`
-- [ ] T019 [US2] Add temporary pages for routes not built yet in `ui/pages-browse.js` and `ui/pages-me.js`, so that no rail item leads nowhere, and hide items that need an account when signed out
-- [ ] T020 [US2] Replace `#/shows` and `#/movies` with `#/discover` and set the mode in `ui/app.js`, holding the mode in a simple `getMode` until Phase 4
+- [X] T013 [US2] Add `header.topbar` with `.topbar-left`, `.topbar-center` and `.topbar-right` to `ui/index.html`, styled in `ui/style.css` as fixed, inset by `--rail` and hidden while playing
+- [X] T014 [US2] Add a passive scroll listener in `ui/app.js` that sets `body.scrolled`, turning on the blurred layer in `ui/style.css`
+- [X] T015 [US2] Make `route()` in `ui/app.js` read `pages.x.bar = { title, meta, back, mode, filters }` before running a page and fill the top bar from it, and give each existing page a `bar`, with a `.sr-only` `<h1>` where the bar shows the title
+- [X] T016 [US2] Replace the rail items in `ui/index.html` with Search; Home with Continue Watching, Calendar and Recommended; Discover with Trending, Releases, Anticipated and Popular; Lists with Watchlist, My Lists, Liked and Shared; and History, Library, Settings and profile at the bottom, adding sprite symbols drawn for Filmie
+- [X] T017 [US2] Update `navFor` in `ui/lib.js` for the new routes in `specs/002-trakt-design-parity/contracts/ui-shell.md`, with cases in `tests/ui.test.js`
+- [X] T018 [US2] Make the rail's bottom group a hover menu when narrow, closing 150 ms after leaving and also opening on keyboard focus, in `ui/app.js` and `ui/style.css`
+- [X] T019 [US2] Add temporary pages for routes not built yet in `ui/pages-browse.js` and `ui/pages-me.js`, so that no rail item leads nowhere, and hide items that need an account when signed out
+- [X] T020 [US2] Replace `#/shows` and `#/movies` with `#/discover` and set the mode in `ui/app.js`, holding the mode in a simple `getMode` until Phase 4
 
 **Checkpoint**: Trakt's shell works around the existing pages.
 

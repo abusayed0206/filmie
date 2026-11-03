@@ -7,7 +7,7 @@
   /* Filmie's red, in the roles Trakt gives its accent */
   --accent: #e5484d; --accent-hover: color-mix(in oklch, var(--accent) 85%, black); --accent-text: color-mix(in oklch, var(--accent) 65%, white);
   --accent-2: var(--accent-text); --accent-soft: color-mix(in srgb, var(--accent) 14%, transparent); --focus: var(--accent);
-  --radius: 12px; --gutter: 24px; --gap: 12px; --rail: 72px;
+  --radius: 12px; --gutter: 24px; --gap: 12px; --rail: 72px; --topbar: 56px;
   --shadow: 0 6px 24px #0006;
   --fast: 150ms; --short: 300ms; --spring: 420ms cubic-bezier(.34, 1.56, .64, 1);
   --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23999' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
@@ -36,9 +36,24 @@ h2 { font-size: 18px; line-height: 22px; font-weight: 600; margin: 28px 0 12px; 
 
 /* side rail: floats beside the content, and every page leaves room for it through --rail */
 body.rail-wide { --rail: 204px; }
-body.playing { --rail: 0px; }
-body.playing .rail { display: none; }
+body.playing { --rail: 0px; --topbar: 0px; }
+body.playing .rail, body.playing .topbar { display: none; }
 main, .searchbar { margin-left: var(--rail); }
+main { padding-top: var(--topbar); }
+.rail-nav { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 2px; }
+body.rail-wide .rail-nav { overflow-y: auto; scrollbar-width: none; }
+body:not(.signed-in) [data-auth] { display: none !important; }
+
+/* top bar: stays put, and gains a blurred layer once the page has scrolled */
+.topbar { position: fixed; z-index: 9; top: 0; right: 0; left: var(--rail); height: var(--topbar); display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px; padding: 0 var(--gutter); }
+.topbar::before { content: ""; position: absolute; inset: 0 0 -12px; z-index: -1; background: color-mix(in srgb, var(--bg) 75%, transparent); backdrop-filter: blur(14px);
+  mask-image: linear-gradient(black 70%, transparent); opacity: 0; transition: opacity var(--fast); pointer-events: none; }
+body.scrolled .topbar::before { opacity: 1; }
+.topbar-left, .topbar-right { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.topbar-right { justify-content: flex-end; }
+.topbar-title { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.topbar-title b { font-size: 18px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.topbar-title small { font-size: 12px; color: var(--muted); }
 .rail { position: fixed; z-index: 10; top: 12px; bottom: 12px; left: 12px; width: 48px; display: flex; flex-direction: column; gap: 2px; padding: 4px;
   background: var(--surface); border: 1px solid var(--line); border-radius: 16px; transition: width .15s; }
 body.rail-wide .rail { width: 180px; }
@@ -57,17 +72,24 @@ body.rail-wide .logo-full { display: inline; }
 body.rail-wide .nav-sub { display: flex; }
 .rail-hint { display: none; margin-left: auto; font-size: 10.5px; color: var(--muted); }
 body.rail-wide .rail-hint { display: block; }
-.rail-bottom { margin-top: auto; display: flex; flex-direction: column; gap: 2px; }
+.rail-bottom { position: relative; flex: none; display: flex; flex-direction: column; gap: 2px; padding-top: 6px; }
+.rail-menu { order: -1; display: flex; flex-direction: column; gap: 2px; }
+/* when narrow the rest of the bottom group is a flyout above the profile: open on hover or keyboard focus */
+body:not(.rail-wide) .rail-menu { position: absolute; left: calc(100% + 10px); bottom: 0; width: 180px; padding: 6px; background: var(--surface-2); border: 1px solid var(--line-2); border-radius: 16px; box-shadow: var(--shadow);
+  opacity: 0; visibility: hidden; transition: opacity var(--fast), visibility var(--fast); }
+body:not(.rail-wide) .rail-bottom.open .rail-menu { opacity: 1; visibility: visible; }
 #account { padding: 0 4px; }
 #account > .i { margin-left: 5px; }
 /* a narrow rail keeps its labels for screen readers and shows them as tooltips */
-body:not(.rail-wide) .rail-item .nav-label { position: absolute; left: calc(100% + 14px); top: 50%; transform: translateY(-50%); padding: 5px 10px; overflow: visible;
+body:not(.rail-wide) #account .nav-label { display: none; }
+body:not(.rail-wide) .rail-nav .nav-label { position: absolute; left: calc(100% + 14px); top: 50%; transform: translateY(-50%); padding: 5px 10px; overflow: visible;
   background: var(--surface-3); border: 1px solid var(--line-2); border-radius: 8px; color: var(--text); font-size: 13px; opacity: 0; pointer-events: none; transition: opacity .1s; }
-body:not(.rail-wide) .rail-item:hover .nav-label, body:not(.rail-wide) .rail-item:focus-visible .nav-label { opacity: 1; }
+body:not(.rail-wide) .rail-nav .rail-item:hover .nav-label, body:not(.rail-wide) .rail-nav .rail-item:focus-visible .nav-label { opacity: 1; }
 
 /* search lives outside #app: pages redraw on every query, and the box must keep its focus */
-.searchbar { display: none; position: sticky; top: 0; z-index: 5; padding: 14px var(--gutter); background: color-mix(in srgb, var(--bg) 90%, transparent); backdrop-filter: blur(14px); }
+.searchbar { display: none; position: sticky; top: var(--topbar); z-index: 5; margin-top: var(--topbar); padding: 0 var(--gutter) 14px; background: color-mix(in srgb, var(--bg) 90%, transparent); backdrop-filter: blur(14px); }
 body.searching .searchbar { display: block; }
+body.searching main { padding-top: 0; }
 .search { position: relative; display: flex; align-items: center; max-width: 620px; }
 .search .i { position: absolute; left: 13px; width: 16px; height: 16px; color: var(--muted); pointer-events: none; }
 #q { width: 100%; height: 40px; padding-left: 38px; border-radius: 999px; background: var(--surface); }
@@ -160,7 +182,7 @@ dialog[open]::backdrop { opacity: 1; }
 .menu button.danger { color: var(--accent-text); }
 .menu .i { width: 20px; height: 20px; }
 
-.page { padding: 28px var(--gutter) 40px; }
+.page { padding: 8px var(--gutter) 40px; }
 
 /* profile strip */
 .profile { display: flex; flex-wrap: wrap; align-items: center; gap: 20px; padding: 22px 26px; background: linear-gradient(120deg, var(--surface-2), var(--surface)); border: 1px solid var(--line); border-radius: var(--radius); }

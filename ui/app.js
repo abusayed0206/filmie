@@ -180,6 +180,16 @@ window.navigation?.addEventListener('navigate', ev => {
   savedScroll.set(navigation.currentEntry.key, scrollY);
 });
 
+// The top bar. Each page sets `bar`, or a function of its route arguments returning one.
+const topbar = document.getElementById('topbar');
+function setBar({ title = '', meta = '', back = false } = {}) {
+  topbar.querySelector('.topbar-left').innerHTML = `${back ? `<button type="button" class="icon-btn ghost" data-back aria-label="Back">${icon('back')}</button>` : ''}
+    <div class="topbar-title"><b>${esc(title)}</b>${meta ? `<small>${esc(meta)}</small>` : ''}</div>`;
+}
+const setBarTitle = title => { topbar.querySelector('.topbar-title b').textContent = title; };
+topbar.addEventListener('click', ev => { if (ev.target.closest('[data-back]')) history.back(); });
+addEventListener('scroll', () => document.body.classList.toggle('scrolled', scrollY > 0), { passive: true });
+
 // soft: refresh this page in place, for changes the user didn't navigate to. It renders into a hidden copy,
 // which comes first in the document so the pages' getElementById calls find it, then swaps in one step.
 async function route({ soft = false } = {}) {
@@ -188,6 +198,12 @@ async function route({ soft = false } = {}) {
   document.getElementById('soft-render')?.remove();
   app = main;
   const [page, ...args] = location.hash.slice(2).split('/');
+  // Shows and Movies are now Discover in that mode.
+  if (page === 'shows' || page === 'movies') {
+    setMode(page === 'shows' ? 'show' : 'movie');
+    location.replace('#/discover');
+    return;
+  }
   const name = Object.hasOwn(pages, page || 'home') ? page || 'home' : 'home';
   const open = pages[name];
   const opening = navType;
@@ -199,7 +215,8 @@ async function route({ soft = false } = {}) {
     app.hidden = true;
     main.before(app);
   } else {
-    const current = navFor(page);
+    setBar(typeof open.bar === 'function' ? open.bar(...args) : open.bar);
+    const current = navFor(page, args[0]);
     document.querySelectorAll('[data-nav]').forEach(a => {
       const i = current.indexOf(a.dataset.nav);
       a.classList.toggle('active', i >= 0);
@@ -259,6 +276,16 @@ railToggle.onclick = () => {
   setRail(wide);
   try { localStorage.setItem('rail', wide ? 'wide' : 'narrow'); } catch {}
 };
+
+// The bottom group opens on hover or keyboard focus when the rail is narrow. The delay lets the pointer cross the gap.
+const railBottom = document.getElementById('rail-bottom');
+let railTimer;
+const openRailMenu = open => {
+  clearTimeout(railTimer);
+  if (open) railBottom.classList.add('open');
+  else railTimer = setTimeout(() => railBottom.classList.remove('open'), 150);
+};
+for (const [event, open] of [['mouseenter', true], ['mouseleave', false], ['focusin', true], ['focusout', false]]) railBottom.addEventListener(event, () => openRailMenu(open));
 
 window.addEventListener('hashchange', () => route());
 // Only text fields and selected text get a menu; the rest of the app shouldn't offer "Reload" or "Save as".

@@ -63,13 +63,13 @@ function skeleton(kind) {
   const row = `<section class="row"><div class="row-head"><div class="sk sk-title"></div></div><div class="track">${skeletonCards(12)}</div></section>`;
   const body = {
     rows: `<div class="page">${row.repeat(3)}</div>`,
-    grid: `<div class="page"><div class="sk sk-heading"></div><div class="grid">${skeletonCards(18)}</div></div>`,
+    grid: `<div class="page"><div class="grid">${skeletonCards(18)}</div></div>`,
     title: `<section class="summary"><div class="summary-inner"><div class="sk summary-poster sk-poster"></div>
       <div class="summary-info sk-info"><div class="sk sk-heading"></div><p class="sk"></p><p class="sk"></p><p class="sk"></p></div></div></section>`,
   }[kind];
   return body ? `<div aria-hidden="true">${body}</div>` : '';
 }
-const SKELETONS = { home: 'rows', shows: 'rows', movies: 'rows', title: 'title', lists: 'grid', watchlist: 'grid', list: 'grid', search: 'grid' };
+const SKELETONS = { home: 'rows', discover: 'rows', progress: 'rows', title: 'title', lists: 'grid', watchlist: 'grid', list: 'grid', search: 'grid' };
 
 // defs: [title, async () => html, seeAllHref?]. Empty or failed sections are removed.
 async function renderRows(defs, into = app) {

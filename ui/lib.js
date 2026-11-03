@@ -111,8 +111,18 @@ function validProgress(p, runtimeMinutes) {
 }
 
 // The rail items a route highlights, the exact one first. Title and player pages belong to none.
-const RAIL_ITEMS = { '': [''], shows: ['shows'], movies: ['movies'], settings: ['settings'], search: ['search'], lists: ['lists'], list: ['lists'], watchlist: ['watchlist', 'lists'] };
-const navFor = page => Object.hasOwn(RAIL_ITEMS, page) ? RAIL_ITEMS[page] : [];
+const RAIL_ITEMS = {
+  '': [''], search: ['search'], progress: ['progress', ''], calendar: ['calendar', ''], discover: ['discover'],
+  lists: ['lists'], list: ['lists'], watchlist: ['watchlist', 'lists'], history: ['history'], library: ['library'], settings: ['settings'], profile: ['profile'],
+};
+function navFor(page, sub) {
+  if (page === 'discover' && sub) return sub === 'recommended' ? ['discover/recommended', ''] : [`discover/${sub}`, 'discover'];
+  if (page === 'lists' && sub) return [`lists/${sub}`, 'lists'];
+  return Object.hasOwn(RAIL_ITEMS, page) ? RAIL_ITEMS[page] : [];
+}
+
+const MODES = ['media', 'show', 'movie'];
+const modeOf = m => MODES.includes(m) ? m : 'media';
 
 // Where a page starts: back and forward return to the saved spot, anything else opens at the top.
 const scrollTarget = (navType, saved) => navType === 'traverse' ? saved ?? 0 : 0;
@@ -130,4 +140,4 @@ function playedNote(p, now = Date.now() / 1000) {
   return `Opened ${Math.floor(mins / 1440)} d ago`;
 }
 
-if (typeof module !== 'undefined') module.exports = { validProgress, playedNote, navFor, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm };
+if (typeof module !== 'undefined') module.exports = { validProgress, playedNote, navFor, modeOf, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm };

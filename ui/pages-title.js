@@ -3,6 +3,8 @@ Object.assign(pages, {
   title: (type, id, season) => showTitle(type === 'tv' ? 'tv' : 'movie', +id, season === undefined ? null : +season),
 });
 
+pages.title.bar = { back: true };
+
 async function showTitle(type, id, season = null) {
   const token = routeToken;
   const d = await tmdb(`/${type}/${id}`, { append_to_response: 'external_ids,videos,watch/providers,credits' });

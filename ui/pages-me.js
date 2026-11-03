@@ -1,18 +1,33 @@
 // The signed-in user's pages and Settings.
 Object.assign(pages, {
+  async progress() {
+    if (!user) { app.innerHTML = signInPrompt('up next'); return; }
+    app.innerHTML = '<div class="page"><h1 class="sr-only">Continue Watching</h1></div>';
+    await renderRows([['Up next', upNextCards], ['Continue watching', playbackCards()]], app.firstElementChild);
+  },
+
+  calendar: () => comingSoon('Calendar'),
+  history: () => comingSoon('History'),
+  library: () => comingSoon('Library'),
+
+  async profile() {
+    if (!user) { app.innerHTML = signInPrompt('profile'); return; }
+    app.innerHTML = `<div class="page">${profileHeader()}</div>`;
+  },
+
   async lists() {
     if (!user) { app.innerHTML = signInPrompt('lists'); return; }
     const token = routeToken;
     const lists = await traktGet('/users/me/lists');
     if (token !== routeToken) return;
-    app.innerHTML =`<div class="page"><h1>Lists</h1><div class="tiles">${watchlistTile()}${lists.map(listTile).join('')}</div></div>`;
+    app.innerHTML = `<div class="page"><h1 class="sr-only">Lists</h1><div class="tiles">${watchlistTile()}${lists.map(listTile).join('')}</div></div>`;
   },
 
   async watchlist() {
     if (!user) { app.innerHTML = signInPrompt('watchlist'); return; }
     const movies = posters(watchlistItems(['movies']));
     const shows = posters(watchlistItems(['shows']));
-    app.innerHTML = `<div class="page"><h1>Watchlist</h1>
+    app.innerHTML = `<div class="page"><h1 class="sr-only">Watchlist</h1>
       ${shows ? `<h2>Shows</h2><div class="grid">${shows}</div>` : ''}${movies ? `<h2>Movies</h2><div class="grid">${movies}</div>` : ''}
       ${movies || shows ? '' : '<p class="muted">Your watchlist is empty.</p>'}</div>`;
     observeArt(app);
@@ -23,7 +38,8 @@ Object.assign(pages, {
     const token = routeToken;
     const meta = await traktGet(`/users/me/lists/${+id}`);
     if (token !== routeToken) return;
-    app.innerHTML =`<div class="page"><h1>${esc(meta.name)}</h1>
+    setBarTitle(meta.name);
+    app.innerHTML = `<div class="page"><h1 class="sr-only">${esc(meta.name)}</h1>
       <p class="muted">${num(meta.item_count)} items${meta.description ? ` · ${esc(meta.description)}` : ''}</p>
       <div class="grid" id="grid"></div><p><button id="more" hidden>Load more</button></p></div>`;
     const grid = document.getElementById('grid');
@@ -43,8 +59,8 @@ Object.assign(pages, {
 
   async settings() {
     const limits = user?.limits;
-    const field =(title, help, control) => `<div class="field"><div><b>${title}</b><p class="muted">${help}</p></div>${control}</div>`;
-    app.innerHTML = `<div class="page settings"><h1>Settings</h1>
+    const field = (title, help, control) => `<div class="field"><div><b>${title}</b><p class="muted">${help}</p></div>${control}</div>`;
+    app.innerHTML = `<div class="page settings"><h1 class="sr-only">Settings</h1>
       <section class="card" id="trakt-box">
         <div class="card-head"><h2>Trakt account</h2><p class="muted">Your watchlist, lists, recommendations and watch history.</p></div>
         ${user ? `<div class="account-row">${avatar('big')}
@@ -89,6 +105,16 @@ Object.assign(pages, {
     renderServers($('servers'));
   },
 });
+
+pages.progress.bar = { title: 'Continue Watching', mode: 'bar', filters: 'local' };
+pages.calendar.bar = { title: 'Calendar', mode: 'bar', filters: 'local' };
+pages.history.bar = { title: 'History', mode: 'bar' };
+pages.library.bar = { title: 'Library', mode: 'bar' };
+pages.profile.bar = { title: 'Profile', mode: 'bar', filters: 'global' };
+pages.lists.bar = { title: 'Lists', mode: 'bar', filters: 'global' };
+pages.watchlist.bar = { title: 'Watchlist', mode: 'bar', filters: 'local' };
+pages.list.bar = { title: 'List', back: true, mode: 'bar', filters: 'local' };
+pages.settings.bar = { title: 'Settings' };
 
 // The Video servers card. editing: null for just the list, -1 for a new server, or the index being edited.
 function renderServers(card, editing = null) {

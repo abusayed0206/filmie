@@ -76,11 +76,14 @@ async function showTitle(type, id, season = null) {
   }
 
   const rows = renderRows([
-    cast.length && ['Cast', async () => cast.map(personCard).join('')],
-    ['Related', async () => {
-      const t = await lookup;
-      return t ? posters(await traktGet(`/${tt}s/${t.ids.trakt}/related?limit=20`), tt) : '';
-    }],
+    cast.length && { id: 'cast', title: 'Cast', load: async () => cast.map(personCard).join('') },
+    {
+      id: 'related', title: 'Related', bright: true,
+      load: async () => {
+        const t = await lookup;
+        return t ? posters(await traktGet(`/${tt}s/${t.ids.trakt}/related?limit=20&extended=full`), tt) : '';
+      },
+    },
   ], document.getElementById('related'));
   await firstSeason; // a soft refresh or restored scroll needs the page's full height
   const t = await lookup.catch(e => console.warn('Trakt lookup failed', e));

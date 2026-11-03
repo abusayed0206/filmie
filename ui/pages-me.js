@@ -3,7 +3,7 @@ Object.assign(pages, {
   async progress() {
     if (!user) { app.innerHTML = signInPrompt('up next'); return; }
     app.innerHTML = '<div class="page"><h1 class="sr-only">Continue Watching</h1></div>';
-    await renderRows([getMode() !== 'movie' && ['Up next', upNextCards], ['Continue watching', playbackCards(forMode(undefined, 'episode', 'movie'))]], app.firstElementChild);
+    await renderRows([upNextRow(), continueRow()], app.firstElementChild);
   },
 
   calendar: () => comingSoon('Calendar'),

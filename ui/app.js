@@ -215,6 +215,7 @@ async function route({ soft = false } = {}) {
   const token = ++routeToken;
   nowPlaying = null;
   document.getElementById('soft-render')?.remove();
+  document.querySelectorAll('.menu').forEach(m => m.remove()); // their actions belong to the page being left
   app = main;
   const [page, ...args] = location.hash.slice(2).split('/');
   // Shows and Movies are now Discover in that mode.

@@ -100,16 +100,16 @@ description: "Task list for Trakt design parity with filters"
 
 **Independent Test**: Compare side by side with Trakt at the same window size. Scenarios 13, 14 and 15 in `quickstart.md`.
 
-- [ ] T034 [US3] Rework `renderRows` in `ui/cards.js` to take `{ id, title, meta, more, kind, load, actions }`, keyed by stable `id`, loading each row when near the viewport through one shared `IntersectionObserver`, and update all callers
-- [ ] T035 [US3] Add the row header in `ui/cards.js` and `ui/style.css`: collapse button, 18/22 px title linking to `more` with a caret, actions, meta under the title. Save collapse in `localStorage` key `rows-collapsed` as a JSON array, where "Non-array is the default"
-- [ ] T036 [US3] Remove row arrows, and give rows with `more` and more than one item `overflow-x: hidden` unlocked by a horizontal wheel, with edge fade and x-proximity snap, in `ui/cards.js` and `ui/style.css`
-- [ ] T037 [US3] Rebuild `posterCard` and add `episodeCard`, `summaryCard`, `listCard` and `personCard` in `ui/cards.js` with the reference's sizes, covers, footers and fallback title. Never nest a button in a link
-- [ ] T038 [US3] Add status tags in `ui/cards.js` with one indicator straddling the cover's bottom, in Trakt's priority order, from the sync mirror
-- [ ] T039 [US3] Add `cardMenu(item)` with watchlist, mark watched and add to list to `ui/cards.js`, using `menu()`, shown when signed in and updating through `write()` and soft refresh
-- [ ] T040 [US3] Set card hover to a 2 px accent outline with no movement, a 150 ms card fade-in, and 75% opacity on watched covers except on Trending, Popular, Anticipated and Recommended, in `ui/style.css`
-- [ ] T041 [US3] Add the call-to-action card for rows with 4 or fewer items and a `more` link, and placeholders for empty rows that exist to be filled, in `ui/cards.js`
-- [ ] T042 [US3] Extend `norm` in `ui/lib.js` for every response shape in `specs/002-trakt-design-parity/contracts/api-usage.md`, with a case per shape in `tests/ui.test.js`
-- [ ] T043 [US3] Bring Settings, the player toolbar and menus into the new tokens in `ui/style.css`, without changing the player's layout
+- [X] T034 [US3] Rework `renderRows` in `ui/cards.js` to take `{ id, title, meta, more, kind, load, actions }`, keyed by stable `id`, loading each row when near the viewport through one shared `IntersectionObserver`, and update all callers
+- [X] T035 [US3] Add the row header in `ui/cards.js` and `ui/style.css`: collapse button, 18/22 px title linking to `more` with a caret, actions, meta under the title. Save collapse in `localStorage` key `rows-collapsed` as a JSON array, where "Non-array is the default"
+- [X] T036 [US3] Remove row arrows, and give rows with `more` and more than one item `overflow-x: hidden` unlocked by a horizontal wheel, with edge fade and x-proximity snap, in `ui/cards.js` and `ui/style.css`
+- [X] T037 [US3] Rebuild `posterCard` and add `episodeCard`, `summaryCard`, `listCard` and `personCard` in `ui/cards.js` with the reference's sizes, covers, footers and fallback title. Never nest a button in a link
+- [X] T038 [US3] Add status tags in `ui/cards.js` with one indicator straddling the cover's bottom, in Trakt's priority order, from the sync mirror
+- [X] T039 [US3] Add `cardMenu(item)` with watchlist, mark watched and add to list to `ui/cards.js`, using `menu()`, shown when signed in and updating through `write()` and soft refresh
+- [X] T040 [US3] Set card hover to a 2 px accent outline with no movement, a 150 ms card fade-in, and 75% opacity on watched covers except on Trending, Popular, Anticipated and Recommended, in `ui/style.css`
+- [X] T041 [US3] Add the call-to-action card for rows with 4 or fewer items and a `more` link, and placeholders for empty rows that exist to be filled, in `ui/cards.js`
+- [X] T042 [US3] Extend `norm` in `ui/lib.js` for every response shape in `specs/002-trakt-design-parity/contracts/api-usage.md`, with a case per shape in `tests/ui.test.js`
+- [X] T043 [US3] Bring Settings, the player toolbar and menus into the new tokens in `ui/style.css`, without changing the player's layout
 
 **Checkpoint**: Combined with Phase 6 for review.
 

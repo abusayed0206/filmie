@@ -100,8 +100,25 @@ function norm(x, bareType) {
   // /media/popular returns bare items with no type, and only shows have aired_episodes.
   const tt = x?.movie ? 'movie' : x?.show ? 'show' : x?.aired_episodes !== undefined ? 'show' : bareType;
   const m = x?.movie ?? x?.show ?? x;
-  return m?.ids?.tmdb && tt ? { type: tt === 'show' ? 'tv' : 'movie', id: m.ids.tmdb, title: m.title, year: m.year } : null;
+  if (!m?.ids?.tmdb || !tt) return null;
+  // Lists only carry the extra details when asked for with extended=full.
+  const released = m.released ?? m.first_aired;
+  return {
+    type: tt === 'show' ? 'tv' : 'movie', id: m.ids.tmdb, title: m.title, year: m.year,
+    ...(m.runtime ? { runtime: m.runtime } : {}),
+    ...(m.aired_episodes ? { episodes: m.aired_episodes } : {}),
+    ...(released ? { released } : {}),
+    ...(m.rating ? { rating: m.rating } : {}),
+    ...(m.genres?.length ? { genres: m.genres } : {}),
+    ...(m.after_credits || m.during_credits ? { postCredits: true } : {}),
+  };
 }
+
+const runtimeText = min => !min ? '' : [Math.floor(min / 60) && `${Math.floor(min / 60)}h`, min % 60 && `${min % 60}m`].filter(Boolean).join(' ');
+
+// A card shows one status at most, in Trakt's order of importance.
+const STATUS_ORDER = [['dropped', 'Dropped'], ['watched', 'Watched'], ['started', 'Started'], ['postCredits', 'Post-credits'], ['watchlisted', 'Watchlist']];
+const statusTag = flags => STATUS_ORDER.find(([key]) => flags[key])?.[1] ?? '';
 
 // A progress report comes from a third-party page, so only well-formed numbers count. Anything much shorter
 // than the title's runtime is probably an ad.
@@ -212,4 +229,4 @@ function playedNote(p, now = Date.now() / 1000) {
   return `Opened ${Math.floor(mins / 1440)} d ago`;
 }
 
-if (typeof module !== 'undefined') module.exports = { validProgress, playedNote, navFor, modeOf, FILTERS, decadeOptions, cleanFilters, filterQuery, filterCount, addQuery, fitsSimple, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm };
+if (typeof module !== 'undefined') module.exports = { validProgress, playedNote, runtimeText, statusTag, navFor, modeOf, FILTERS, decadeOptions, cleanFilters, filterQuery, filterCount, addQuery, fitsSimple, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm };

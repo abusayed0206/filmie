@@ -1,7 +1,7 @@
 // Run: node --test tests/ui.test.js
 const test = require('node:test');
 const assert = require('node:assert');
-const { validProgress, playedNote, navFor, modeOf, FILTERS, decadeOptions, cleanFilters, filterQuery, filterCount, addQuery, fitsSimple, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm } = require('../ui/lib.js');
+const { validProgress, playedNote, runtimeText, statusTag, navFor, modeOf, FILTERS, decadeOptions, cleanFilters, filterQuery, filterCount, addQuery, fitsSimple, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm } = require('../ui/lib.js');
 
 test('norm', () => {
   const ids = { trakt: 1, tmdb: 272 };
@@ -14,6 +14,35 @@ test('norm', () => {
   // /media/popular: bare items with no type
   assert.equal(norm({ title: 'S', ids, aired_episodes: 12 }, 'movie').type, 'tv');
   assert.equal(norm({ title: 'M', ids }, 'movie').type, 'movie');
+  // extended=full, on each shape a list can return
+  assert.deepEqual(norm({ watchers: 1, movie: { title: 'M', year: 2010, ids, runtime: 148, released: '2010-07-16', rating: 8.4, genres: ['sci-fi'], after_credits: true } }),
+    { type: 'movie', id: 272, title: 'M', year: 2010, runtime: 148, released: '2010-07-16', rating: 8.4, genres: ['sci-fi'], postCredits: true });
+  assert.deepEqual(norm({ list_count: 2, show: { title: 'S', year: 2008, ids, aired_episodes: 62, first_aired: '2008-01-20T00:00:00.000Z' } }),
+    { type: 'tv', id: 272, title: 'S', year: 2008, episodes: 62, released: '2008-01-20T00:00:00.000Z' });
+  assert.equal(norm({ movie: { title: 'M', ids, genres: [], after_credits: false } }).genres, undefined);
+  assert.equal(norm({ movie: { title: 'M', ids, after_credits: false } }).postCredits, undefined);
+  // recommendations, history and calendar items
+  assert.equal(norm({ movie: { title: 'M', ids }, score: 1, sources: [] }).type, 'movie');
+  assert.equal(norm({ id: 9, watched_at: 't', action: 'watch', type: 'episode', episode: { ids: {} }, show: { title: 'S', ids } }).type, 'tv');
+  assert.equal(norm({ first_aired: 't', episode: { ids: {} }, show: { title: 'S', ids } }).title, 'S');
+});
+
+test('runtimeText', () => {
+  assert.equal(runtimeText(148), '2h 28m');
+  assert.equal(runtimeText(45), '45m');
+  assert.equal(runtimeText(120), '2h');
+  assert.equal(runtimeText(0), '');
+  assert.equal(runtimeText(undefined), '');
+});
+
+test('statusTag shows only the most important status', () => {
+  assert.equal(statusTag({}), '');
+  assert.equal(statusTag({ watchlisted: true }), 'Watchlist');
+  assert.equal(statusTag({ postCredits: true, watchlisted: true }), 'Post-credits');
+  assert.equal(statusTag({ started: true, watchlisted: true }), 'Started');
+  assert.equal(statusTag({ watched: true, started: true, watchlisted: true }), 'Watched');
+  assert.equal(statusTag({ dropped: true, watched: true }), 'Dropped');
+  assert.equal(statusTag({ watched: false, watchlisted: false }), '');
 });
 
 const show = {

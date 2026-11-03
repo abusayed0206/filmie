@@ -64,11 +64,14 @@ Media mode adds a type tag to cards.
 Pure, in `lib.js`, with tests:
 
 ```text
-FILTERS                       definitions: key, label, group, simple options, advanced control, modes
-cleanFilters(obj) → obj       drops unknown keys and invalid values
-filterQuery(filters, mode) → query string   skips filters not valid in the mode, expands presets
-filterCount(filters, mode) → number         the badge
+FILTERS                       definitions: key, label, simple options, advanced control
+cleanFilters(obj) → obj       drops unknown keys, invalid values and full-range sliders
+filterQuery(filters) → query string
+filterCount(filters) → number the badge; Advanced's ratings slider counts once
+fitsSimple(filters) → bool    whether Simple's controls can show these values
 ```
+
+State is `{ param: value }` as the API takes it, so presets expand when picked. No filter is mode-specific: Trakt's presets combine movie and show values, so neither `filterQuery` nor `filterCount` needs the mode.
 
 The shell in `controls.js`:
 

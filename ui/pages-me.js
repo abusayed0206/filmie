@@ -3,7 +3,7 @@ Object.assign(pages, {
   async progress() {
     if (!user) { app.innerHTML = signInPrompt('up next'); return; }
     app.innerHTML = '<div class="page"><h1 class="sr-only">Continue Watching</h1></div>';
-    await renderRows([['Up next', upNextCards], ['Continue watching', playbackCards()]], app.firstElementChild);
+    await renderRows([getMode() !== 'movie' && ['Up next', upNextCards], ['Continue watching', playbackCards(forMode(undefined, 'episode', 'movie'))]], app.firstElementChild);
   },
 
   calendar: () => comingSoon('Calendar'),
@@ -25,8 +25,8 @@ Object.assign(pages, {
 
   async watchlist() {
     if (!user) { app.innerHTML = signInPrompt('watchlist'); return; }
-    const movies = posters(watchlistItems(['movies']));
-    const shows = posters(watchlistItems(['shows']));
+    const movies = getMode() === 'show' ? '' : posters(watchlistItems(['movies']));
+    const shows = getMode() === 'movie' ? '' : posters(watchlistItems(['shows']));
     app.innerHTML = `<div class="page"><h1 class="sr-only">Watchlist</h1>
       ${shows ? `<h2>Shows</h2><div class="grid">${shows}</div>` : ''}${movies ? `<h2>Movies</h2><div class="grid">${movies}</div>` : ''}
       ${movies || shows ? '' : '<p class="muted">Your watchlist is empty.</p>'}</div>`;
@@ -47,7 +47,7 @@ Object.assign(pages, {
     const PAGE = 60;
     let page = 1;
     const load = async () => {
-      const items = await traktGet(`/users/me/lists/${+id}/items/movie,show?page=${page++}&limit=${PAGE}`);
+      const items = await traktGet(withFilters(`/users/me/lists/${+id}/items/${forMode('movie,show', 'show', 'movie')}?page=${page++}&limit=${PAGE}`));
       if (token !== routeToken) return;
       grid.insertAdjacentHTML('beforeend', posters(items));
       observeArt(grid);
@@ -106,13 +106,14 @@ Object.assign(pages, {
   },
 });
 
-pages.progress.bar = { title: 'Continue Watching', mode: 'bar', filters: 'local' };
-pages.calendar.bar = { title: 'Calendar', mode: 'bar', filters: 'local' };
+// Filters arrive on these pages as each is rebuilt on an endpoint that takes them.
+pages.progress.bar = { title: 'Continue Watching', mode: 'bar' };
+pages.calendar.bar = { title: 'Calendar', mode: 'bar' };
 pages.history.bar = { title: 'History', mode: 'bar' };
 pages.library.bar = { title: 'Library', mode: 'bar' };
-pages.profile.bar = { title: 'Profile', mode: 'bar', filters: 'global' };
-pages.lists.bar = { title: 'Lists', mode: 'bar', filters: 'global' };
-pages.watchlist.bar = { title: 'Watchlist', mode: 'bar', filters: 'local' };
+pages.profile.bar = { title: 'Profile', mode: 'bar' };
+pages.lists.bar = { title: 'Lists', mode: 'bar' };
+pages.watchlist.bar = { title: 'Watchlist', mode: 'bar' };
 pages.list.bar = { title: 'List', back: true, mode: 'bar', filters: 'local' };
 pages.settings.bar = { title: 'Settings' };
 

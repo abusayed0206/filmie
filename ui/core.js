@@ -54,7 +54,36 @@ function getServer(count) {
 function getMode() {
   try { return modeOf(localStorage.getItem('mode')); } catch { return 'media'; }
 }
-const setMode = m => { try { localStorage.setItem('mode', modeOf(m)); } catch {} };
+const saveMode = m => { try { localStorage.setItem('mode', modeOf(m)); } catch {} };
+const setMode = m => { saveMode(m); route({ soft: true }); };
+const forMode = (media, show, movie) => ({ media, show, movie })[getMode()];
+
+// Filters: pages with `filters: 'global'` share one saved set, and other pages keep their own until the app closes.
+// A person's saved default is where both start.
+function readStoredFilters(key) {
+  try { return cleanFilters(JSON.parse(localStorage.getItem(key))); } catch { return {}; }
+}
+function hasStored(key) {
+  try { return localStorage.getItem(key) !== null; } catch { return false; }
+}
+const savedDefaultFilters = () => readStoredFilters('filters-default');
+const saveDefaultFilters = f => { try { localStorage.setItem('filters-default', JSON.stringify(cleanFilters(f))); } catch {} };
+const localFilters = new Map();
+let filterScope = false; // this page's `bar.filters`
+function activeFilters() {
+  if (!filterScope) return {};
+  const stored = filterScope === 'global'
+    ? (hasStored('filters') ? readStoredFilters('filters') : savedDefaultFilters())
+    : localFilters.get(location.hash) ?? savedDefaultFilters();
+  // Filters that need an account would fail, or mean nothing, when signed out.
+  return Object.fromEntries(Object.entries(stored).filter(([k]) => user || !filterDef(k).auth));
+}
+function setActiveFilters(filters) {
+  const clean = cleanFilters(filters);
+  if (filterScope === 'global') { try { localStorage.setItem('filters', JSON.stringify(clean)); } catch {} }
+  else localFilters.set(location.hash, clean);
+}
+const withFilters = path => addQuery(path, filterQuery(activeFilters()));
 const setServer = i => { try { localStorage.setItem('server', i); } catch {} };
 const setSources = list => localStorage.setItem('sources', JSON.stringify(list));
 function getQuality() {

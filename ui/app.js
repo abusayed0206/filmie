@@ -182,10 +182,29 @@ window.navigation?.addEventListener('navigate', ev => {
 
 // The top bar. Each page sets `bar`, or a function of its route arguments returning one.
 const topbar = document.getElementById('topbar');
-function setBar({ title = '', meta = '', back = false } = {}) {
-  topbar.querySelector('.topbar-left').innerHTML = `${back ? `<button type="button" class="icon-btn ghost" data-back aria-label="Back">${icon('back')}</button>` : ''}
-    <div class="topbar-title"><b>${esc(title)}</b>${meta ? `<small>${esc(meta)}</small>` : ''}</div>`;
+const filterButton = document.getElementById('filter-btn');
+let bar = {};
+function updateFilterButton() {
+  const count = filterCount(activeFilters());
+  filterButton.disabled = !bar.filters;
+  filterButton.querySelector('.badge').textContent = count || '';
+  filterButton.setAttribute('aria-label', count ? `Filters, ${count} active` : 'Filters');
 }
+function setBar(next = {}) {
+  bar = next;
+  filterScope = next.filters ?? false;
+  topbar.querySelector('.topbar-left').innerHTML = `${next.back ? `<button type="button" class="icon-btn ghost" data-back aria-label="Back">${icon('back')}</button>` : ''}
+    <div class="topbar-title"><b>${esc(next.title ?? '')}</b>${next.meta ? `<small>${esc(next.meta)}</small>` : ''}</div>`;
+  // Kept between pages so the indicator slides and keyboard focus stays on the switch.
+  const center = topbar.querySelector('.topbar-center');
+  const showSwitch = next.mode === 'bar';
+  if (center.dataset.shown !== String(showSwitch)) {
+    center.dataset.shown = showSwitch;
+    center.innerHTML = showSwitch ? segmented('mode', MODE_OPTIONS, getMode(), setMode, 'Media type') : '';
+  } else if (showSwitch) center.querySelector(`input[value="${getMode()}"]`).checked = true;
+  updateFilterButton();
+}
+busy(filterButton, openFilterDrawer);
 const setBarTitle = title => { topbar.querySelector('.topbar-title b').textContent = title; };
 topbar.addEventListener('click', ev => { if (ev.target.closest('[data-back]')) history.back(); });
 addEventListener('scroll', () => document.body.classList.toggle('scrolled', scrollY > 0), { passive: true });
@@ -200,7 +219,7 @@ async function route({ soft = false } = {}) {
   const [page, ...args] = location.hash.slice(2).split('/');
   // Shows and Movies are now Discover in that mode.
   if (page === 'shows' || page === 'movies') {
-    setMode(page === 'shows' ? 'show' : 'movie');
+    saveMode(page === 'shows' ? 'show' : 'movie');
     location.replace('#/discover');
     return;
   }
@@ -209,13 +228,13 @@ async function route({ soft = false } = {}) {
   const opening = navType;
   traversing = opening === 'traverse';
   navType = 'push'; // route() also runs without a navigation, as after signing out
+  setBar(typeof open.bar === 'function' ? open.bar(...args) : open.bar);
   if (soft) {
     app = main.cloneNode(false);
     app.id = 'soft-render';
     app.hidden = true;
     main.before(app);
   } else {
-    setBar(typeof open.bar === 'function' ? open.bar(...args) : open.bar);
     const current = navFor(page, args[0]);
     document.querySelectorAll('[data-nav]').forEach(a => {
       const i = current.indexOf(a.dataset.nav);

@@ -87,3 +87,152 @@ function segmented(name, options, value, onChange, label = name) {
 document.addEventListener('change', ev => {
   if (ev.target.closest('.segmented')) segmentedChanges.get(ev.target.name)?.(ev.target.value);
 });
+
+// A min and max slider from two range inputs. value is 'a-b'; grades, when given, name the positions.
+function rangeSlider(def, label, value) {
+  const [lo, hi] = def.range;
+  const [a, b] = (value ?? '').split('-');
+  const min = a ? +a : lo;
+  const max = b ? +b : hi;
+  const step = hi - lo <= 10 ? 1 : hi - lo > 100 ? 10 : 5;
+  return `<div class="slider" data-slider="${esc(def.key)}">
+    <div class="slider-head"><span class="filter-label">${esc(label)}</span><output>${esc(sliderText(def, min, max))}</output></div>
+    <div class="slider-track" style="--a:${(min - lo) / (hi - lo)};--b:${(max - lo) / (hi - lo)}">
+      <input type="range" min="${lo}" max="${hi}" step="${step}" value="${min}" aria-label="${esc(label)} from">
+      <input type="range" min="${lo}" max="${hi}" step="${step}" value="${max}" aria-label="${esc(label)} to"></div></div>`;
+}
+function sliderText(def, min, max) {
+  if (def.grades) return min === max ? def.grades[min] : `${def.grades[min]} to ${def.grades[max]}`;
+  return min === def.range[0] && max === def.range[1] ? 'Any' : `${min} to ${max}${def.unit ?? ''}`;
+}
+
+// Option lists from Trakt, for both types since a filter applies across modes. Cached for a day on the Rust side.
+async function loadFilterSources() {
+  const none = () => [];
+  const [gm, gs, cm, cs, co] = await Promise.all([
+    traktGet('/genres/movies').catch(none), traktGet('/genres/shows').catch(none),
+    traktGet('/certifications/movies').catch(none), traktGet('/certifications/shows').catch(none),
+    traktGet('/countries/movies').catch(none),
+  ]);
+  const unique = list => [...new Map(list.map(x => [x.value, x])).values()].sort((a, b) => a.label.localeCompare(b.label));
+  return {
+    genres: unique([...gm, ...gs].map(g => ({ label: g.name, value: g.slug }))),
+    certifications: unique([...(cm.us ?? []), ...(cs.us ?? [])].map(c => ({ label: c.name, value: c.slug }))),
+    countries: unique(co.map(c => ({ label: c.name, value: c.code }))),
+  };
+}
+
+const MODE_OPTIONS = [{ value: 'media', label: 'Media', icon: 'media' }, { value: 'show', label: 'Shows', icon: 'tv' }, { value: 'movie', label: 'Movies', icon: 'film' }];
+
+// The filter drawer. It edits a draft, and the page only reloads on close if something changed.
+async function openFilterDrawer() {
+  const sources = await loadFilterSources();
+  const start = JSON.stringify(cleanFilters(activeFilters()));
+  let draft = activeFilters();
+  let tab = 'simple';
+  try { if (localStorage.getItem('filters-tab') === 'advanced') tab = 'advanced'; } catch {}
+  const d = drawer({
+    title: 'Filters',
+    onClose: () => {
+      if (JSON.stringify(cleanFilters(draft)) === start) return;
+      setActiveFilters(draft);
+      route({ soft: true });
+    },
+  });
+  const body = d.querySelector('.drawer-body');
+  const setValue = (key, value) => { if (value) draft[key] = value; else delete draft[key]; };
+  const updateReset = () => { body.querySelector('[data-reset]').disabled = JSON.stringify(cleanFilters(draft)) === JSON.stringify(savedDefaultFilters()); };
+  const field = (label, html) => `<div class="filter-field"><span class="filter-label">${esc(label)}</span>${html}</div>`;
+  const select = (def, options, label = def.label) => field(label, `<select data-filter="${esc(def.key)}" aria-label="${esc(label)}">
+    <option value="">${def.display ? 'Default' : 'All'}</option>${options.map(o => `<option value="${esc(o.value)}"${draft[def.key] === o.value ? ' selected' : ''}>${esc(o.label)}</option>`).join('')}</select>`);
+  const multiSummary = (values, options) => values.length ? values.map(v => (v.startsWith('-') ? 'Not ' : '') + (options.find(o => o.value === v.replace(/^-/, ''))?.label ?? v)).join(', ') : 'All';
+  const multi = (def, options, label) => {
+    const values = (draft[def.key] ?? '').split(',').filter(Boolean);
+    return `<details class="multi" data-multi="${esc(def.key)}"${def.exclude ? ' data-exclude' : ''}><summary><span class="filter-label">${esc(label)}</span><small class="muted">${esc(multiSummary(values, options))}</small></summary>
+      <div class="multi-list">${options.map(o => {
+        const state = values.includes(o.value) ? 'on' : values.includes(`-${o.value}`) ? 'off' : '';
+        return `<button type="button" data-v="${esc(o.value)}" data-state="${state}" aria-pressed="${state === 'on'}">${esc(o.label)}${state === 'off' ? ' (excluded)' : ''}</button>`;
+      }).join('')}</div></details>`;
+  };
+  const multiOptions = def => def.multi?.map(s => ({ label: s[0].toUpperCase() + s.slice(1), value: s })) ?? sources[def.source] ?? [];
+  const simpleControl = def => def.simpleRange ? rangeSlider(def, def.label, draft[def.key]) : select(def, def.options ?? sources[def.source] ?? []);
+  const advancedControl = def => {
+    const label = def.advancedLabel ?? def.label;
+    if (def.range) return rangeSlider(def, label, draft[def.key]);
+    if (def.source || def.multi) return multi(def, multiOptions(def), label);
+    return select(def, def.options, label);
+  };
+  const shown = FILTERS.filter(f => !f.alias && (user || !f.auth));
+  const showTab = next => {
+    tab = next;
+    try { localStorage.setItem('filters-tab', tab); } catch {}
+    draw();
+  };
+  const changeTab = next => {
+    if (next === 'advanced' || fitsSimple(draft)) return showTab(next);
+    let confirmed = false;
+    modal({
+      title: 'Clear advanced filters?',
+      body: '<p class="muted">Simple can\'t show your advanced filters, so switching clears them.</p>',
+      actions: [{ label: 'Cancel' }, { label: 'Clear filters', primary: true, onClick: () => { confirmed = true; draft = {}; } }],
+      onClose: () => showTab(confirmed ? 'simple' : 'advanced'),
+    });
+  };
+  function draw() {
+    const controls = tab === 'simple' ? shown.filter(f => !f.advancedOnly && !f.display).map(simpleControl) : shown.filter(f => !f.display).map(advancedControl);
+    const display = shown.filter(f => f.display).map(f => select(f, f.options));
+    body.innerHTML = `<div class="filter-actions"><button type="button" class="btn danger" data-reset>Reset</button><button type="button" class="btn primary" data-save>Set as default</button></div>
+      ${bar.mode === 'drawer' ? `<div class="filter-switch">${segmented('filter-mode', MODE_OPTIONS, getMode(), setMode, 'Media type')}</div>` : ''}
+      <div class="filter-switch">${segmented('filter-tab', [{ value: 'simple', label: 'Simple' }, { value: 'advanced', label: 'Advanced' }], tab, changeTab, 'Filter detail')}</div>
+      ${controls.join('')}${display.length ? `<h3 class="filter-section">Display</h3>${display.join('')}` : ''}`;
+    updateReset();
+  }
+  // Slider ends can't cross, and a slider at full range counts as no filter through cleanFilters.
+  body.addEventListener('input', ev => {
+    const slider = ev.target.closest('[data-slider]');
+    if (!slider) return;
+    const [low, high] = slider.querySelectorAll('input');
+    if (+low.value > +high.value) (ev.target === low ? high : low).value = ev.target.value;
+    const def = filterDef(slider.dataset.slider);
+    const [lo, hi] = def.range;
+    const [min, max] = [+low.value, +high.value];
+    slider.querySelector('output').textContent = sliderText(def, min, max);
+    const track = slider.querySelector('.slider-track');
+    track.style.setProperty('--a', (min - lo) / (hi - lo));
+    track.style.setProperty('--b', (max - lo) / (hi - lo));
+    setValue(def.key, `${min}-${max}`);
+    // Advanced's one ratings slider also sets IMDb, which is out of 10, and Rotten Tomatoes.
+    if (def.key === 'ratings' && tab === 'advanced') {
+      setValue('imdb_ratings', `${min / 10}-${max / 10}`);
+      setValue('rt_meters', `${min}-${max}`);
+      setValue('rt_user_meters', `${min}-${max}`);
+    }
+    updateReset();
+  });
+  body.addEventListener('change', ev => {
+    const key = ev.target.dataset?.filter;
+    if (!key) return;
+    setValue(key, ev.target.value);
+    updateReset();
+  });
+  body.addEventListener('click', ev => {
+    if (ev.target.closest('[data-reset]')) { draft = savedDefaultFilters(); draw(); return; }
+    if (ev.target.closest('[data-save]')) { saveDefaultFilters(draft); d.close(); return; }
+    const option = ev.target.closest('.multi-list button');
+    if (!option) return;
+    const box = option.closest('.multi');
+    const def = filterDef(box.dataset.multi);
+    // Each press moves on: included, then excluded where the filter allows it, then off.
+    const next = option.dataset.state === '' ? 'on' : option.dataset.state === 'on' && def.exclude ? 'off' : '';
+    const v = option.dataset.v;
+    const rest = (draft[def.key] ?? '').split(',').filter(x => x && x !== v && x !== `-${v}`);
+    setValue(def.key, [...rest, ...(next === 'on' ? [v] : next === 'off' ? [`-${v}`] : [])].join(','));
+    const open = box.open;
+    box.outerHTML = multi(def, multiOptions(def), def.advancedLabel ?? def.label);
+    const redrawn = body.querySelector(`[data-multi="${def.key}"]`);
+    redrawn.open = open;
+    redrawn.querySelector(`[data-v="${CSS.escape(v)}"]`)?.focus();
+    updateReset();
+  });
+  draw();
+}

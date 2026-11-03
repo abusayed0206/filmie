@@ -1,7 +1,7 @@
 // Run: node --test tests/ui.test.js
 const test = require('node:test');
 const assert = require('node:assert');
-const { validProgress, playedNote, navFor, modeOf, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm } = require('../ui/lib.js');
+const { validProgress, playedNote, navFor, modeOf, FILTERS, decadeOptions, cleanFilters, filterQuery, filterCount, addQuery, fitsSimple, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm } = require('../ui/lib.js');
 
 test('norm', () => {
   const ids = { trakt: 1, tmdb: 272 };
@@ -11,6 +11,9 @@ test('norm', () => {
   assert.equal(norm({ movie: { title: 'x', ids: { trakt: 2 } } }), null); // no TMDB id
   assert.equal(norm({ title: 'x', ids }), null); // bare item without a type
   assert.equal(norm(null, 'movie'), null);
+  // /media/popular: bare items with no type
+  assert.equal(norm({ title: 'S', ids, aired_episodes: 12 }, 'movie').type, 'tv');
+  assert.equal(norm({ title: 'M', ids }, 'movie').type, 'movie');
 });
 
 const show = {
@@ -126,6 +129,53 @@ test('navFor picks the rail items for a route', () => {
 test('modeOf falls back to Media', () => {
   for (const m of ['media', 'show', 'movie']) assert.equal(modeOf(m), m);
   for (const m of [null, undefined, 'tv', 'constructor']) assert.equal(modeOf(m), 'media');
+});
+
+test('cleanFilters keeps only known, well-formed filters', () => {
+  assert.deepEqual(cleanFilters({ genres: 'action,-drama', nope: 'x', years: '1990-1999', runtimes: 5, ignore_watched: 'maybe', statuses: 'in production' }),
+    { genres: 'action,-drama', years: '1990-1999', statuses: 'in production' });
+  for (const bad of [null, undefined, 'x', 3, []]) assert.deepEqual(cleanFilters(bad), {});
+  assert.deepEqual(cleanFilters({ genres: '"><script>' }), {});
+  // A slider at full range means no filter.
+  assert.deepEqual(cleanFilters({ ratings: '0-100', years: '1930-2030', runtimes: '0-500', parental_nudity: '0-3' }), {});
+  assert.deepEqual(cleanFilters({ ratings: '50-100', parental_nudity: '0-1' }), { ratings: '50-100', parental_nudity: '0-1' });
+});
+
+test('filterQuery builds the query the API takes', () => {
+  assert.equal(filterQuery({}), '');
+  assert.equal(filterQuery({ genres: 'action,-drama', years: '2020-2029' }), 'genres=action,-drama&years=2020-2029');
+  assert.equal(filterQuery({ statuses: 'returning series,continuing' }), 'statuses=returning%20series,continuing');
+  assert.equal(filterQuery({ ignore_watched: 'true', bad: '1' }), 'ignore_watched=true');
+  assert.equal(addQuery('/movies/trending', 'a=1'), '/movies/trending?a=1');
+  assert.equal(addQuery('/movies/trending?limit=30', 'a=1'), '/movies/trending?limit=30&a=1');
+  assert.equal(addQuery('/movies/trending', ''), '/movies/trending');
+});
+
+test('filterCount counts what the person set', () => {
+  assert.equal(filterCount({}), 0);
+  assert.equal(filterCount({ genres: 'action', years: '2020-2029' }), 2);
+  assert.equal(filterCount({ ratings: '50-100', imdb_ratings: '5-10', rt_meters: '50-100', rt_user_meters: '50-100' }), 1, "Advanced's rating slider sets four params");
+  assert.equal(filterCount({ ratings: '0-100' }), 0);
+});
+
+test('fitsSimple spots filters only Advanced can show', () => {
+  assert.equal(fitsSimple({ genres: 'action', certifications: 'pg,tv-pg', years: '1990-1999', ratings: '50-100', ignore_watched: 'true' }), true);
+  assert.equal(fitsSimple({ genres: 'action,drama' }), false);
+  assert.equal(fitsSimple({ genres: '-drama' }), false);
+  assert.equal(fitsSimple({ certifications: 'pg' }), false);
+  assert.equal(fitsSimple({ years: '1955-1972' }), false);
+  assert.equal(fitsSimple({ parental_violence: '0-1' }), false);
+  assert.equal(fitsSimple({ imdb_ratings: '5-10' }), false);
+});
+
+test('filter definitions are complete', () => {
+  assert.deepEqual(decadeOptions(2026).slice(0, 3), [{ label: 'This year', value: '2026' }, { label: '2020s', value: '2020-2029' }, { label: '2010s', value: '2010-2019' }]);
+  assert.equal(decadeOptions(2026).at(-1).value, '1960-1969');
+  for (const f of FILTERS) {
+    assert.ok(f.alias || f.label, f.key);
+    for (const o of f.options ?? []) assert.deepEqual(cleanFilters({ [f.key]: o.value }), { [f.key]: o.value }, `${f.key} option ${o.label}`);
+  }
+  assert.ok(!FILTERS.some(f => f.key === 'status'), 'the API only honours statuses');
 });
 
 test('scrollTarget restores only on back and forward', () => {

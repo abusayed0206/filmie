@@ -4,8 +4,10 @@ function poster(it, label) {
   const tt = traktType(it.type);
   const seen = it.type === 'movie' ? watchedMovie(it.id) : !!watchedShow(it.id);
   const rating = myRating(tt, it.id);
+  // Media mode mixes both types, so each card says which it is.
+  const typeTag = getMode() === 'media' ? `<i class="tag type-tag" title="${it.type === 'tv' ? 'Show' : 'Movie'}">${icon(it.type === 'tv' ? 'tv' : 'film')}</i>` : '';
   return `<a class="poster" href="#/title/${it.type}/${it.id}" data-type="${it.type}" data-id="${it.id}">
-    <div class="art"><div class="tags">${seen ? '<i class="tag seen" title="Watched">✓</i>' : ''}${inWatchlist(tt, it.id) ? '<i class="tag" title="On your watchlist">WL</i>' : ''}${rating ? `<i class="tag" title="Your rating">♥ ${rating}</i>` : ''}</div></div>
+    <div class="art"><div class="tags">${typeTag}${seen ? '<i class="tag seen" title="Watched">✓</i>' : ''}${inWatchlist(tt, it.id) ? '<i class="tag" title="On your watchlist">WL</i>' : ''}${rating ? `<i class="tag" title="Your rating">♥ ${rating}</i>` : ''}</div></div>
     <b>${esc(it.title)}</b><span>${esc(label ?? it.year ?? '')}</span></a>`;
 }
 const posters = (items, type, label) => (items ?? []).map(x => [norm(x, type), x]).filter(([it]) => it).map(([it, x]) => poster(it, label?.(x))).join('');
@@ -32,7 +34,7 @@ const playbackCards = type => async () => (lib?.playback ?? []).filter(p => !typ
 }).join('');
 
 // This PC's own list, kept in SQLite and separate from Trakt's "Continue watching".
-const recentCards = async () => (await invoke('history_list', { limit: 30 })).map(p => {
+const recentCards = async () => (await invoke('history_list', { limit: 30 })).filter(p => forMode(true, p.kind === 'tv', p.kind === 'movie')).map(p => {
   const it = { type: p.kind, id: p.id, title: p.title };
   const pct = p.duration > 0 ? 100 * p.position / p.duration : null;
   return p.kind === 'tv'
@@ -71,7 +73,8 @@ function skeleton(kind) {
 }
 const SKELETONS = { home: 'rows', discover: 'rows', progress: 'rows', title: 'title', lists: 'grid', watchlist: 'grid', list: 'grid', search: 'grid' };
 
-// defs: [title, async () => html, seeAllHref?]. Empty or failed sections are removed.
+// defs: [title, async () => html, seeAllHref?, { filtered }?]. Failed sections are removed, and so are empty ones,
+// unless filters emptied them: then the person needs to see why, and a way out.
 async function renderRows(defs, into = app) {
   const token = routeToken;
   defs = defs.filter(Boolean);
@@ -79,17 +82,22 @@ async function renderRows(defs, into = app) {
     <div class="row-head">${more ? `<a class="row-title" href="${more}"><h2>${esc(title)}</h2>${icon('chevron')}</a>` : `<h2>${esc(title)}</h2>`}
     <span class="arrows"><button class="scroll prev" aria-label="Scroll left">‹</button><button class="scroll next" aria-label="Scroll right">›</button></span></div>
     <div class="track">${skeletonCards(12)}</div></section>`).join(''));
-  await Promise.all(defs.map(async ([title, load], i) => {
-    const html = await load().catch(e => { console.warn(title, e); return ''; });
+  await Promise.all(defs.map(async ([title, load, , opts], i) => {
+    const html = await load().catch(e => { console.warn(title, e); return null; });
     const sec = document.getElementById(`row-${token}-${i}`);
     if (!sec || token !== routeToken) return;
-    if (!html) return sec.remove();
-    sec.querySelector('.track').innerHTML = html;
+    if (html === null || (!html && !(opts?.filtered && filterCount(activeFilters())))) return sec.remove();
+    sec.querySelector('.track').innerHTML = html || '<div class="row-empty"><p class="muted">Nothing matches your filters.</p><button type="button" class="btn" data-reset-filters>Reset filters</button></div>';
     observeArt(sec);
   }));
 }
 
 document.addEventListener('click', ev => {
+  if (ev.target.closest('[data-reset-filters]')) {
+    setActiveFilters(savedDefaultFilters());
+    route({ soft: true });
+    return;
+  }
   const btn = ev.target.closest('.row .scroll');
   if (!btn) return;
   const track = btn.closest('.row').querySelector('.track');

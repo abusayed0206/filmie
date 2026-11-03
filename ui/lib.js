@@ -97,7 +97,8 @@ function episodeAfter(show, s, e) {
 
 // Trakt items come bare ({title, ids}) or wrapped ({movie}, {show}, {type, movie}). Returns null without a TMDB id.
 function norm(x, bareType) {
-  const tt = x?.movie ? 'movie' : x?.show ? 'show' : bareType;
+  // /media/popular returns bare items with no type, and only shows have aired_episodes.
+  const tt = x?.movie ? 'movie' : x?.show ? 'show' : x?.aired_episodes !== undefined ? 'show' : bareType;
   const m = x?.movie ?? x?.show ?? x;
   return m?.ids?.tmdb && tt ? { type: tt === 'show' ? 'tv' : 'movie', id: m.ids.tmdb, title: m.title, year: m.year } : null;
 }
@@ -124,6 +125,77 @@ function navFor(page, sub) {
 const MODES = ['media', 'show', 'movie'];
 const modeOf = m => MODES.includes(m) ? m : 'media';
 
+// Filters. The state is { param: value } exactly as the API takes it, so a preset is expanded when it's picked.
+// Facts from the 2026-11-03 probe: `statuses` works and `status` is ignored; parental filters only take numeric ranges.
+function decadeOptions(year = new Date().getFullYear()) {
+  const decades = [];
+  for (let d = Math.floor(year / 10) * 10; d >= 1960; d -= 10) decades.push({ label: `${d}s`, value: `${d}-${d + 9}` });
+  return [{ label: 'This year', value: String(year) }, ...decades];
+}
+const GRADES = ['None', 'Mild', 'Moderate', 'Severe'];
+const parental = (key, label) => ({ key: `parental_${key}`, label, range: [0, 3], grades: GRADES, advancedOnly: true });
+const FILTERS = [
+  // shortcut: Trakt's "My favorites" option is left out of Genre and Availability, upgrade once Settings can show those favourites.
+  { key: 'genres', label: 'Genre', source: 'genres', exclude: true },
+  // shortcut: no individual streaming services, because their list returned 403 in the probe. Upgrade if Trakt opens /watchnow/sources.
+  { key: 'watchnow', label: 'Availability', options: [{ label: 'Streaming now', value: 'subscriptions' }, { label: 'Free', value: 'free' }, { label: 'All digital releases', value: 'any' }] },
+  { key: 'years', label: 'Decade', advancedLabel: 'Released', options: decadeOptions(), range: [1930, 2030] },
+  { key: 'runtimes', label: 'Runtime', options: ['0-30', '31-60', '61-90', '91-120'].map(r => ({ label: `${r} min`, value: r })).concat({ label: '121+ min', value: '121-' }), range: [0, 500], unit: ' min' },
+  { key: 'ratings', label: 'Trakt rating', advancedLabel: 'Ratings', range: [0, 100], unit: '%', simpleRange: true },
+  { key: 'certifications', label: 'Certification', source: 'certifications', exclude: true, options: [
+    { label: 'All Ages', value: 'g,tv-y,tv-y7,tv-g' }, { label: 'Parental Guidance', value: 'pg,tv-pg' }, { label: 'Teens', value: 'pg-13,tv-14' }, { label: 'Mature', value: 'r,tv-ma' }, { label: 'Unrated', value: 'nr' },
+  ] },
+  { key: 'countries', label: 'Region', advancedLabel: 'Country', source: 'countries', options: [
+    { label: 'North America', value: 'us,ca' },
+    { label: 'Latin America', value: 'mx,br,ar,cl,co,pe,ve,uy,cu' },
+    { label: 'Europe', value: 'gb,fr,de,it,es,dk,ie,se,be,ru,no,pl,nl,at,fi,ro,gr,hu,is,ch,cz,ua,pt' },
+    { label: 'Middle East', value: 'tr,il,ir,ae,sa,lb,iq,jo,kw,qa' },
+    { label: 'Africa', value: 'za,ng,eg,ke,ma,gh,et,dz,tn,sn' },
+    { label: 'Asia', value: 'in,jp,kr,hk,cn,tw,th,sg,my,id,ph,vn,pk,bd' },
+    { label: 'Oceania', value: 'au,nz' },
+  ] },
+  { key: 'statuses', label: 'Status', options: [
+    { label: 'Released', value: 'returning series,continuing,released' }, { label: 'Upcoming', value: 'upcoming,in production,planned,post production' },
+    { label: 'Ended', value: 'ended' }, { label: 'Canceled', value: 'canceled' }, { label: 'Rumored', value: 'rumored' },
+  ], multi: ['returning series', 'released', 'continuing', 'upcoming', 'in production', 'post production', 'planned', 'ended', 'canceled', 'rumored'] },
+  parental('nudity', 'Nudity'), parental('violence', 'Violence'), parental('profanity', 'Profanity'), parental('alcohol', 'Alcohol'), parental('frightening', 'Frightening'),
+  // Asking to see watched titles means not ignoring them, so Yes sends false.
+  { key: 'ignore_watched', label: 'Watched', display: true, auth: true, flag: true, options: [{ label: 'Yes', value: 'false' }, { label: 'No', value: 'true' }] },
+  { key: 'ignore_watchlisted', label: 'Watchlisted', display: true, auth: true, flag: true, options: [{ label: 'Yes', value: 'false' }, { label: 'No', value: 'true' }] },
+  // Advanced's ratings slider also sets these, so they count as one filter.
+  { key: 'imdb_ratings', alias: true, range: [0, 10] }, { key: 'rt_meters', alias: true, range: [0, 100] }, { key: 'rt_user_meters', alias: true, range: [0, 100] },
+];
+const filterDef = key => FILTERS.find(f => f.key === key);
+
+function cleanFilters(filters) {
+  const clean = {};
+  if (!filters || typeof filters !== 'object' || Array.isArray(filters)) return clean;
+  for (const [key, value] of Object.entries(filters)) {
+    const def = filterDef(key);
+    if (!def || typeof value !== 'string') continue;
+    const valid = def.flag ? /^(true|false)$/.test(value) : /^-?[\w +.-]+(,-?[\w +.-]+)*$/.test(value);
+    const fullRange = def.range && value === def.range.join('-');
+    if (valid && !fullRange) clean[key] = value;
+  }
+  return clean;
+}
+
+// Commas separate multiple values in Trakt's query strings, so they stay readable.
+const filterQuery = filters => Object.entries(cleanFilters(filters)).map(([k, v]) => `${k}=${encodeURIComponent(v).replace(/%2C/g, ',')}`).join('&');
+const filterCount = filters => Object.keys(cleanFilters(filters)).filter(k => !filterDef(k).alias).length;
+const addQuery = (path, query) => query ? `${path}${path.includes('?') ? '&' : '?'}${query}` : path;
+
+// Whether Simple's controls can show these values. If not, leaving Advanced has to clear them.
+function fitsSimple(filters) {
+  return Object.entries(cleanFilters(filters)).every(([key, value]) => {
+    const def = filterDef(key);
+    if (def.alias || def.advancedOnly) return false;
+    if (def.simpleRange) return true;
+    if (def.options) return def.options.some(o => o.value === value);
+    return !value.includes(',') && !value.startsWith('-');
+  });
+}
+
 // Where a page starts: back and forward return to the saved spot, anything else opens at the top.
 const scrollTarget = (navType, saved) => navType === 'traverse' ? saved ?? 0 : 0;
 
@@ -140,4 +212,4 @@ function playedNote(p, now = Date.now() / 1000) {
   return `Opened ${Math.floor(mins / 1440)} d ago`;
 }
 
-if (typeof module !== 'undefined') module.exports = { validProgress, playedNote, navFor, modeOf, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm };
+if (typeof module !== 'undefined') module.exports = { validProgress, playedNote, navFor, modeOf, FILTERS, decadeOptions, cleanFilters, filterQuery, filterCount, addQuery, fitsSimple, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm };

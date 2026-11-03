@@ -1,4 +1,11 @@
 // Browsing pages: Home, Discover, Search.
+// A chart for the current mode. /media/popular has no type on its items, so bare ones fall back to movie.
+const chart = (title, path, label, more) => [title,
+  traktPosters(withFilters(`${forMode('/media', '/shows', '/movies')}/${path}?limit=30`), forMode('movie', 'show', 'movie'), label), more, { filtered: true }];
+// Trakt ignores filters on recommendations, so this row doesn't take them.
+const recommendedRow = () => ['Recommended',
+  traktPosters(`${forMode('/media/recommendations', '/recommendations/shows', '/recommendations/movies')}?limit=30`, forMode('movie', 'show', 'movie')), '#/discover/recommended'];
+
 const comingSoon = title => { app.innerHTML = `<div class="page"><h1 class="sr-only">${esc(title)}</h1><p class="muted">This page is coming in a later step.</p></div>`; };
 
 Object.assign(pages, {
@@ -9,24 +16,20 @@ Object.assign(pages, {
         <a class="btn primary" href="#/settings">Sign in with Trakt</a></section></div>`;
       return renderRows([
         ['Recently played', recentCards],
-        ['Trending movies', traktPosters('/movies/trending?limit=30', null, watchers)],
-        ['Trending shows', traktPosters('/shows/trending?limit=30', null, watchers)],
-        ['Popular movies', traktPosters('/movies/popular?limit=30', 'movie')],
-        ['Popular shows', traktPosters('/shows/popular?limit=30', 'show')],
-        ['Most anticipated', traktPosters('/movies/anticipated?limit=30', null, anticipated)],
+        chart('Trending', 'trending', watchers, '#/discover/trending'),
+        chart('Popular', 'popular', null, '#/discover/popular'),
+        chart('Most anticipated', 'anticipated', anticipated, '#/discover/anticipated'),
       ], app.firstElementChild);
     }
     app.innerHTML = `<div class="page">${profileHeader()}</div>`;
     await renderRows([
       ['Recently played', recentCards],
-      ['Up next', upNextCards, '#/progress'],
-      ['Continue watching', playbackCards()],
-      ['Watchlist', async () => posters(watchlistItems(['movies', 'shows'])), '#/watchlist'],
+      getMode() !== 'movie' && ['Up next', upNextCards, '#/progress'],
+      ['Continue watching', playbackCards(forMode(undefined, 'episode', 'movie'))],
+      ['Watchlist', async () => posters(watchlistItems(forMode(['movies', 'shows'], ['shows'], ['movies']))), '#/watchlist'],
       ['Your lists', async () => watchlistTile() + (await traktGet('/users/me/lists').catch(() => [])).map(listTile).join(''), '#/lists'],
-      ['Recommended movies', traktPosters('/recommendations/movies?limit=30', 'movie'), '#/discover/recommended'],
-      ['Recommended shows', traktPosters('/recommendations/shows?limit=30', 'show'), '#/discover/recommended'],
-      ['Trending movies', traktPosters('/movies/trending?limit=30', null, watchers)],
-      ['Trending shows', traktPosters('/shows/trending?limit=30', null, watchers)],
+      recommendedRow(),
+      chart('Trending', 'trending', watchers, '#/discover/trending'),
     ], app.firstElementChild);
   },
 
@@ -34,18 +37,13 @@ Object.assign(pages, {
   async discover(sub) {
     if (sub === 'releases') return comingSoon('Releases');
     if (sub === 'recommended' && !user) { app.innerHTML = signInPrompt('recommendations'); return; }
-    const mode = getMode();
-    const types = mode === 'media' ? ['movie', 'show'] : [mode];
-    const row = (title, path, type, label) => [`${title}${types.length > 1 ? ` ${type}s` : ''}`, traktPosters(`/${type}s/${path}?limit=30`, label ? null : type, label)];
     const charts = {
-      trending: t => row('Trending', 'trending', t, watchers),
-      anticipated: t => row('Most anticipated', 'anticipated', t, anticipated),
-      popular: t => row('Popular', 'popular', t),
+      trending: () => chart('Trending', 'trending', watchers, !sub && '#/discover/trending'),
+      anticipated: () => chart('Most anticipated', 'anticipated', anticipated, !sub && '#/discover/anticipated'),
+      popular: () => chart('Popular', 'popular', null, !sub && '#/discover/popular'),
     };
-    const defs = sub === 'recommended'
-      ? types.map(t => [`Recommended${types.length > 1 ? ` ${t}s` : ''}`, traktPosters(`/recommendations/${t}s?limit=30`, t)])
-      : Object.entries(charts).filter(([name]) => !sub || name === sub).flatMap(([, chart]) => types.map(chart));
-    app.innerHTML = `<div class="page"><h1 class="sr-only">${esc(discoverTitle(sub))}</h1></div>`;
+    const defs = sub === 'recommended' ? [recommendedRow()] : Object.entries(charts).filter(([name]) => !sub || name === sub).map(([, row]) => row());
+    app.innerHTML =`<div class="page"><h1 class="sr-only">${esc(discoverTitle(sub))}</h1></div>`;
     await renderRows(defs, app.firstElementChild);
   },
 
@@ -77,5 +75,11 @@ const DISCOVER_TITLES = { trending: 'Trending', releases: 'Releases', anticipate
 const discoverTitle = sub => DISCOVER_TITLES[sub] ?? { media: 'Discover', show: 'Shows', movie: 'Movies' }[getMode()];
 
 pages.home.bar = { title: 'Home', mode: 'bar', filters: 'global' };
-pages.discover.bar = sub => ({ title: discoverTitle(sub), mode: sub && sub !== 'releases' ? 'drawer' : 'bar', filters: sub ? 'local' : 'global' });
+pages.discover.bar = sub => ({
+  title: discoverTitle(sub),
+  // Trakt's full grids move the switch into the filter drawer and show the mode here instead.
+  meta: sub && sub !== 'releases' ? forMode('Media', 'Shows', 'Movies') : '',
+  mode: sub && sub !== 'releases' ? 'drawer' : 'bar',
+  filters: sub === 'recommended' ? false : sub ? 'local' : 'global',
+});
 pages.search.bar = { title: 'Search' };

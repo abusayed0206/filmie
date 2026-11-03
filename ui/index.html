@@ -10,7 +10,9 @@
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
     <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></symbol>
     <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l13-7.5z" fill="currentColor" stroke="none"/></symbol>
-    <symbol id="i-next" viewBox="0 0 24 24"><path d="M6 5l9 7-9 7z M18 5v14"/></symbol>
+    <symbol id="i-next" viewBox="0 0 24 24"><path d="M5 5v14l11-7z" fill="currentColor" stroke="none"/><path d="M19 5v14"/></symbol>
+    <symbol id="i-filter" viewBox="0 0 24 24"><path d="M3 5h18l-7 8.5V20l-4-2v-4.5z"/></symbol>
+    <symbol id="i-media" viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></symbol>
     <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
     <symbol id="i-expand" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></symbol>
@@ -63,7 +65,7 @@
       </div>
     </div>
   </nav>
-  <header class="topbar" id="topbar"><div class="topbar-left"></div><div class="topbar-center"></div><div class="topbar-right"></div></header>
+  <header class="topbar" id="topbar"><div class="topbar-left"></div><div class="topbar-center"></div><div class="topbar-right"><button type="button" id="filter-btn" class="icon-btn ghost filter-btn" aria-label="Filters" disabled><svg class="i" aria-hidden="true"><use href="#i-filter"/></svg><span class="badge" aria-hidden="true"></span></button></div></header>
   <div class="searchbar"><label class="search"><svg class="i" aria-hidden="true"><use href="#i-search"/></svg>
     <input id="q" type="search" placeholder="Search movies & shows" aria-label="Search movies and shows" autocomplete="off"></label></div>
   <main id="app" tabindex="-1"></main>

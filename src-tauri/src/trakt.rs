@@ -37,11 +37,16 @@ const DAY: i64 = 24 * HOUR;
 /// How long a GET may be reused, and whether it depends on the signed-in user. User responses can live long
 /// because any write or new Trakt activity clears them.
 fn cache_policy(path: &str) -> (i64, bool) {
-    if path.starts_with("/recommendations") {
+    if path.contains("/recommendations") {
         (6 * HOUR, true)
     } else if path.starts_with("/sync/") || path.starts_with("/users/") || path.contains("/progress/") {
         (DAY, true)
-    } else if path.starts_with("/search/") || path.contains("/related") {
+    } else if path.starts_with("/calendars/my") || path.contains("ignore_") {
+        (HOUR, true) // depends on who is asking, so it must not outlive sign-out
+    } else if path.starts_with("/search/")
+        || path.contains("/related")
+        || ["/genres", "/countries", "/languages", "/certifications"].iter().any(|p| path.starts_with(p))
+    {
         (DAY, false)
     } else {
         (HOUR, false)
@@ -395,5 +400,11 @@ mod tests {
         assert_eq!(cache_policy("/recommendations/movies?limit=30"), (6 * HOUR, true));
         assert_eq!(cache_policy("/movies/trending?limit=30"), (HOUR, false));
         assert_eq!(cache_policy("/search/tmdb/1?type=movie"), (DAY, false));
+        assert_eq!(cache_policy("/media/recommendations?limit=30"), (6 * HOUR, true));
+        assert_eq!(cache_policy("/calendars/my/shows/2026-11-03/14"), (HOUR, true));
+        assert_eq!(cache_policy("/calendars/all/shows/2026-11-03/14"), (HOUR, false));
+        assert_eq!(cache_policy("/movies/trending?limit=30&ignore_watched=true"), (HOUR, true));
+        assert_eq!(cache_policy("/genres/movies"), (DAY, false));
+        assert_eq!(cache_policy("/certifications/shows"), (DAY, false));
     }
 }

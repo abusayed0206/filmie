@@ -5,7 +5,7 @@ mod trakt;
 
 use serde_json::Value;
 use std::collections::BTreeMap;
-use tauri::{Manager, Url, WebviewUrl, WebviewWindowBuilder, webview::NewWindowResponse};
+use tauri::{Manager, Theme, Url, WebviewUrl, WebviewWindowBuilder, webview::NewWindowResponse, window::Color};
 use tauri_plugin_opener::OpenerExt;
 
 const TMDB_KEY: &str = env!("TMDB");
@@ -267,6 +267,10 @@ fn main() {
                 .title("Filmie")
                 .inner_size(1280.0, 820.0)
                 .min_inner_size(800.0, 500.0)
+                // Matches --bg in style.css, so the window never flashes white or gets a light title bar.
+                .background_color(Color(15, 16, 20, 255))
+                .theme(Some(Theme::Dark))
+                // shortcut: browser accelerator keys (reload, find) stay on, turning them off needs webview2-com through with_webview.
                 .initialization_script_for_all_frames(INJECT_PLAYER)
                 // Stops embedded players from redirecting the whole app to an ad.
                 .on_navigation(is_app_page)

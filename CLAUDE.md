@@ -41,7 +41,12 @@ node --test --test-name-pattern=episodeAfter tests/ui.test.js # one UI test
 **Frontend (`ui/`)** is classic scripts sharing globals, with no modules or framework.
 - `lib.js` holds pure helpers and `DEFAULT_SOURCES`. It is the only file the tests import, so testable logic goes there.
 - `app.js` has a hash router (`route()`) dispatching to the `pages` object. `#/play/tv/1396/5/14` calls `pages.play('tv', '1396', '5', '14')`.
-- Pages render with `innerHTML`, so interpolated data must pass through `esc()`. `routeToken` lets async work drop results after the page has changed.
+- Pages render with `innerHTML` into `app`, so interpolated data must pass through `esc()`. `routeToken` lets async work drop results after the page has changed, so check it after a page's first `await`.
+- `route()` shows a `skeleton(kind)` placeholder inside a view transition, then runs the page. Never await data inside that transition, because the page is frozen until its callback ends. The player opens and closes without one.
+- `route({ soft: true })` refreshes the current page in place, for example after the Watchlist button or a background sync. It renders into a hidden copy of `#app`, then swaps it in. A page must await what it loads for the swap to be complete.
+- Back and Forward restore scroll through the Navigation API's entry key, in `savedScroll`. Other navigation starts at the top.
+- The side rail is `nav.rail` in `index.html`, and `navFor` in `lib.js` picks its highlighted items. Its width is the `--rail` token, and `localStorage` key `rail` remembers it. Search's `#q` sits outside `#app` so it keeps focus while pages redraw.
+- `.row` is a container, and `@container` steps in `style.css` set how many whole cards fit.
 - Icons are SVG symbols in `index.html`, used through `icon(name)`. A test fails if a symbol is missing.
 
 **Local database (`src-tauri/src/db.rs`, `filmie.sqlite3` in the app data folder)**
@@ -71,7 +76,7 @@ node --test --test-name-pattern=episodeAfter tests/ui.test.js # one UI test
 - Links only open, in the system browser, if their host is in `EXTERNAL_HOSTS`. A new `target="_blank"` destination must be added there.
 - `capabilities/default.json` grants IPC to local pages only. Any new Tauri JS API needs its permission added.
 
-**Server list and preferences** live in `localStorage` (`sources`, `server`, `quality`). `DEFAULT_SOURCES` is empty: Filmie ships with no video servers and users add their own. The README, `TERMS.md` and the website all state this, so keep them in step with the code. A saved `sources` value replaces the defaults entirely.
+**Server list and preferences** live in `localStorage` (`sources`, `server`, `quality`). `DEFAULT_SOURCES` is empty: Filmie ships with no video servers and users add their own. The README, `TERMS.md` and the website all state this, so keep them in step with the code. A saved `sources` value replaces the defaults entirely. `renderServers` in `app.js` is the Settings form: `buildServer` in `lib.js` joins the server link and structures into the saved `{ name, movie, tv, note, accent }` shape, and `MOVIE_STRUCTURES` and `TV_STRUCTURES` are host-free suggestions only.
 
 ## Docs
 

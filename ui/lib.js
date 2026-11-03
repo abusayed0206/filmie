@@ -41,6 +41,54 @@ function fillTemplate(template, values) {
   return template.replace(/\{(tmdb_id|season|episode)\}/g, (_, k) => encodeURIComponent(values[k] ?? ''));
 }
 
+// Common URL shapes suggested in Settings. Only paths: the server itself is always the user's own.
+const MOVIE_STRUCTURES = ['/movie/{tmdb_id}', '/embed/movie/{tmdb_id}', '/embed/movie?tmdb={tmdb_id}'];
+const TV_STRUCTURES = ['/tv/{tmdb_id}/{season}/{episode}', '/tv/{tmdb_id}-{season}-{episode}', '/embed/tv/{tmdb_id}/{season}/{episode}',
+  '/embed/tv/{tmdb_id}?s={season}&e={episode}', '/embed/tv?tmdb={tmdb_id}&season={season}&episode={episode}'];
+
+function joinStructure(base, structure, needed, label) {
+  const s = (structure ?? '').trim();
+  if (!s) throw new Error(`The ${label} structure is required.`);
+  if (/[\s|]/.test(s)) throw new Error(`The ${label} structure can't contain spaces or |.`);
+  for (const [p] of s.matchAll(/\{[^}]*\}/g)) if (!needed.includes(p)) throw new Error(`The ${label} structure can't use ${p}. Use ${needed.join(', ')}.`);
+  const missing = needed.find(p => !s.includes(p));
+  if (missing) throw new Error(`The ${label} structure needs ${missing}.`);
+  if (/^https:\/\//i.test(s)) return s; // a full link, for a server that keeps movies and TV on different hosts
+  if (/^[a-z][a-z0-9+.-]*:/i.test(s)) throw new Error(`The ${label} structure must be a path or an https:// link.`);
+  return base + (/^[/?]/.test(s) ? s : `/${s}`);
+}
+
+// Turns the Settings form into a saved server. Whatever passes here also survives parseSources.
+function buildServer({ link, movie, tv, name, note, accent }) {
+  const text = (link ?? '').trim();
+  let url;
+  try { url = new URL(text); } catch { throw new Error('Enter the server link, like https://example.com.'); }
+  if (url.protocol !== 'https:') throw new Error('The server link must start with https://.');
+  if (/[{}|\s]/.test(text) || url.search || url.hash) throw new Error('The server link is only the address, like https://example.com. The rest goes in the structures.');
+  const base = url.origin + url.pathname.replace(/\/+$/, '');
+  const [cleanName, cleanNote] = [name, note].map(x => (x ?? '').trim());
+  if (cleanName.includes('|') || cleanNote.includes('|')) throw new Error("The name and note can't contain |.");
+  if (accent && !/^#[0-9a-f]{6}$/i.test(accent)) throw new Error('The accent must be a hex colour like #e5484d.');
+  return {
+    name: cleanName || url.hostname.replace(/^www\./, ''),
+    movie: joinStructure(base, movie, ['{tmdb_id}'], 'movie'),
+    tv: joinStructure(base, tv, ['{tmdb_id}', '{season}', '{episode}'], 'TV'),
+    ...(cleanNote ? { note: cleanNote } : {}),
+    ...(accent ? { accent: accent.toLowerCase() } : {}),
+  };
+}
+
+// The reverse, for editing. A link on another host stays whole in its structure.
+function splitServer(s) {
+  const origin = u => { try { return new URL(u).origin; } catch { return ''; } };
+  const link = origin(s.movie);
+  const rest = u => origin(u) === link && u.toLowerCase().startsWith(link) ? u.slice(link.length) : u;
+  return { link, movie: rest(s.movie), tv: rest(s.tv) };
+}
+
+// The default server is saved as an index, so it has to follow the list when one is removed.
+const serverAfterRemove = (current, removed) => current === removed ? 0 : current > removed ? current - 1 : current;
+
 // Episode after s/e using TMDB's season list, or null at the end of the show.
 function episodeAfter(show, s, e) {
   const count = n => show.seasons?.find(x => x.season_number === n)?.episode_count ?? 0;
@@ -62,6 +110,13 @@ function validProgress(p, runtimeMinutes) {
   return d >= Math.max(60, (runtimeMinutes ?? 0) * 30) ? { t, d } : null;
 }
 
+// The rail items a route highlights, the exact one first. Title and player pages belong to none.
+const RAIL_ITEMS = { '': [''], shows: ['shows'], movies: ['movies'], settings: ['settings'], search: ['search'], lists: ['lists'], list: ['lists'], watchlist: ['watchlist', 'lists'] };
+const navFor = page => Object.hasOwn(RAIL_ITEMS, page) ? RAIL_ITEMS[page] : [];
+
+// Where a page starts: back and forward return to the saved spot, anything else opens at the top.
+const scrollTarget = (navType, saved) => navType === 'traverse' ? saved ?? 0 : 0;
+
 // The small print on a Recently played card.
 function playedNote(p, now = Date.now() / 1000) {
   if (p.duration > 0) {
@@ -75,4 +130,4 @@ function playedNote(p, now = Date.now() / 1000) {
   return `Opened ${Math.floor(mins / 1440)} d ago`;
 }
 
-if (typeof module !== 'undefined') module.exports = { validProgress, playedNote, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, episodeAfter, norm };
+if (typeof module !== 'undefined') module.exports = { validProgress, playedNote, navFor, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm };

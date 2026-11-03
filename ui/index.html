@@ -20,22 +20,31 @@
     <symbol id="i-logout" viewBox="0 0 24 24"><path d="M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M10 17l-5-5 5-5M5 12h11"/></symbol>
     <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></symbol>
     <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7M5 9.5V20h5v-6h4v6h5V9.5"/></symbol>
+    <symbol id="i-tv" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 3l4 4 4-4"/></symbol>
+    <symbol id="i-film" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 4v16M16 4v16M3 9h5M3 15h5M16 9h5M16 15h5"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
   </svg>
-  <header id="top">
-    <a href="#/" class="logo">Filmie</a>
-    <nav aria-label="Main">
-      <a href="#/" data-nav="">Home</a>
-      <a href="#/shows" data-nav="shows">Shows</a>
-      <a href="#/movies" data-nav="movies">Movies</a>
-      <a href="#/lists" data-nav="lists">Lists</a>
-    </nav>
-    <label class="search"><svg class="i" aria-hidden="true"><use href="#i-search"/></svg>
-      <input id="q" type="search" placeholder="Search movies & shows" aria-label="Search movies and shows" autocomplete="off"></label>
-    <button class="icon-btn ghost fs-btn" title="Fullscreen (F11)" aria-label="Toggle fullscreen">
-      <svg class="i fs-on" aria-hidden="true"><use href="#i-expand"/></svg><svg class="i fs-off" aria-hidden="true"><use href="#i-shrink"/></svg></button>
-    <a href="#/settings" id="account" data-nav="settings">Sign in</a>
-  </header>
-  <main id="app"></main>
+  <nav class="rail" aria-label="Main">
+    <div class="rail-head">
+      <button id="rail-toggle" class="rail-item" aria-expanded="false" aria-label="Expand navigation"><svg class="i" aria-hidden="true"><use href="#i-menu"/></svg></button>
+      <a href="#/" class="logo" aria-label="Filmie"><span class="logo-short">F</span><span class="logo-full">Filmie</span></a>
+    </div>
+    <a href="#/search" class="rail-item" data-nav="search" aria-keyshortcuts="Control+K"><svg class="i" aria-hidden="true"><use href="#i-search"/></svg><span class="nav-label">Search</span><kbd class="rail-hint" aria-hidden="true">Ctrl K</kbd></a>
+    <a href="#/" class="rail-item" data-nav=""><svg class="i" aria-hidden="true"><use href="#i-home"/></svg><span class="nav-label">Home</span></a>
+    <a href="#/shows" class="rail-item" data-nav="shows"><svg class="i" aria-hidden="true"><use href="#i-tv"/></svg><span class="nav-label">Shows</span></a>
+    <a href="#/movies" class="rail-item" data-nav="movies"><svg class="i" aria-hidden="true"><use href="#i-film"/></svg><span class="nav-label">Movies</span></a>
+    <a href="#/lists" class="rail-item" data-nav="lists"><svg class="i" aria-hidden="true"><use href="#i-list"/></svg><span class="nav-label">Lists</span></a>
+    <a href="#/watchlist" class="rail-item nav-sub" data-nav="watchlist"><span class="nav-label">Watchlist</span></a>
+    <div class="rail-bottom">
+      <button class="rail-item fs-btn" aria-label="Toggle fullscreen"><svg class="i fs-on" aria-hidden="true"><use href="#i-expand"/></svg><svg class="i fs-off" aria-hidden="true"><use href="#i-shrink"/></svg><span class="nav-label">Fullscreen</span></button>
+      <a href="#/settings" id="account" class="rail-item" data-nav="settings"><svg class="i" aria-hidden="true"><use href="#i-user"/></svg><span class="nav-label">Sign in &amp; settings</span></a>
+    </div>
+  </nav>
+  <div class="searchbar"><label class="search"><svg class="i" aria-hidden="true"><use href="#i-search"/></svg>
+    <input id="q" type="search" placeholder="Search movies & shows" aria-label="Search movies and shows" autocomplete="off"></label></div>
+  <main id="app" tabindex="-1"></main>
   <div id="toast" role="status" aria-live="polite"></div>
   <script src="lib.js"></script>
   <script src="app.js"></script>

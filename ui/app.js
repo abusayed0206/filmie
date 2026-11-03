@@ -1,5 +1,6 @@
 const { invoke } = window.__TAURI__.core;
-const app = document.getElementById('app');
+const main = document.getElementById('app');
+let app = main; // where pages render; a soft refresh points this at a hidden copy
 const IMG = 'https://image.tmdb.org/t/p/';
 
 // Rust caches responses in SQLite, so this only shares requests that are already in flight.
@@ -49,6 +50,7 @@ function getServer(count) {
   try { return Math.min(+localStorage.getItem('server') || 0, count - 1); } catch { return 0; }
 }
 const setServer = i => { try { localStorage.setItem('server', i); } catch {} };
+const setSources = list => localStorage.setItem('sources', JSON.stringify(list));
 function getQuality() {
   try { return qualityOf(localStorage.getItem('quality')); } catch { return '1080p'; }
 }
@@ -127,7 +129,7 @@ async function refreshUser() {
   const url = user?.user?.images?.avatar?.full;
   if (url) avatarUrl = await invoke('avatar', { url }).then(b => URL.createObjectURL(new Blob([b])), () => null);
   const account = document.getElementById('account');
-  account.innerHTML = user ? `${avatar('small')}<span>${esc(user.user.username)}</span>` : 'Sign in with Trakt';
+  account.innerHTML = user ? `${avatar('small')}<span class="nav-label">${esc(user.user.username)}</span>` : `${icon('user')}<span class="nav-label">Sign in &amp; settings</span>`;
 }
 
 // Checks Trakt in the background. A change refreshes the page unless that would interrupt the user.
@@ -137,12 +139,12 @@ async function syncInBackground() {
   lib = await invoke('sync');
   if (lib?.activities?.all === before) return;
   await refreshProgress();
-  if (!nowPlaying && scrollY < 50) route();
+  if (!nowPlaying && !location.hash.startsWith('#/settings')) route({ soft: true }); // Settings may hold a half-typed server
 }
 
 function avatar(size) {
   return avatarUrl ? `<img class="avatar ${size}" src="${avatarUrl}" alt="">`
-    : `<span class="avatar ${size}">${esc((user?.user?.username ?? '?')[0].toUpperCase())}</span>`;
+    : `<span class="avatar ${size}" aria-hidden="true">${esc((user?.user?.username ?? '?')[0].toUpperCase())}</span>`;
 }
 
 // Every Trakt write re-syncs so the mirror always matches Trakt.
@@ -220,6 +222,9 @@ const recentCards = async () => (await invoke('history_list', { limit: 30 })).ma
     : progressCard(`#/play/movie/${p.id}`, it, 'Movie', pct, playedNote(p));
 }).join('');
 
+const personCard = c => `<div class="person"><div class="art"${c.profile_path ? ` style="background-image:url('${IMG}w185${esc(c.profile_path)}')"` : ''}>${c.profile_path ? '' : icon('user')}</div>
+  <b>${esc(c.name)}</b><span>${esc(c.character)}</span></div>`;
+
 const watchlistTile = () => `<a class="list-tile" href="#/watchlist"><b>Watchlist</b><span>${watchlistItems(['movies', 'shows']).length} items</span><p>Movies and shows you want to watch.</p></a>`;
 const listTile = l => `<a class="list-tile" href="#/list/${l.ids.trakt}"><b>${esc(l.name)}</b><span>${num(l.item_count)} items · ${esc(l.privacy)}</span>${l.description ? `<p>${esc(l.description)}</p>` : ''}</a>`;
 
@@ -234,20 +239,34 @@ const artObserver = new IntersectionObserver(entries => entries.forEach(async en
 }), { rootMargin: '400px' });
 const observeArt = root => root.querySelectorAll('[data-id]').forEach(c => artObserver.observe(c));
 
-// defs: [title, async () => html, seeAllHref?]. Empty or failed sections stay hidden.
+// Placeholders shaped like the page on its way, so nothing jumps when it arrives. They hold no data.
+const skeletonCards = n => '<div class="sk-card"><div class="sk"></div><p class="sk"></p><p class="sk"></p></div>'.repeat(n);
+function skeleton(kind) {
+  const row = `<section class="row"><div class="row-head"><div class="sk sk-title"></div></div><div class="track">${skeletonCards(12)}</div></section>`;
+  const body = {
+    rows: `<div class="page">${row.repeat(3)}</div>`,
+    grid: `<div class="page"><div class="sk sk-heading"></div><div class="grid">${skeletonCards(18)}</div></div>`,
+    title: `<section class="summary"><div class="summary-inner"><div class="sk summary-poster sk-poster"></div>
+      <div class="summary-info sk-info"><div class="sk sk-heading"></div><p class="sk"></p><p class="sk"></p><p class="sk"></p></div></div></section>`,
+  }[kind];
+  return body ? `<div aria-hidden="true">${body}</div>` : '';
+}
+const SKELETONS = { home: 'rows', shows: 'rows', movies: 'rows', title: 'title', lists: 'grid', watchlist: 'grid', list: 'grid', search: 'grid' };
+
+// defs: [title, async () => html, seeAllHref?]. Empty or failed sections are removed.
 async function renderRows(defs, into = app) {
   const token = routeToken;
   defs = defs.filter(Boolean);
-  into.insertAdjacentHTML('beforeend', defs.map(([title, , more], i) => `<section class="row" id="row-${token}-${i}" hidden>
-    <div class="row-head"><h2>${esc(title)}</h2>${more ? `<a href="${more}">See all</a>` : ''}
+  into.insertAdjacentHTML('beforeend', defs.map(([title, , more], i) => `<section class="row" id="row-${token}-${i}">
+    <div class="row-head">${more ? `<a class="row-title" href="${more}"><h2>${esc(title)}</h2>${icon('chevron')}</a>` : `<h2>${esc(title)}</h2>`}
     <span class="arrows"><button class="scroll prev" aria-label="Scroll left">‹</button><button class="scroll next" aria-label="Scroll right">›</button></span></div>
-    <div class="track"></div></section>`).join(''));
+    <div class="track">${skeletonCards(12)}</div></section>`).join(''));
   await Promise.all(defs.map(async ([title, load], i) => {
     const html = await load().catch(e => { console.warn(title, e); return ''; });
     const sec = document.getElementById(`row-${token}-${i}`);
-    if (!sec || !html || token !== routeToken) return;
+    if (!sec || token !== routeToken) return;
+    if (!html) return sec.remove();
     sec.querySelector('.track').innerHTML = html;
-    sec.hidden = false;
     observeArt(sec);
   }));
 }
@@ -256,7 +275,8 @@ document.addEventListener('click', ev => {
   const btn = ev.target.closest('.row .scroll');
   if (!btn) return;
   const track = btn.closest('.row').querySelector('.track');
-  track.scrollBy({ left: (btn.classList.contains('prev') ? -1 : 1) * track.clientWidth * 0.85, behavior: 'smooth' });
+  const page = track.clientWidth + parseFloat(getComputedStyle(track).columnGap); // exactly one row of whole cards
+  track.scrollBy({ left: btn.classList.contains('prev') ? -page : page, behavior: 'smooth' });
 });
 
 const signInPrompt = what => `<div class="page"><section class="callout"><h2>Sign in with Trakt</h2>
@@ -332,8 +352,10 @@ const pages = {
 
   async lists() {
     if (!user) { app.innerHTML = signInPrompt('lists'); return; }
+    const token = routeToken;
     const lists = await traktGet('/users/me/lists');
-    app.innerHTML = `<div class="page"><h1>Lists</h1><div class="tiles">${watchlistTile()}${lists.map(listTile).join('')}</div></div>`;
+    if (token !== routeToken) return;
+    app.innerHTML =`<div class="page"><h1>Lists</h1><div class="tiles">${watchlistTile()}${lists.map(listTile).join('')}</div></div>`;
   },
 
   async watchlist() {
@@ -348,8 +370,10 @@ const pages = {
 
   async list(id) {
     if (!user) { app.innerHTML = signInPrompt('lists'); return; }
+    const token = routeToken;
     const meta = await traktGet(`/users/me/lists/${+id}`);
-    app.innerHTML = `<div class="page"><h1>${esc(meta.name)}</h1>
+    if (token !== routeToken) return;
+    app.innerHTML =`<div class="page"><h1>${esc(meta.name)}</h1>
       <p class="muted">${num(meta.item_count)} items${meta.description ? ` · ${esc(meta.description)}` : ''}</p>
       <div class="grid" id="grid"></div><p><button id="more" hidden>Load more</button></p></div>`;
     const grid = document.getElementById('grid');
@@ -358,6 +382,7 @@ const pages = {
     let page = 1;
     const load = async () => {
       const items = await traktGet(`/users/me/lists/${+id}/items/movie,show?page=${page++}&limit=${PAGE}`);
+      if (token !== routeToken) return;
       grid.insertAdjacentHTML('beforeend', posters(items));
       observeArt(grid);
       more.hidden = items.length < PAGE;
@@ -369,13 +394,17 @@ const pages = {
   // Trakt search: exact title matches first, then broader results (Trakt's recommended flow).
   async search(q) {
     const query = decodeURIComponent(q ?? '');
+    if (traversing || !query) searchBox.value = query; // otherwise it holds what's being typed right now
+    if (!query) { app.innerHTML = '<div class="page"><h1>Search</h1><p class="muted">Find movies and shows by title.</p></div>'; return; }
     const enc = encodeURIComponent(query);
     const none = () => [];
+    const token = routeToken;
     const [exactM, exactS, broad] = await Promise.all([
       traktGet(`/search/movie/exact?query=${enc}&limit=5`).catch(none),
       traktGet(`/search/show/exact?query=${enc}&limit=5`).catch(none),
       traktGet(`/search/movie,show?query=${enc}&limit=40`),
     ]);
+    if (token !== routeToken) return;
     const seen = new Set();
     const exact = it => it.title?.toLowerCase() === query.toLowerCase();
     const items = [...exactM, ...exactS, ...broad].map(x => norm(x)).filter(it => it && !seen.has(it.type + it.id) && seen.add(it.type + it.id))
@@ -555,9 +584,7 @@ const pages = {
 
   async settings() {
     const limits = user?.limits;
-    const sources = getSources();
-    const sourceText = list => formatSources(list);
-    const field = (title, help, control) => `<div class="field"><div><b>${title}</b><p class="muted">${help}</p></div>${control}</div>`;
+    const field =(title, help, control) => `<div class="field"><div><b>${title}</b><p class="muted">${help}</p></div>${control}</div>`;
     app.innerHTML = `<div class="page settings"><h1>Settings</h1>
       <section class="card" id="trakt-box">
         <div class="card-head"><h2>Trakt account</h2><p class="muted">Your watchlist, lists, recommendations and watch history.</p></div>
@@ -567,20 +594,13 @@ const pages = {
             <div class="row-actions"><button id="sync" class="btn">${icon('sync')}Sync now</button><button id="signout" class="btn">${icon('logout')}Sign out</button></div></div>`
           : `<div class="account-row"><p class="muted">Not connected.</p><div class="row-actions"><button id="connect" class="btn primary">Sign in with Trakt</button></div></div>`}
       </section>
+      <section class="card" id="servers"></section>
       <section class="card">
         <div class="card-head"><h2>Playback</h2><p class="muted">Nothing is marked watched on Trakt until you press Mark watched.</p></div>
-        ${field('Default server', 'Used when you press Play. You can switch servers from the player too.',
-          `<select id="default-server" aria-label="Default server">${sources.map((x, i) => `<option value="${i}" ${i === getServer(sources.length) ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select>`)}
         ${field('Preferred quality', 'The player starts at this quality when the server supports it. Default: 1080p.',
           `<select id="quality" aria-label="Preferred quality">${QUALITIES.map(q => `<option value="${q}" ${q === getQuality() ? 'selected' : ''}>${q === 'auto' ? 'Auto' : q}</option>`).join('')}</select>`)}
         ${field('Ad blocking', 'Ads and pop-ups inside embedded players are blocked by the bundled filter lists; new windows are denied.', '<span class="muted">On</span>')}
         ${field('Fullscreen', 'Fill the whole screen. Shortcut: <kbd>F11</kbd>, and <kbd>Esc</kbd> to leave.', `<button class="btn fs-btn">${icon('expand')}Toggle fullscreen</button>`)}
-      </section>
-      <section class="card">
-        <div class="card-head"><h2>Video servers</h2>
-          <p class="muted">Filmie includes no servers. Only add ones you have the right to use. One per line: <code>Name | movie URL | TV URL | note | #rrggbb</code>, using <code>{tmdb_id}</code>, <code>{season}</code> and <code>{episode}</code>. The note and accent are optional and saved with that server.</p></div>
-        <textarea id="sources" aria-label="Video servers" spellcheck="false" rows="6">${esc(sourceText(sources))}</textarea>
-        <div class="card-actions"><button id="save-sources" class="btn primary">Save servers</button></div>
       </section>
       <section class="card">
         <div class="card-head"><h2>Saved on this PC</h2><p class="muted">Pages load faster and work offline from a local database.</p></div>
@@ -599,24 +619,124 @@ const pages = {
     busy($('connect'), () => connectTrakt($('trakt-box')).catch(e => { route(); throw e; }));
     busy($('signout'), async () => { await invoke('sign_out'); await refreshUser(); route(); });
     busy($('sync'), async () => { lib = await invoke('sync'); await refreshProgress(); toast('Synced'); });
-    const showCache = () => invoke('cache_info').then(c => { $('cache-info').textContent = `${num(c.count)} saved responses, ${(c.bytes / 1048576).toFixed(1)} MB.`; }, console.warn);
+    const showCache = () => invoke('cache_info').then(c => {
+      const info = $('cache-info');
+      if (info) info.textContent = `${num(c.count)} saved responses, ${(c.bytes / 1048576).toFixed(1)} MB.`; // gone if the page was left
+    }, console.warn);
     showCache();
     busy($('clear-cache'), async () => { await invoke('cache_clear'); await showCache(); toast('Cache cleared'); });
     busy($('clear-recent'), async () => { await invoke('history_clear'); toast('Recently played cleared'); });
-    $('default-server').onchange = ev => { setServer(ev.target.value); toast('Default server saved'); };
     $('quality').onchange = ev => { setQuality(ev.target.value); toast('Preferred quality saved'); };
-    $('save-sources').onclick = () => {
-      try {
-        localStorage.setItem('sources', JSON.stringify(parseSources($('sources').value)));
-        toast('Servers saved');
-        route(); // refresh the default-server menu
-      } catch (e) { toast(e.message); }
-    };
+    renderServers($('servers'));
   },
 };
 
+// The Video servers card. editing: null for just the list, -1 for a new server, or the index being edited.
+function renderServers(card, editing = null) {
+  const list = getSources();
+  if (!list.length && editing === null) editing = -1;
+  const current = getServer(list.length);
+  const host = s => { try { return new URL(s.movie).hostname; } catch { return ''; } };
+  const rows = list.map((s, i) => `<li class="server-row" style="--dot:${accentOf(s) ?? 'var(--muted)'}">
+      <input type="radio" name="default-server" value="${i}" ${i === current ? 'checked' : ''} title="Default server" aria-label="Use ${esc(s.name)} by default">
+      <span class="server-dot"></span>
+      <div class="server-row-text"><b>${esc(s.name)}</b><small class="muted">${esc([host(s), s.note].filter(Boolean).join(' · '))}</small></div>
+      <span class="tag">Default</span>
+      <button type="button" class="btn ghost" data-edit="${i}">Edit</button>
+      <button type="button" class="btn ghost" data-remove="${i}">Remove</button></li>`).join('');
+  const saved = list[editing];
+  const draft = saved ? { ...saved, ...splitServer(saved) } : { link: '', movie: MOVIE_STRUCTURES[0], tv: TV_STRUCTURES[0], accent: '#e5484d' };
+  const options = items => items.map(x => `<option value="${esc(x)}"></option>`).join('');
+  const input = (id, label, hint, value, attrs = '') => `<label class="form-field" for="${id}"><b>${label}</b>
+      <input id="${id}" value="${esc(value ?? '')}" spellcheck="false" autocomplete="off" ${attrs}><small class="muted">${hint}</small></label>`;
+  card.innerHTML = `<div class="card-head"><h2>Video servers</h2>
+      <p class="muted">Filmie includes no servers. Only add ones you have the right to use.</p></div>
+    ${rows ? `<ul class="server-list">${rows}</ul>` : ''}
+    ${editing === null ? `<div class="card-actions"><button type="button" id="server-add" class="btn primary">${icon('plus')}Add server</button></div>` : `<form id="server-form" novalidate>
+      <h3>${saved ? `Edit ${esc(saved.name)}` : 'Add a server'}</h3>
+      ${input('server-link', 'Server link', 'Just the address of the server.', draft.link, 'type="url" placeholder="https://example.com" required')}
+      <div class="form-grid">
+        ${input('server-movie', 'Movie structure', 'Needs <code>{tmdb_id}</code>.', draft.movie, 'list="movie-structures" required')}
+        ${input('server-tv', 'TV structure', 'Needs <code>{tmdb_id}</code>, <code>{season}</code> and <code>{episode}</code>.', draft.tv, 'list="tv-structures" required')}
+      </div>
+      <datalist id="movie-structures">${options(MOVIE_STRUCTURES)}</datalist><datalist id="tv-structures">${options(TV_STRUCTURES)}</datalist>
+      <div class="form-grid optional">
+        ${input('server-name', 'Name (optional)', 'Uses the address if left empty.', draft.name)}
+        ${input('server-note', 'Note (optional)', 'Shown in the player\'s server menu.', draft.note)}
+        <label class="form-field" for="server-accent"><b>Accent</b><input id="server-accent" type="color" value="${accentOf(draft) ?? '#e5484d'}"><small class="muted">Marks this server in the player.</small></label>
+      </div>
+      <div class="server-preview" id="server-preview" role="status"></div>
+      <div class="card-actions">${list.length ? '<button type="button" id="server-cancel" class="btn">Cancel</button>' : ''}<button type="submit" class="btn primary">${saved ? 'Save server' : 'Add server'}</button></div>
+    </form>`}
+    <details class="server-text"><summary>Edit as text</summary>
+      <p class="muted">One per line: <code>Name | movie URL | TV URL | note | #rrggbb</code>. Handy for backups and adding several at once.</p>
+      <textarea id="sources" aria-label="Video servers as text" spellcheck="false" rows="6">${esc(formatSources(list))}</textarea>
+      <div class="card-actions"><button type="button" id="save-sources" class="btn">Save text</button></div></details>`;
+
+  const redraw = next => renderServers(card, next);
+  card.onclick = ev => {
+    const edit = ev.target.closest('[data-edit]');
+    if (edit) return redraw(+edit.dataset.edit);
+    const remove = ev.target.closest('[data-remove]');
+    if (remove && !remove.dataset.armed) { // second press confirms: there is no undo
+      remove.dataset.armed = '1';
+      remove.textContent = 'Press again to remove';
+      return;
+    }
+    if (remove) {
+      const i = +remove.dataset.remove;
+      setSources(list.filter((_, n) => n !== i));
+      setServer(serverAfterRemove(current, i));
+      toast(`Removed ${list[i].name}`);
+      return redraw();
+    }
+    if (ev.target.closest('#server-add')) return redraw(-1);
+    if (ev.target.closest('#server-cancel')) return redraw();
+    if (ev.target.closest('#save-sources')) {
+      try {
+        setSources(parseSources(card.querySelector('#sources').value));
+        toast('Servers saved');
+        redraw();
+      } catch (e) { toast(e.message); }
+    }
+  };
+  card.onchange = ev => {
+    if (ev.target.name !== 'default-server') return;
+    setServer(ev.target.value);
+    toast('Default server saved');
+  };
+
+  const form = card.querySelector('#server-form');
+  if (!form) return;
+  const value = id => form.querySelector(`#server-${id}`).value;
+  const read = () => buildServer({ link: value('link'), movie: value('movie'), tv: value('tv'), name: value('name'), note: value('note'), accent: value('accent') });
+  const preview = form.querySelector('#server-preview');
+  const showError = e => { preview.innerHTML = `<p class="error">${esc(e.message)}</p>`; };
+  form.oninput = () => {
+    if (!value('link').trim()) { preview.innerHTML = ''; return; }
+    try {
+      const s = read();
+      const sample = template => `<code>${esc(fillTemplate(template, { tmdb_id: 27205, season: 1, episode: 2 }))}</code>`;
+      preview.innerHTML = `<p class="muted">Example links for this server:</p><p>Movie ${sample(s.movie)}</p><p>TV ${sample(s.tv)}</p>`;
+    } catch (e) { showError(e); }
+  };
+  form.oninput();
+  form.onsubmit = ev => {
+    ev.preventDefault();
+    try {
+      const s = read();
+      setSources(saved ? list.map((x, i) => i === editing ? s : x) : [...list, s]);
+      toast(`${saved ? 'Saved' : 'Added'} ${s.name}`);
+      redraw();
+    } catch (e) { showError(e); }
+  };
+  if (!saved) form.querySelector('#server-link').focus({ preventScroll: true });
+}
+
 async function showTitle(type, id, season = null) {
+  const token = routeToken;
   const d = await tmdb(`/${type}/${id}`, { append_to_response: 'external_ids,videos,watch/providers,credits' });
+  if (token !== routeToken) return;
   const tt = traktType(type);
   const name = d.title ?? d.name;
   const imdb = d.external_ids?.imdb_id;
@@ -633,7 +753,7 @@ async function showTitle(type, id, season = null) {
     ['Metacritic', `https://www.metacritic.com/search/${q}/`],
   ].filter(Boolean);
   const rating = myRating(tt, id);
-  const cast = d.credits?.cast?.slice(0, 6).map(c => c.name).join(', ');
+  const cast = d.credits?.cast?.slice(0, 20) ?? [];
   const next = type === 'tv' && nextEps.get(id);
 
   app.innerHTML = `<section class="summary" ${d.backdrop_path ? `style="--backdrop:url('${IMG}w1280${esc(d.backdrop_path)}')"` : ''}>
@@ -652,25 +772,27 @@ async function showTitle(type, id, season = null) {
           ${trailer ? `<a class="btn" href="https://www.youtube.com/watch?v=${encodeURIComponent(trailer.key)}" target="_blank">Trailer</a>` : ''}
         </div>
         <p class="overview">${esc(d.overview)}</p>
-        ${cast ? `<p class="muted">Cast: ${esc(cast)}</p>` : ''}
         <div class="links" id="links">${links.map(([n, u]) => `<a href="${esc(u)}" target="_blank">${n}</a>`).join('')}</div>
-        ${prov?.flatrate ? `<div class="providers"><span class="muted">Stream on</span>${prov.flatrate.map(p => `<img src="${IMG}w92${esc(p.logo_path)}" alt="${esc(p.provider_name)}" title="${esc(p.provider_name)}">`).join('')}
-          <a href="${esc(prov.link)}" target="_blank" class="muted">via JustWatch</a></div>` : ''}
-      </div></div></section>
+      </div>
+      ${prov?.flatrate ? `<aside class="where"><h2>Where to watch</h2>
+        <div class="providers">${prov.flatrate.map(p => `<img src="${IMG}w92${esc(p.logo_path)}" alt="${esc(p.provider_name)}" title="${esc(p.provider_name)}">`).join('')}</div>
+        <small><a href="${esc(prov.link)}" target="_blank" class="muted">via JustWatch</a></small></aside>` : ''}
+      </div></section>
     ${type === 'tv' ? `<section class="page episodes-wrap"><div class="row-head"><h2>Episodes</h2>
       <select id="season" aria-label="Season">${d.seasons.map(s => `<option value="${s.season_number}">${esc(s.name)} (${s.episode_count})</option>`).join('')}</select></div>
       <ol class="episodes" id="episodes"></ol></section>` : ''}
     <div class="page" id="related"></div>`;
 
   const body = { [`${tt}s`]: [ids(id)] };
-  busy(document.getElementById('watchlist'), async () => { await write(inWatchlist(tt, id) ? '/sync/watchlist/remove' : '/sync/watchlist', body); route(); });
-  busy(document.getElementById('watched'), async () => { await write(watchedMovie(id) ? '/sync/history/remove' : '/sync/history', body); route(); });
+  busy(document.getElementById('watchlist'), async () => { await write(inWatchlist(tt, id) ? '/sync/watchlist/remove' : '/sync/watchlist', body); await route({ soft: true }); });
+  busy(document.getElementById('watched'), async () => { await write(watchedMovie(id) ? '/sync/history/remove' : '/sync/history', body); await route({ soft: true }); });
   listPicker(document.getElementById('addlist'), tt, id);
   const rate = document.getElementById('rate');
   if (rate) rate.onchange = () => write(rate.value ? '/sync/ratings' : '/sync/ratings/remove',
     { [`${tt}s`]: [{ ...ids(id), ...(rate.value && { rating: +rate.value }) }] }).then(() => toast('Rating saved'), toast);
 
   const lookup = traktGet(`/search/tmdb/${id}?type=${tt}&extended=full`).then(r => r[0]?.[tt]);
+  let firstSeason;
   if (type === 'tv') {
     // Per-episode watched state, fetched fresh; null when signed out.
     const progress = user ? lookup.then(t => t && trakt('GET', `/shows/${t.ids.trakt}/progress/watched`, null)).catch(() => null) : null;
@@ -678,17 +800,23 @@ async function showTitle(type, id, season = null) {
     const requested = d.seasons.some(s => s.season_number === season) ? season : null;
     select.value = String(requested ?? (next || [d.seasons.find(s => s.season_number > 0)?.season_number ?? 0])[0]);
     select.onchange = () => loadSeason(id, +select.value, progress).catch(toast);
-    loadSeason(id, +select.value, progress).catch(toast);
+    firstSeason = loadSeason(id, +select.value, progress).catch(toast);
   }
 
-  const token = routeToken;
-  try {
-    const t = await lookup;
-    if (!t || token !== routeToken) return;
+  const rows = renderRows([
+    cast.length && ['Cast', async () => cast.map(personCard).join('')],
+    ['Related', async () => {
+      const t = await lookup;
+      return t ? posters(await traktGet(`/${tt}s/${t.ids.trakt}/related?limit=20`), tt) : '';
+    }],
+  ], document.getElementById('related'));
+  await firstSeason; // a soft refresh or restored scroll needs the page's full height
+  const t = await lookup.catch(e => console.warn('Trakt lookup failed', e));
+  if (t && token === routeToken) {
     if (t.votes) document.getElementById('ratings').insertAdjacentHTML('afterbegin', `<span>Trakt <b>${Math.round((t.rating ?? 0) * 10)}%</b> <small>${num(t.votes)} votes</small></span>`);
     document.getElementById('links').insertAdjacentHTML('afterbegin', `<a href="https://app.trakt.tv/${tt}s/${encodeURIComponent(t.ids.slug)}" target="_blank">Trakt</a>`);
-    await renderRows([['Related', traktPosters(`/${tt}s/${t.ids.trakt}/related?limit=20`, tt)]], document.getElementById('related'));
-  } catch (e) { console.warn('Trakt lookup failed', e); }
+  }
+  await rows;
 }
 
 async function loadSeason(id, n, progress) {
@@ -739,17 +867,73 @@ async function connectTrakt(box) {
 // ---------- router
 const searchBox = document.getElementById('q');
 
-async function route() {
-  routeToken++;
+// Each history entry remembers its own scroll position, so Back can return to it.
+history.scrollRestoration = 'manual';
+const savedScroll = new Map();
+let navType = 'push';
+let traversing = false; // this page was reached with Back or Forward
+window.navigation?.addEventListener('navigate', ev => {
+  navType = ev.navigationType;
+  savedScroll.set(navigation.currentEntry.key, scrollY);
+});
+
+// soft: refresh this page in place, for changes the user didn't navigate to. It renders into a hidden copy,
+// which comes first in the document so the pages' getElementById calls find it, then swaps in one step.
+async function route({ soft = false } = {}) {
+  const token = ++routeToken;
   nowPlaying = null;
+  document.getElementById('soft-render')?.remove();
+  app = main;
   const [page, ...args] = location.hash.slice(2).split('/');
-  document.querySelectorAll('[data-nav]').forEach(a => a.classList.toggle('active', a.dataset.nav === (page || '')));
-  document.body.classList.toggle('playing', page === 'play');
-  if (page !== 'search') searchBox.value = '';
-  scrollTo(0, 0);
-  app.innerHTML = '<p class="loading">Loading…</p>';
-  try { await (Object.hasOwn(pages, page || 'home') ? pages[page || 'home'] : pages.home)(...args); }
-  catch (e) { app.innerHTML = `<div class="page"><p class="error">${esc(e)}</p></div>`; }
+  const name = Object.hasOwn(pages, page || 'home') ? page || 'home' : 'home';
+  const open = pages[name];
+  const opening = navType;
+  traversing = opening === 'traverse';
+  navType = 'push'; // route() also runs without a navigation, as after signing out
+  if (soft) {
+    app = main.cloneNode(false);
+    app.id = 'soft-render';
+    app.hidden = true;
+    main.before(app);
+  } else {
+    const show = () => {
+      const current = navFor(page);
+      document.querySelectorAll('[data-nav]').forEach(a => {
+        const i = current.indexOf(a.dataset.nav);
+        a.classList.toggle('active', i >= 0);
+        if (i < 0) a.removeAttribute('aria-current');
+        else a.setAttribute('aria-current', i === 0 ? 'page' : 'true');
+      });
+      document.body.classList.toggle('playing', page === 'play');
+      document.body.classList.toggle('searching', page === 'search');
+      if (page !== 'search') searchBox.value = '';
+      scrollTo(0, 0);
+      main.innerHTML = skeleton(SKELETONS[name]);
+    };
+    // No data is awaited inside the transition, because the page is frozen until its callback ends.
+    // The video frame must never be captured in a transition, so the player opens and closes without one.
+    const animate = document.startViewTransition && name !== 'play' && !document.body.classList.contains('playing');
+    if (animate) {
+      const transition = document.startViewTransition(show);
+      transition.ready.catch(() => {}); // rejects when a newer page change skips this one, which is fine
+      await transition.updateCallbackDone;
+    } else show();
+    if (token !== routeToken) return;
+    (page === 'search' ? searchBox : main).focus({ preventScroll: true });
+    main.setAttribute('aria-busy', 'true');
+  }
+  try { await open(...args); }
+  catch (e) { if (token === routeToken) app.innerHTML = `<div class="page"><p class="error">${esc(e)}</p></div>`; }
+  if (token !== routeToken) return;
+  if (soft) {
+    main.replaceChildren(...app.childNodes);
+    app.remove();
+    app = main;
+    return;
+  }
+  main.removeAttribute('aria-busy');
+  const y = scrollTarget(opening, savedScroll.get(window.navigation?.currentEntry.key));
+  if (y) scrollTo(0, y);
 }
 
 // Search as you type (debounced); clearing the box goes home.
@@ -763,6 +947,29 @@ searchBox.addEventListener('input', () => {
   }, 400);
 });
 
-window.addEventListener('hashchange', route);
+document.addEventListener('keydown', ev => {
+  if (!ev.ctrlKey || ev.key.toLowerCase() !== 'k' || document.body.classList.contains('playing')) return;
+  ev.preventDefault();
+  if (location.hash.startsWith('#/search')) searchBox.select();
+  else location.hash = '#/search';
+});
+
+// The rail starts narrow, and a saved 'wide' is the only thing that widens it.
+const railToggle = document.getElementById('rail-toggle');
+function setRail(wide) {
+  document.body.classList.toggle('rail-wide', wide);
+  railToggle.setAttribute('aria-expanded', String(wide));
+  railToggle.setAttribute('aria-label', wide ? 'Collapse navigation' : 'Expand navigation');
+}
+try { setRail(localStorage.getItem('rail') === 'wide'); } catch {}
+railToggle.onclick = () => {
+  const wide = !document.body.classList.contains('rail-wide');
+  setRail(wide);
+  try { localStorage.setItem('rail', wide ? 'wide' : 'narrow'); } catch {}
+};
+
+window.addEventListener('hashchange', () => route());
+// Only text fields and selected text get a menu; the rest of the app shouldn't offer "Reload" or "Save as".
+document.addEventListener('contextmenu', ev => { if (!ev.target.closest('input, textarea') && !String(getSelection())) ev.preventDefault(); });
 setInterval(() => syncInBackground().catch(console.warn), 15 * 60e3);
 refreshUser().catch(toast).finally(() => { route(); syncInBackground().catch(console.warn); });

@@ -204,6 +204,10 @@ Run tests with `cargo test` (in `src-tauri/`) and `node --test tests/ui.test.js`
 
 **Adblock status (2026-11-02):** adblock-tester.com, loaded inside an iframe in the app, scored 90/100. That covers ad requests made by an embedded page, not only by the app itself. uBO Lite 2026.1026.1812 (Edge build) loads through WebView2. It blocked `googlesyndication` and `doubleclick` requests from iframes (`net::ERR_BLOCKED_BY_CLIENT`), while normal pages loaded. Install it with `scripts/fetch-ubol.ps1`; the version and SHA-256 are pinned there. The `extensions/` folder is git-ignored and bundled as a Tauri resource.
 
+**Trakt-style UI (planned 2026-11-03):** recreate Trakt's desktop layout in `ui/`, keeping Filmie's brand. trakt-web is GPLv3 and SvelteKit, so no code is copied. The API use policy (updated 2026-10-20) makes the Trakt logo optional and requires the "not endorsed or certified" sentence, which Settings has. Measurements, platform checks and links are in `specs/001-trakt-style-ui/research.md`.
+
+**Trakt design parity (specified 2026-11-03):** follow Trakt's desktop design as is, with Filmie's red accent and name. Checked against trakt-web `9ebdbff` and trakt-api `090d333`. Desktop uses the side rail plus `NavbarActions`; `TopNavbar` only renders at 768 px and below. Standard tier is free; Limited Access endpoints may need approval, and VIP Only returns `426`. `/users/:id/stats` is VIP only, so stats come from local data. Limits are 500 GET per 5 minutes and 1 write per second. Measurements are in `specs/002-trakt-design-parity/trakt-design-reference.md`. Per-page endpoints are in `specs/002-trakt-design-parity/contracts/api-usage.md`. Limited Access covers per-title `/watchnow` and `/watchnow/sources`, so where to watch stays on TMDB's JustWatch data. These classifications come from contract tags; the probe with a real free account is still to be recorded here.
+
 **Original options:**
 1. **Video sources:** user-configured templates, nothing bundled. TMDB and Trakt terms both forbid use in apps that promote piracy, and Trakt can revoke the client ID.
 2. **Frontend:** Svelte + TypeScript (recommended) or Leptos (all Rust).

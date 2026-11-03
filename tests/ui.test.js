@@ -1,7 +1,7 @@
 // Run: node --test tests/ui.test.js
 const test = require('node:test');
 const assert = require('node:assert');
-const { validProgress, playedNote, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, episodeAfter, norm } = require('../ui/lib.js');
+const { validProgress, playedNote, navFor, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm } = require('../ui/lib.js');
 
 test('norm', () => {
   const ids = { trakt: 1, tmdb: 272 };
@@ -56,6 +56,50 @@ test('fillTemplate', () => {
   assert.equal(fillTemplate('https://h/{tmdb_id}', { tmdb_id: 'a/b?c' }), 'https://h/a%2Fb%3Fc');
 });
 
+const form = (extra = {}) => ({ link: 'https://www.h.test', movie: '/movie/{tmdb_id}', tv: '/tv/{tmdb_id}/{season}/{episode}', ...extra });
+
+test('buildServer needs only the link and the structures', () => {
+  assert.deepEqual(buildServer(form()), { name: 'h.test', movie: 'https://www.h.test/movie/{tmdb_id}', tv: 'https://www.h.test/tv/{tmdb_id}/{season}/{episode}' });
+  assert.deepEqual(buildServer(form({ link: ' https://h.test/api/ ', movie: 'm/{tmdb_id}', tv: '?id={tmdb_id}&s={season}&e={episode}', name: ' Home ', note: ' 4K ', accent: '#12AB34' })),
+    { name: 'Home', movie: 'https://h.test/api/m/{tmdb_id}', tv: 'https://h.test/api?id={tmdb_id}&s={season}&e={episode}', note: '4K', accent: '#12ab34' });
+});
+
+test('buildServer rejects bad input with a helpful message', () => {
+  for (const link of ['', 'h.test', 'not a url']) assert.throws(() => buildServer(form({ link })), /Enter the server link/);
+  assert.throws(() => buildServer(form({ link: 'http://h.test' })), /must start with https/);
+  for (const link of ['https://h.test/movie/{tmdb_id}', 'https://h.test?a=1', 'https://h.test#x']) assert.throws(() => buildServer(form({ link })), /only the address/);
+  assert.throws(() => buildServer(form({ movie: '' })), /movie structure is required/);
+  assert.throws(() => buildServer(form({ tv: '/tv/{tmdb_id}/{season}' })), /needs \{episode\}/);
+  assert.throws(() => buildServer(form({ movie: '/movie/{id}' })), /can't use \{id\}/);
+  assert.throws(() => buildServer(form({ movie: '/movie/{tmdb_id}/{season}' })), /can't use \{season\}/);
+  assert.throws(() => buildServer(form({ movie: 'javascript:alert({tmdb_id})' })), /path or an https/);
+  assert.throws(() => buildServer(form({ movie: 'http://h.test/{tmdb_id}' })), /path or an https/);
+  assert.throws(() => buildServer(form({ movie: '/a b/{tmdb_id}' })), /spaces or \|/);
+  assert.throws(() => buildServer(form({ name: 'a|b' })), /can't contain \|/);
+  assert.throws(() => buildServer(form({ accent: 'red' })), /hex colour/);
+});
+
+test('saved servers survive the text format and the edit form', () => {
+  const server = buildServer(form({ name: 'Home', note: 'Fast', accent: '#123456' }));
+  assert.deepEqual(parseSources(formatSources([server])), [server]);
+  assert.deepEqual(buildServer({ ...splitServer(server), name: server.name, note: server.note, accent: server.accent }), server);
+  assert.deepEqual(splitServer(server), { link: 'https://www.h.test', movie: '/movie/{tmdb_id}', tv: '/tv/{tmdb_id}/{season}/{episode}' });
+  const twoHosts = { movie: 'https://a.test/{tmdb_id}', tv: 'https://a.test.evil/{tmdb_id}/{season}/{episode}' };
+  assert.deepEqual(splitServer(twoHosts), { link: 'https://a.test', movie: '/{tmdb_id}', tv: twoHosts.tv });
+  assert.equal(buildServer({ ...splitServer(twoHosts) }).tv, twoHosts.tv);
+});
+
+test('every suggested structure is valid and names no host', () => {
+  for (const movie of MOVIE_STRUCTURES) assert.ok(buildServer(form({ movie })).movie.startsWith('https://www.h.test'));
+  for (const tv of TV_STRUCTURES) assert.ok(buildServer(form({ tv })).tv.startsWith('https://www.h.test'));
+});
+
+test('the default server follows the list when one is removed', () => {
+  assert.equal(serverAfterRemove(2, 0), 1);
+  assert.equal(serverAfterRemove(0, 2), 0);
+  assert.equal(serverAfterRemove(2, 2), 0);
+});
+
 test('validProgress trusts only sensible reports from player frames', () => {
   assert.deepEqual(validProgress({ t: 600, d: 2400 }, 47), { t: 600, d: 2400 });
   assert.deepEqual(validProgress({ t: 0, d: 300 }), { t: 0, d: 300 });
@@ -64,6 +108,21 @@ test('validProgress trusts only sensible reports from player frames', () => {
   assert.equal(validProgress({ t: 900, d: 600 }), null);
   assert.equal(validProgress({ t: -1, d: 600 }), null);
   for (const bad of [null, undefined, 'x', {}, { t: '1', d: '600' }, { t: NaN, d: 600 }, { t: 1, d: Infinity }]) assert.equal(validProgress(bad), null);
+});
+
+test('navFor picks the rail items for a route', () => {
+  assert.deepEqual(navFor(''), ['']);
+  assert.deepEqual(navFor('movies'), ['movies']);
+  assert.deepEqual(navFor('list'), ['lists']);
+  assert.deepEqual(navFor('watchlist'), ['watchlist', 'lists']);
+  for (const page of ['title', 'play', 'nope', 'constructor']) assert.deepEqual(navFor(page), []);
+});
+
+test('scrollTarget restores only on back and forward', () => {
+  assert.equal(scrollTarget('traverse', 640), 640);
+  assert.equal(scrollTarget('traverse', undefined), 0);
+  assert.equal(scrollTarget('push', 640), 0);
+  assert.equal(scrollTarget('replace', 640), 0);
 });
 
 test('playedNote', () => {

@@ -42,13 +42,17 @@ You can browse without an account. Signing in adds your library, recommendations
 
 ### Add a video server
 
-Open **Settings**, go to **Video servers**, and add one server per line. Only add servers you have the right to use.
+Open **Settings**, go to **Video servers**, and fill in the form. Only add servers you have the right to use.
 
-```text
-Name | movie URL | TV URL | optional note | optional #rrggbb colour
-```
+You need three things:
 
-URLs must use `https://` and contain `{tmdb_id}`. TV URLs can also use `{season}` and `{episode}`:
+- **Server link:** the address, starting with `https://`, such as `https://example.com`.
+- **Movie structure:** the rest of a movie's link, containing `{tmdb_id}`, such as `/movie/{tmdb_id}`.
+- **TV structure:** the rest of an episode's link, containing `{tmdb_id}`, `{season}` and `{episode}`, such as `/tv/{tmdb_id}/{season}/{episode}`.
+
+The form suggests common structures and shows example links before you save. A name, note and accent colour are optional.
+
+To back up your list or add several servers at once, choose **Edit as text**, with one server per line:
 
 ```text
 My server | https://example.com/movie/{tmdb_id} | https://example.com/tv/{tmdb_id}/{season}/{episode} | Home server | #e5484d

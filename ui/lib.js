@@ -114,6 +114,24 @@ function norm(x, bareType) {
   };
 }
 
+// YYYY-MM-DD in the person's own timezone, as calendars take it.
+const isoDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+// A date with no time (a movie's release) means that calendar day everywhere, so it mustn't shift with the timezone.
+const shortDate = s => !s ? '' : new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', ...(s.length === 10 ? { timeZone: 'UTC' } : {}) });
+
+// Continue Watching mixes shows in progress with paused movies, most recent first.
+const continueTime = x => x.progress?.last_watched_at ?? x.paused_at ?? '';
+const mergeContinue = (shows, movies) => [...shows, ...movies].sort((a, b) => continueTime(b).localeCompare(continueTime(a)));
+
+// Start Watching is the watchlist without what isn't out yet or has already been started. showsInProgress holds TMDB ids.
+function startWatching(items, today, showsInProgress) {
+  return items.filter(x => {
+    const m = x.movie ?? x.show;
+    const released = m?.released ?? m?.first_aired;
+    return released && released.slice(0, 10) <= today && !(x.show && showsInProgress.has(m.ids?.tmdb));
+  });
+}
+
 const runtimeText = min => !min ? '' : [Math.floor(min / 60) && `${Math.floor(min / 60)}h`, min % 60 && `${min % 60}m`].filter(Boolean).join(' ');
 
 // A card shows one status at most, in Trakt's order of importance.
@@ -229,4 +247,4 @@ function playedNote(p, now = Date.now() / 1000) {
   return `Opened ${Math.floor(mins / 1440)} d ago`;
 }
 
-if (typeof module !== 'undefined') module.exports = { validProgress, playedNote, runtimeText, statusTag, navFor, modeOf, FILTERS, decadeOptions, cleanFilters, filterQuery, filterCount, addQuery, fitsSimple, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm };
+if (typeof module !== 'undefined') module.exports = { validProgress, playedNote, isoDate, shortDate, mergeContinue, startWatching, runtimeText, statusTag, navFor, modeOf, FILTERS, decadeOptions, cleanFilters, filterQuery, filterCount, addQuery, fitsSimple, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm };

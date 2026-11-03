@@ -216,6 +216,7 @@ async function route({ soft = false } = {}) {
   nowPlaying = null;
   document.getElementById('soft-render')?.remove();
   document.querySelectorAll('.menu').forEach(m => m.remove()); // their actions belong to the page being left
+  growGrid = null;
   app = main;
   const [page, ...args] = location.hash.slice(2).split('/');
   // Shows and Movies are now Discover in that mode.
@@ -251,6 +252,7 @@ async function route({ soft = false } = {}) {
     (page === 'search' ? searchBox : main).focus({ preventScroll: true });
     main.setAttribute('aria-busy', 'true');
   }
+  restoreTarget = soft ? 0 : scrollTarget(opening, savedScroll.get(window.navigation?.currentEntry.key));
   try { await open(...args); }
   catch (e) { if (token === routeToken) app.innerHTML = `<div class="page"><p class="error">${esc(e)}</p></div>`; }
   if (token !== routeToken) return;
@@ -261,8 +263,7 @@ async function route({ soft = false } = {}) {
     return;
   }
   main.removeAttribute('aria-busy');
-  const y = scrollTarget(opening, savedScroll.get(window.navigation?.currentEntry.key));
-  if (y) scrollTo(0, y);
+  if (restoreTarget) scrollTo(0, restoreTarget);
 }
 
 // Search as you type (debounced); clearing the box goes home.

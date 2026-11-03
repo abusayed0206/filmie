@@ -121,13 +121,13 @@ description: "Task list for Trakt design parity with filters"
 
 **Independent Test**: Sign in, check row order against the reference, open a row's title and scroll until more loads. Scenarios 16 and 17 in `quickstart.md`.
 
-- [ ] T044 [US4] Rebuild `pages.home` in `ui/pages-browse.js` with Continue Watching, Start Watching, Calendar, Recommended, History and Recently played per `api-usage.md`, and for signed-out people Recently played and public rows with a sign-in prompt
-- [ ] T045 [US4] Add `renderGrid(into, { pageSize, load, card })` to `ui/cards.js`, with 100 per page, the next page past 50% scroll or when content doesn't fill the view, a spinner, and a stop at a short page
-- [ ] T046 [US4] Build `pages.discover` in `ui/pages-browse.js` with Trending, Releases, Anticipated and Popular, the title following the mode, then the other free charts in `api-usage.md`
-- [ ] T047 [US4] Add grid pages for `#/discover/{trending,anticipated,popular,recommended}` in `ui/pages-browse.js`, with mode as meta text and the switch only in the filter drawer
-- [ ] T048 [US4] Add the `#/discover/releases` calendar view in `ui/pages-browse.js`
-- [ ] T049 [US4] Add inline mark watched on Continue Watching and Start Watching, and rate on History, in `ui/cards.js`, updating in place through soft refresh
-- [ ] T050 [US4] Add the `#/progress` Continue Watching grid with its sort drawer in `ui/pages-me.js`
+- [X] T044 [US4] Rebuild `pages.home` in `ui/pages-browse.js` with Continue Watching, Start Watching, Calendar, Recommended, History and Recently played per `api-usage.md`, and for signed-out people Recently played and public rows with a sign-in prompt
+- [X] T045 [US4] Add `renderGrid(into, { pageSize, load, card })` to `ui/cards.js`, with 100 per page, the next page past 50% scroll or when content doesn't fill the view, a spinner, and a stop at a short page
+- [X] T046 [US4] Build `pages.discover` in `ui/pages-browse.js` with Trending, Releases, Anticipated and Popular, the title following the mode, then the other free charts in `api-usage.md`
+- [X] T047 [US4] Add grid pages for `#/discover/{trending,anticipated,popular,recommended}` in `ui/pages-browse.js`, with mode as meta text and the switch only in the filter drawer
+- [X] T048 [US4] Add the `#/discover/releases` calendar view in `ui/pages-browse.js`
+- [X] T049 [US4] Add inline mark watched on Continue Watching and Start Watching, and rate on History, in `ui/cards.js`, updating in place through soft refresh
+- [X] T050 [US4] Add the `#/progress` Continue Watching grid with its sort drawer in `ui/pages-me.js`
 
 **Checkpoint**: Browsing matches Trakt. Review with the user.
 

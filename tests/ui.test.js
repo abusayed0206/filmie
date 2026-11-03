@@ -1,7 +1,7 @@
 // Run: node --test tests/ui.test.js
 const test = require('node:test');
 const assert = require('node:assert');
-const { validProgress, playedNote, runtimeText, statusTag, navFor, modeOf, FILTERS, decadeOptions, cleanFilters, filterQuery, filterCount, addQuery, fitsSimple, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm } = require('../ui/lib.js');
+const { validProgress, playedNote, isoDate, shortDate, mergeContinue, startWatching, runtimeText, statusTag, navFor, modeOf, FILTERS, decadeOptions, cleanFilters, filterQuery, filterCount, addQuery, fitsSimple, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm } = require('../ui/lib.js');
 
 test('norm', () => {
   const ids = { trakt: 1, tmdb: 272 };
@@ -25,6 +25,30 @@ test('norm', () => {
   assert.equal(norm({ movie: { title: 'M', ids }, score: 1, sources: [] }).type, 'movie');
   assert.equal(norm({ id: 9, watched_at: 't', action: 'watch', type: 'episode', episode: { ids: {} }, show: { title: 'S', ids } }).type, 'tv');
   assert.equal(norm({ first_aired: 't', episode: { ids: {} }, show: { title: 'S', ids } }).title, 'S');
+});
+
+test('dates for calendars and cards', () => {
+  assert.equal(isoDate(new Date(2026, 0, 5)), '2026-01-05');
+  assert.equal(shortDate(''), '');
+  assert.equal(shortDate('2026-11-03'), 'Nov 3'); // a plain date doesn't shift with the timezone
+  assert.match(shortDate('2026-11-03T12:00:00.000Z'), /^Nov [34]$/);
+});
+
+test('mergeContinue puts the most recent first', () => {
+  const show = { show: {}, progress: { last_watched_at: '2026-01-02T00:00:00Z' } };
+  const movie = { movie: {}, paused_at: '2026-01-03T00:00:00Z' };
+  const older = { show: {}, progress: { last_watched_at: '2025-12-01T00:00:00Z' } };
+  assert.deepEqual(mergeContinue([older, show], [movie]), [movie, show, older]);
+  assert.deepEqual(mergeContinue([], []), []);
+});
+
+test('startWatching hides what is unreleased or already started', () => {
+  const out = { movie: { released: '2020-01-01', ids: { tmdb: 1 } } };
+  const soon = { movie: { released: '2099-01-01', ids: { tmdb: 2 } } };
+  const noDate = { movie: { ids: { tmdb: 3 } } };
+  const newShow = { show: { first_aired: '2020-01-01T00:00:00.000Z', ids: { tmdb: 4 } } };
+  const started = { show: { first_aired: '2020-01-01T00:00:00.000Z', ids: { tmdb: 5 } } };
+  assert.deepEqual(startWatching([out, soon, noDate, newShow, started], '2026-11-03', new Set([5])), [out, newShow]);
 });
 
 test('runtimeText', () => {

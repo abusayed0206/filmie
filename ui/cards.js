@@ -5,7 +5,11 @@ function cardMenuButton(it) {
   return `<button type="button" class="card-menu" aria-label="More for ${esc(it.title)}" data-menu-type="${it.type}" data-menu-id="${it.id}" data-menu-title="${esc(it.title)}">${icon('more')}</button>`;
 }
 
-function posterCard(it, { label } = {}) {
+// The one action a card shows directly: mark watched where the next step is watching it, rate where it's already been watched.
+const watchAction = (it, s, e) => user ? `<button type="button" class="card-action" title="Mark watched" aria-label="Mark ${esc(it.title)} watched" data-watch="${it.type}" data-id-value="${it.id}"${s ? ` data-s="${s}" data-e="${e}"` : ''}>${icon('check')}</button>` : '';
+const rateAction = (title, kind, id) => `<button type="button" class="card-action" title="Rate" aria-label="Rate ${esc(title)}" data-rate="${kind}" data-id-value="${id}" data-rate-title="${esc(title)}">${icon('star')}</button>`;
+
+function posterCard(it, { label, titled, action } = {}) {
   const tt = traktType(it.type);
   const started = it.type === 'tv' && nextEps.has(it.id);
   const watched = it.type === 'movie' ? watchedMovie(it.id) : !!watchedShow(it.id) && !started;
@@ -16,31 +20,65 @@ function posterCard(it, { label } = {}) {
   return `<div class="media-card${watched ? ' is-watched' : ''}">
     <a class="poster" href="#/title/${it.type}/${it.id}" data-type="${it.type}" data-id="${it.id}" title="${esc(it.title)}" aria-label="${esc([it.title, it.year].filter(Boolean).join(', '))}">
       <div class="art"><span class="cover-title">${esc(it.title)}</span><div class="tags">${typeTag}</div>${status ? `<i class="status-tag">${esc(status)}</i>` : ''}</div>
-      <div class="card-footer">${tags.map(t => `<span class="meta-tag">${esc(t)}</span>`).join('')}</div></a>
-    ${cardMenuButton(it)}</div>`;
+      <div class="card-footer${titled ? ' titled' : ''}">${titled ? `<b>${esc(it.title)}</b>` : ''}${tags.map(t => `<span class="meta-tag">${esc(t)}</span>`).join('')}</div></a>
+    ${cardMenuButton(it)}${action ?? ''}</div>`;
 }
 const posters = (items, type, label) => (items ?? []).map(x => [norm(x, type), x]).filter(([it]) => it).map(([it, x]) => posterCard(it, { label: label?.(x) })).join('');
 const traktPosters = (path, type, label) => async () => posters(await traktGet(path), type, label);
 
-function progressCard(href, it, line, pct, note) {
-  return `<a class="ep-card" href="${href}" data-type="${it.type}" data-id="${it.id}" data-art="backdrop" title="${esc(it.title)}">
-    <div class="art"><span class="cover-title">${esc(it.title)}</span><span class="play-icon">${icon('play')}</span></div>
+function progressCard(href, it, line, pct, note, { action, play = true } = {}) {
+  return `<div class="media-card landscape-card"><a class="ep-card" href="${href}" data-type="${it.type}" data-id="${it.id}" data-art="backdrop" title="${esc(it.title)}">
+    <div class="art"><span class="cover-title">${esc(it.title)}</span>${play ? `<span class="play-icon">${icon('play')}</span>` : ''}</div>
     <b>${esc(it.title)}</b><span>${esc(line)}</span>
-    ${pct === null ? '' : `<div class="bar"><i style="width:${Math.min(100, Math.round(pct))}%"></i></div>`}<small>${esc(note)}</small></a>`;
+    ${pct === null ? '' : `<div class="bar"><i style="width:${Math.min(100, Math.round(pct))}%"></i></div>`}<small>${esc(note)}</small></a>${action ?? ''}</div>`;
 }
-const epCard = (it, s, e, title, pct, note) => progressCard(`#/play/tv/${it.id}/${s}/${e}`, it, `S${s}E${e}${title ? ` · ${title}` : ''}`, pct, note);
+const episodeLine = ep => `S${ep.season}E${ep.number}${ep.title ? ` · ${ep.title}` : ''}`;
+const epCard = (it, s, e, title, pct, note, opts) => progressCard(`#/play/tv/${it.id}/${s}/${e}`, it, episodeLine({ season: s, number: e, title }), pct, note, opts);
 
-const upNextCards = async () => upNext.map(p => {
-  const ep = p.progress.next_episode;
-  const left = p.progress.aired - p.progress.completed;
-  return epCard(norm(p.show, 'show'), ep.season, ep.number, ep.title, 100 * p.progress.completed / p.progress.aired, `${left} episode${left === 1 ? '' : 's'} left`);
-}).join('');
+// Continue Watching: a show's next episode, or a paused movie.
+function continueCard(x) {
+  const it = norm(x, x.show ? 'show' : 'movie');
+  if (!it) return '';
+  if (!x.show) return progressCard(`#/play/movie/${it.id}`, it, it.year ?? '', x.progress, `${Math.round(x.progress)}% watched`, { action: watchAction(it) });
+  const p = x.progress;
+  const ep = p.next_episode;
+  if (!ep) return '';
+  const left = p.aired - p.completed;
+  return epCard(it, ep.season, ep.number, ep.title, 100 * p.completed / p.aired, `${left} episode${left === 1 ? '' : 's'} left`, { action: watchAction(it, ep.season, ep.number) });
+}
+const loadContinue = async limit => {
+  const [shows, movies] = await Promise.all([
+    getMode() === 'movie' ? [] : traktGet(`/sync/progress/up_next_nitro?limit=${limit}`),
+    getMode() === 'show' ? [] : traktGet(`/sync/playback/movies?limit=${limit}`),
+  ]);
+  return mergeContinue(shows ?? [], movies ?? []);
+};
 
-const playbackCards = type => async () => (lib?.playback ?? []).filter(p => !type || p.type === type).map(p => {
-  if (p.type === 'episode') return epCard(norm(p.show, 'show'), p.episode.season, p.episode.number, p.episode.title, p.progress, `${Math.round(p.progress)}% watched`);
-  const it = norm(p);
-  return it ? progressCard(`#/play/movie/${it.id}`, it, it.year ?? '', p.progress, `${Math.round(p.progress)}% watched`) : '';
-}).join('');
+// A calendar entry: an episode or a movie, shown with its date. These aren't out yet, so they open the title, not the player.
+function calendarCard(x) {
+  const it = norm(x, x.movie ? 'movie' : 'show');
+  if (!it) return '';
+  const date = shortDate(x.first_aired ?? x.released);
+  return x.episode
+    ? progressCard(`#/title/tv/${it.id}/${x.episode.season}`, it, episodeLine(x.episode), null, date, { play: false })
+    : progressCard(`#/title/movie/${it.id}`, it, it.year ?? 'Movie', null, date, { play: false });
+}
+
+// A history entry, with the rating action on what was watched.
+function historyCard(x) {
+  const it = norm(x, x.movie ? 'movie' : 'show');
+  if (!it) return '';
+  const date = shortDate(x.watched_at);
+  if (!x.episode) return progressCard(`#/title/movie/${it.id}`, it, it.year ?? 'Movie', null, date, { play: false, action: user ? rateAction(it.title, 'movie', it.id) : '' });
+  return progressCard(`#/title/tv/${it.id}/${x.episode.season}`, it, episodeLine(x.episode), null, date, { play: false, action: x.episode.ids?.trakt ? rateAction(`${it.title} ${episodeLine(x.episode)}`, 'episode', x.episode.ids.trakt) : '' });
+}
+
+// Start Watching: the watchlist, titled, with one press to mark it watched. A show starts at its first episode.
+function startCard(x) {
+  const it = norm(x, x.show ? 'show' : 'movie');
+  if (!it) return '';
+  return posterCard(it, { titled: true, label: it.type === 'tv' ? 'S1E1' : runtimeText(it.runtime) || it.year, action: it.type === 'tv' ? watchAction(it, 1, 1) : watchAction(it) });
+}
 
 // This PC's own list, kept in SQLite and separate from Trakt's "Continue watching".
 const recentCards = async () => (await invoke('history_list', { limit: 30 })).filter(p => forMode(true, p.kind === 'tv', p.kind === 'movie')).map(p => {
@@ -58,16 +96,18 @@ const watchlistTile = () => `<a class="list-tile" href="#/watchlist"><b>Watchlis
 const listTile = l => `<a class="list-tile" href="#/list/${l.ids.trakt}"><b>${esc(l.name)}</b><span>${num(l.item_count)} items · ${esc(l.privacy)}</span>${l.description ? `<p>${esc(l.description)}</p>` : ''}</a>`;
 
 // Rich card for the full grids: backdrop behind, poster on the left, details on the right.
-function summaryCard(it, { sortValue } = {}) {
+function summaryCard(it, { sortValue, label, line, href, action } = {}) {
   const genres = (it.genres ?? []).slice(0, 2).join(', ');
   const score = sortValue ?? (it.rating ? `${Math.round(it.rating * 10)}%` : '');
+  const tags = [label, it.year, it.type === 'tv' ? it.episodes && `${it.episodes} eps` : runtimeText(it.runtime)].filter(Boolean);
   return `<div class="media-card summary-card">
-    <a class="summary-link" href="#/title/${it.type}/${it.id}" data-type="${it.type}" data-id="${it.id}" data-art="backdrop" title="${esc(it.title)}">
-      <div class="art"></div>
-      <div class="summary-body"><b>${esc(it.title)}</b>${genres ? `<small class="muted">${esc(genres)}</small>` : ''}
-        <div class="summary-tags">${[it.year, it.type === 'tv' ? it.episodes && `${it.episodes} eps` : runtimeText(it.runtime)].filter(Boolean).map(t => `<span class="meta-tag">${esc(t)}</span>`).join('')}</div>
+    <a class="summary-link" href="${href ?? `#/title/${it.type}/${it.id}`}" data-type="${it.type}" data-id="${it.id}" data-art="summary" title="${esc(it.title)}">
+      <div class="summary-back"></div>
+      <div class="art summary-thumb"><span class="cover-title">${esc(it.title)}</span></div>
+      <div class="summary-body"><b>${esc(it.title)}</b>${line ? `<small>${esc(line)}</small>` : ''}${genres ? `<small class="muted">${esc(genres)}</small>` : ''}
+        <div class="summary-tags">${tags.map(t => `<span class="meta-tag">${esc(t)}</span>`).join('')}</div>
         ${score ? `<span class="summary-score">${esc(score)}</span>` : ''}</div></a>
-    ${cardMenuButton(it)}</div>`;
+    ${cardMenuButton(it)}${action ?? ''}</div>`;
 }
 
 // Artwork comes from TMDB, fetched only when a card scrolls near the screen.
@@ -75,6 +115,16 @@ const artObserver = new IntersectionObserver(entries => entries.forEach(async en
   if (!en.isIntersecting) return;
   artObserver.unobserve(en.target);
   const { type, id, art } = en.target.dataset;
+  if (art === 'summary') {
+    const d = await tmdb(`/${type}/${id}`).catch(() => null);
+    if (d?.backdrop_path) en.target.querySelector('.summary-back').style.backgroundImage = `url('${IMG}w780${d.backdrop_path}')`;
+    if (d?.poster_path) {
+      const thumb = en.target.querySelector('.summary-thumb');
+      thumb.style.backgroundImage = `url('${IMG}w185${d.poster_path}')`;
+      thumb.classList.add('has-art');
+    }
+    return;
+  }
   const landscape = art === 'backdrop';
   const d = await (landscape ? tmdb(`/${type}/${id}`, { append_to_response: 'images', include_image_language: 'en,null' }) : tmdb(`/${type}/${id}`)).catch(() => null);
   const cover = en.target.querySelector('.art');
@@ -101,7 +151,7 @@ function skeleton(kind) {
   }[kind];
   return body ? `<div aria-hidden="true">${body}</div>` : '';
 }
-const SKELETONS = { home: 'rows', discover: 'rows', progress: 'rows', title: 'title', lists: 'grid', watchlist: 'grid', list: 'grid', search: 'grid' };
+const SKELETONS = { home: 'rows', discover: 'rows', progress: 'grid', title: 'title', lists: 'grid', watchlist: 'grid', list: 'grid', search: 'grid' };
 
 // ---------- rows
 function collapsedRows() {
@@ -122,7 +172,61 @@ const rowObserver = new IntersectionObserver(entries => entries.forEach(en => { 
 
 const updateFade = track => track.classList.toggle('fade-end', track.scrollLeft + track.clientWidth < track.scrollWidth - 1);
 
-// def: { id, title, load: async () => html, more?, kind: portrait|landscape|list, meta?, filtered?, bright?, empty? }
+const FILTER_EMPTY = '<div class="row-empty"><p class="muted">Nothing matches your filters.</p><button type="button" class="btn" data-reset-filters>Reset filters</button></div>';
+
+// A grid that loads more as the person scrolls: past 50% of the page, or when it doesn't yet fill the window.
+// One grid is active at a time, and route() clears it when the page changes.
+let growGrid = null;
+let restoreTarget = 0; // where route() will scroll to once the page has loaded
+addEventListener('scroll', () => growGrid?.(), { passive: true });
+async function renderGrid(into, { load, card, pageSize = 100, cls = '', filtered, empty = 'Nothing here yet.' }) {
+  const token = routeToken;
+  const grid = document.createElement('div');
+  grid.className = `grid ${cls}`;
+  const spinner = document.createElement('div');
+  spinner.className = 'grid-more';
+  spinner.hidden = true;
+  spinner.setAttribute('aria-label', 'Loading more');
+  spinner.innerHTML = '<span class="spinner"></span>';
+  into.append(grid, spinner);
+  let page = 1;
+  let done = false;
+  let inFlight = null;
+  const more = () => {
+    if (done) return Promise.resolve();
+    return inFlight ??= fetchPage().finally(() => { inFlight = null; });
+  };
+  const fetchPage = async () => {
+    spinner.hidden = false;
+    let items;
+    try { items = await load(page++); }
+    catch (e) {
+      if (page === 2) throw e; // the page itself failed
+      done = true;
+      toast(e);
+    }
+    if (token !== routeToken) { done = true; return; }
+    spinner.hidden = true;
+    if (done) return;
+    const before = grid.children.length;
+    grid.insertAdjacentHTML('beforeend', items.map(card).join(''));
+    [...grid.children].slice(before).forEach(observeArt);
+    done = items.length < pageSize;
+    if (!grid.children.length) grid.outerHTML = filtered && filterCount(activeFilters()) ? FILTER_EMPTY : `<div class="row-empty"><p class="muted">${esc(empty)}</p></div>`;
+  };
+  const pageHeight = () => document.documentElement.scrollHeight;
+  const grow = () => {
+    if (pageHeight() <= innerHeight * 1.2 || scrollY + innerHeight > pageHeight() * .5) more();
+  };
+  await more();
+  // Coming back with Back, load as far as the person had scrolled so their place still exists.
+  while (!done && token === routeToken && restoreTarget + innerHeight > pageHeight()) await more();
+  if (token !== routeToken) return;
+  growGrid = grow;
+  grow();
+}
+
+// def: { id, title, load: async () => html, more?, kind: portrait|landscape|list, meta?, filtered?, bright?, empty?, actions? }
 // `id` keys the saved collapse state. A failed row is removed, and so is an empty one, unless filters emptied it
 // or it has an `empty` message: then the person should see why.
 async function renderRows(defs, into = app) {
@@ -136,7 +240,7 @@ async function renderRows(defs, into = app) {
     sec.innerHTML = `<div class="row-head">
         <button type="button" class="row-collapse" aria-expanded="${!collapsed.includes(def.id)}" aria-label="Collapse ${esc(def.title)}">${icon('chevron')}</button>
         <div class="row-heading">${def.more ? `<a class="row-title" href="${def.more}"><h2>${esc(def.title)}</h2>${icon('chevron')}</a>` : `<h2>${esc(def.title)}</h2>`}
-          ${def.meta ? `<small class="muted">${esc(def.meta)}</small>` : ''}</div></div>
+          ${def.meta ? `<small class="muted">${esc(def.meta)}</small>` : ''}</div>${def.actions ? `<div class="row-tools">${def.actions}</div>` : ''}</div>
       <div class="row-body"><div class="track kind-${kind}${def.bright ? ' bright' : ''}">${skeletonCards(8, kind)}</div></div>`;
     into.append(sec);
     const load = async () => {
@@ -148,7 +252,7 @@ async function renderRows(defs, into = app) {
       const track = sec.querySelector('.track');
       if (html === null) return sec.remove();
       if (!html) {
-        if (def.filtered && filterCount(activeFilters())) track.innerHTML = '<div class="row-empty"><p class="muted">Nothing matches your filters.</p><button type="button" class="btn" data-reset-filters>Reset filters</button></div>';
+        if (def.filtered && filterCount(activeFilters())) track.innerHTML = FILTER_EMPTY;
         else if (def.empty) track.innerHTML = `<div class="row-empty"><p class="muted">${esc(def.empty)}</p></div>`;
         else sec.remove();
         return;
@@ -242,8 +346,46 @@ document.addEventListener('click', ev => {
   const more = ev.target.closest('.card-menu');
   if (more && !more.popoverTargetElement) {
     menu(more, cardMenuItems({ type: more.dataset.menuType, id: +more.dataset.menuId, title: more.dataset.menuTitle }));
+    return;
   }
+  const watch = ev.target.closest('[data-watch]');
+  if (watch) return markWatchedFromCard(watch);
+  const rate = ev.target.closest('[data-rate]');
+  if (rate) openRatePicker(rate.dataset.rateTitle, rate.dataset.rate, +rate.dataset.idValue);
 });
+
+// Only ever runs on a press: Filmie doesn't check in or scrobble.
+async function markWatchedFromCard(button) {
+  const { watch, idValue, s, e } = button.dataset;
+  button.disabled = true;
+  try {
+    await write('/sync/history', watch === 'tv' ? episodeBody(+idValue, s, e) : { movies: [ids(+idValue)] });
+    await refreshProgress().catch(console.warn);
+    toast('Marked watched on Trakt');
+    await route({ soft: true });
+  } catch (err) {
+    button.disabled = false;
+    toast(err);
+  }
+}
+
+function openRatePicker(title, kind, id) {
+  const send = rating => {
+    const item = kind === 'movie' ? { ...ids(id), rating } : { ids: { trakt: id }, rating };
+    write('/sync/ratings', { [`${kind}s`]: [item] }).then(() => toast('Rating saved'), toast);
+  };
+  const d = modal({
+    title: `Rate ${title}`,
+    body: `<div class="rate-picker">${[...Array(10)].map((_, i) => `<button type="button" class="btn" data-rating="${i + 1}" aria-label="Rate ${i + 1} out of 10">${i + 1}</button>`).join('')}</div>`,
+    actions: [{ label: 'Cancel' }],
+  });
+  d.querySelector('.rate-picker').onclick = ev => {
+    const button = ev.target.closest('[data-rating]');
+    if (!button) return;
+    send(+button.dataset.rating);
+    d.close();
+  };
+}
 
 const signInPrompt = what => `<div class="page"><section class="callout"><h2>Sign in with Trakt</h2>
   <p>Connect your Trakt account to see your ${what}.</p><a class="btn primary" href="#/settings">Sign in with Trakt</a></section></div>`;

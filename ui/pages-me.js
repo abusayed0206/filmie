@@ -1,9 +1,46 @@
 // The signed-in user's pages and Settings.
+const PROGRESS_SORTS = [{ value: '', label: 'Default' }, { value: 'smart', label: 'Smart', how: 'desc' }, { value: 'released', label: 'Release date', how: 'desc' }, { value: 'remaining', label: 'Remaining', how: 'asc' }];
+let progressSort = '';
+function openProgressSort() {
+  const d = drawer({ title: 'Sort', width: 400, body: `<div class="list-picker">${PROGRESS_SORTS.map(s => `<button type="button" class="btn${s.value === progressSort ? ' on' : ''}" data-sort="${s.value}">${esc(s.label)}</button>`).join('')}</div>` });
+  d.querySelector('.list-picker').onclick = ev => {
+    const button = ev.target.closest('[data-sort]');
+    if (!button) return;
+    progressSort = button.dataset.sort;
+    d.close();
+    route({ soft: true });
+  };
+}
+// A chosen sort keeps Trakt's order for shows, so paused movies go first rather than being mixed in by date.
+const mergeProgress = (shows, movies) => progressSort ? [...movies, ...shows] : mergeContinue(shows, movies);
+function progressGridCard(x) {
+  const it = norm(x, x.show ? 'show' : 'movie');
+  if (!it) return '';
+  if (!x.show) return summaryCard(it, { href: `#/play/movie/${it.id}`, line: `${Math.round(x.progress)}% watched`, action: watchAction(it) });
+  const ep = x.progress.next_episode;
+  if (!ep) return '';
+  return summaryCard(it, { href: `#/play/tv/${it.id}/${ep.season}/${ep.number}`, line: episodeLine(ep), label: `${x.progress.aired - x.progress.completed} left`, action: watchAction(it, ep.season, ep.number) });
+}
 Object.assign(pages, {
   async progress() {
-    if (!user) { app.innerHTML = signInPrompt('up next'); return; }
-    app.innerHTML = '<div class="page"><h1 class="sr-only">Continue Watching</h1></div>';
-    await renderRows([upNextRow(), continueRow()], app.firstElementChild);
+    if (!user) { app.innerHTML = signInPrompt('progress'); return; }
+    const sort = PROGRESS_SORTS.find(s => s.value === progressSort);
+    app.innerHTML = `<div class="page"><h1 class="sr-only">Continue Watching</h1>
+      <div class="page-tools"><button type="button" class="btn" id="progress-sort">Sort: ${esc(sort.label)}</button></div></div>`;
+    const into = app.firstElementChild;
+    into.querySelector('#progress-sort').onclick = openProgressSort;
+    const query = sort.value ? `&sort_by=${sort.value}&sort_how=${sort.how}` : '';
+    await renderGrid(into, {
+      cls: 'summary-grid', empty: 'Nothing in progress. Start something and it will show here.',
+      pageSize: getMode() === 'movie' ? Infinity : 100,
+      // Paused movies all come with the first page.
+      load: async page => {
+        const shows = getMode() === 'movie' ? [] : await traktGet(`/sync/progress/up_next_nitro?page=${page}&limit=100${query}`);
+        const movies = page > 1 || getMode() === 'show' ? [] : await traktGet('/sync/playback/movies?limit=100');
+        return mergeProgress(shows ?? [], movies ?? []);
+      },
+      card: progressGridCard,
+    });
   },
 
   calendar: () => comingSoon('Calendar'),

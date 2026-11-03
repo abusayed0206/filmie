@@ -57,6 +57,14 @@ function getMode() {
 const saveMode = m => { try { localStorage.setItem('mode', modeOf(m)); } catch {} };
 const setMode = m => { saveMode(m); route({ soft: true }); };
 const forMode = (media, show, movie) => ({ media, show, movie })[getMode()];
+// Search adds People and Lists to the switch. They mean nothing elsewhere, so picking one leaves the saved mode alone.
+let searchOnly = null;
+const getSearchMode = () => searchOnly ?? getMode();
+function setSearchMode(m) {
+  searchOnly = MODES.includes(m) ? null : m;
+  if (!searchOnly) saveMode(m);
+  route({ soft: true });
+}
 
 // Filters: pages with `filters: 'global'` share one saved set, and other pages keep their own until the app closes.
 // A person's saved default is where both start.
@@ -142,18 +150,36 @@ const watchedMovie = id => lib?.watched_movies?.some(m => m.movie.ids.tmdb === i
 const watchedShow = id => lib?.watched_shows?.find(x => x.show.ids.tmdb === id);
 const inWatchlist = (tt, id) => lib?.[`watchlist_${tt}s`]?.some(x => x[tt].ids.tmdb === id);
 const myRating = (tt, id) => lib?.[`ratings_${tt}s`]?.find(x => x[tt].ids.tmdb === id)?.rating;
-const watchlistItems = types => types.flatMap(t => lib?.[`watchlist_${t}`] ?? [])
-  .sort((a, b) => (b.listed_at ?? '').localeCompare(a.listed_at ?? ''));
+const droppedShow = id => lib?.dropped_shows?.some(x => x.show?.ids?.tmdb === id);
 
 // Trakt's own "next episode" per show in progress. /sync/watched no longer includes episodes.
-let upNext = [];         // progress items, most recently watched first
 let nextEps = new Map(); // show TMDB id -> [season, episode]
 async function refreshProgress() {
   const items = user ? await trakt('GET', '/sync/progress/watched?hide_completed=true&limit=100', null) : [];
-  upNext = items.filter(p => p.progress?.next_episode && p.progress.last_watched_at && p.show?.ids?.tmdb)
-    .sort((a, b) => b.progress.last_watched_at.localeCompare(a.progress.last_watched_at));
-  nextEps = new Map(upNext.map(p => [p.show.ids.tmdb, [p.progress.next_episode.season, p.progress.next_episode.number]]));
+  nextEps = new Map(items.filter(p => p.progress?.next_episode && p.show?.ids?.tmdb).map(p => [p.show.ids.tmdb, [p.progress.next_episode.season, p.progress.next_episode.number]]));
 }
+
+// Keeps the local history current, a step a second, for as long as this person stays signed in. It carries on
+// across pages, because the first sync of a long history takes a while. Profile redraws if anything arrived.
+let historyRun = null;
+function runHistorySync() {
+  return historyRun ??= (async () => {
+    const me = user?.user?.username;
+    let before = null;
+    while (me && user?.user?.username === me) {
+      const p = await invoke('history_sync');
+      before ??= p.synced;
+      const onProfile = location.hash === '#/profile';
+      if (onProfile) document.getElementById('history-progress')?.replaceChildren(historyProgressText(p));
+      if (p.complete) {
+        if (onProfile && p.synced !== before) route({ soft: true });
+        return;
+      }
+      await new Promise(r => setTimeout(r, 1000));
+    }
+  })().catch(console.warn).finally(() => { historyRun = null; });
+}
+const historyProgressText = p => p.complete ? '' : `Copying your Trakt history to this PC: ${num(p.synced)}${p.total ? ` of ${num(p.total)}` : ''} plays so far.`;
 
 async function refreshUser() {
   user = await invoke('status');
@@ -176,6 +202,7 @@ async function syncInBackground() {
   if (!user) return;
   const before = lib?.activities?.all;
   lib = await invoke('sync');
+  runHistorySync();
   if (lib?.activities?.all === before) return;
   await refreshProgress();
   if (!nowPlaying && !location.hash.startsWith('#/settings')) route({ soft: true }); // Settings may hold a half-typed server

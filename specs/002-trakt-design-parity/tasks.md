@@ -162,14 +162,14 @@ description: "Task list for Trakt design parity with filters"
 
 **Independent Test**: Sort the watchlist, open History and Library, change a progress filter and view the calendar by week and day. Scenarios 23 to 26 in `quickstart.md`.
 
-- [ ] T063 [US6] Build `#/watchlist` in `ui/pages-me.js` as a summary grid with Trakt's sorts through a drawer, where the sort value replaces the rating on cards
-- [ ] T064 [US6] Build the progress view with Completed, Ended, In progress and Dropped in `ui/pages-me.js`, hiding sort on Dropped
-- [ ] T065 [US6] Build `#/history` in `ui/pages-me.js`, newest first and paged, with mode applied and a remove action
-- [ ] T066 [US6] Build `#/library` from `/sync/collection/{type}` in `ui/pages-me.js`
-- [ ] T067 [US6] Rebuild `#/lists` in `ui/pages-me.js`: Watchlist row, then My Lists with Personal, Liked and Shared, plus create, edit and delete, and handling for 420 using limits from `/users/settings`
-- [ ] T068 [US6] Build `#/lists/{personal,liked,shared}` and rework `#/list/{id}` with sorts in `ui/pages-me.js`, using `renderGrid`
-- [ ] T069 [US6] Build `#/calendar` in `ui/pages-me.js` and `ui/style.css`: week view by default, day view, pinned toolbar, episode-type switch and more on scroll
-- [ ] T070 [US6] Add ratings, favourites and notes views reachable from Profile in `ui/pages-me.js`, and hidden items from Settings, only as T001 confirmed
+- [X] T063 [US6] Build `#/watchlist` in `ui/pages-me.js` as a summary grid with Trakt's sorts through a drawer, where the sort value replaces the rating on cards
+- [X] T064 [US6] Build the progress view with Completed, Ended, In progress and Dropped in `ui/pages-me.js`, hiding sort on Dropped
+- [X] T065 [US6] Build `#/history` in `ui/pages-me.js`, newest first and paged, with mode applied and a remove action
+- [X] T066 [US6] Build `#/library` from `/sync/collection/{type}` in `ui/pages-me.js`
+- [X] T067 [US6] Rebuild `#/lists` in `ui/pages-me.js`: Watchlist row, then My Lists with Personal, Liked and Shared, plus create, edit and delete, and handling for 420 using limits from `/users/settings`
+- [X] T068 [US6] Build `#/lists/{personal,liked,shared}` and rework `#/list/{id}` with sorts in `ui/pages-me.js`, using `renderGrid`
+- [X] T069 [US6] Build `#/calendar` in `ui/pages-me.js` and `ui/style.css`: week view by default, day view, pinned toolbar, episode-type switch and more on scroll
+- [X] T070 [US6] Add ratings, favourites and notes views reachable from Profile in `ui/pages-me.js`, and hidden items from Settings, only as T001 confirmed
 
 **Checkpoint**: Tracking is complete. Review with the user.
 
@@ -181,10 +181,10 @@ description: "Task list for Trakt design parity with filters"
 
 **Independent Test**: Press Ctrl+K, type a title and open it by keyboard, then open Search and switch to People. Scenarios 27 and 28 in `quickstart.md`.
 
-- [ ] T071 [US7] Build the palette in `ui/controls.js` and `ui/style.css` with placeholder "Where to?", sections Pages, Movies and Shows, and arrow, Enter and Esc hints, using ARIA combobox and listbox roles
-- [ ] T072 [US7] Change the shortcuts in `ui/app.js` so Ctrl+K toggles the palette and `/` opens it outside text fields, neither of them in the player, replacing the behaviour from feature 001
-- [ ] T073 [US7] Rebuild `pages.search` in `ui/pages-browse.js` with a Media, Shows, Movies, People, Lists switch and the box below it, moving the input out of `ui/index.html` to a container the router doesn't replace per query, keeping focus while typing, and debouncing about 0.13 s
-- [ ] T074 [US7] Add results per mode and the empty states in `ui/pages-browse.js`, including 3-column list cards, and keep the query and position on Back
+- [X] T071 [US7] Build the palette in `ui/controls.js` and `ui/style.css` with placeholder "Where to?", sections Pages, Movies and Shows, and arrow, Enter and Esc hints, using ARIA combobox and listbox roles
+- [X] T072 [US7] Change the shortcuts in `ui/app.js` so Ctrl+K toggles the palette and `/` opens it outside text fields, neither of them in the player, replacing the behaviour from feature 001
+- [X] T073 [US7] Rebuild `pages.search` in `ui/pages-browse.js` with a Media, Shows, Movies, People, Lists switch and the box below it, moving the input out of `ui/index.html` to a container the router doesn't replace per query, keeping focus while typing, and debouncing about 0.13 s
+- [X] T074 [US7] Add results per mode and the empty states in `ui/pages-browse.js`, including 3-column list cards, and keep the query and position on Back
 
 **Checkpoint**: Search is complete. Review with the user.
 
@@ -196,17 +196,17 @@ description: "Task list for Trakt design parity with filters"
 
 **Independent Test**: Sign in with an account that has history, let it sync, open Profile and compare totals with Trakt. Scenarios 29 to 33 in `quickstart.md`.
 
-- [ ] T075 [US8] Add `trakt_history`, `trakt_ratings` and `sync_state` to `SCHEMA` in `src-tauri/src/db.rs` with the columns in `specs/002-trakt-design-parity/data-model.md`, and an index on `watched_at`
-- [ ] T076 [US8] Add methods to `Db` in `src-tauri/src/db.rs` to store a page of history in one transaction, using `INSERT OR REPLACE` and skipping and logging items without "`id`, `watched_at` or a movie or show object", to replace ratings, skipping any "outside 1 to 10", and to clear all three tables, with tests on an in-memory database
-- [ ] T077 [US8] Add a variant of `State::request` in `src-tauri/src/trakt.rs` that also returns `X-Pagination-Item-Count`, leaving `trakt` unchanged
-- [ ] T078 [US8] Add the `history_sync` command in `src-tauri/src/trakt.rs` with the behaviour in `specs/002-trakt-design-parity/contracts/tauri-commands.md`, using `end_at` for backfill, `start_at` for incremental and a count comparison for removals, and register it in `src-tauri/src/main.rs`
-- [ ] T079 [US8] Add the `stats` command and its SQL to `src-tauri/src/db.rs` per `contracts/tauri-commands.md`, using `date(watched_at, 'unixepoch', 'localtime')`, with tests for totals, genres, months and zeros when empty, and register it in `src-tauri/src/main.rs`
-- [ ] T080 [US8] Clear the three tables in `sign_out` in `src-tauri/src/trakt.rs`, keeping the `history` table, with a test on `Db`
-- [ ] T081 [P] [US8] Add pure `streakFrom(days, today)` and `weekHeatmap(days, today)` to `ui/lib.js`, exported and tested in `tests/ui.test.js`, including a streak ending yesterday and a gap
-- [ ] T082 [US8] Drive `history_sync` from `syncInBackground` in `ui/app.js`, at most once a second while `complete` is false, stopping when the page's token changes or on sign-out
-- [ ] T083 [US8] Build `#/profile` in `ui/pages-me.js` with totals, top genres, ratings and activity over time, progress during first sync, and Recently played totals with a sign-in prompt when signed out. Charts are CSS bars, with no new dependency
-- [ ] T084 [US8] Add the streak callout with week heatmap to `pages.home` in `ui/pages-browse.js`, linking to Profile, shown only with a streak
-- [ ] T085 [P] [US8] Describe local history and ratings in `PRIVACY.md`, `site/public/privacy.html` and the Saved on this PC card in `ui/pages-me.js`, including that signing out deletes them
+- [X] T075 [US8] Add `trakt_history`, `trakt_ratings` and `sync_state` to `SCHEMA` in `src-tauri/src/db.rs` with the columns in `specs/002-trakt-design-parity/data-model.md`, and an index on `watched_at`
+- [X] T076 [US8] Add methods to `Db` in `src-tauri/src/db.rs` to store a page of history in one transaction, using `INSERT OR REPLACE` and skipping and logging items without "`id`, `watched_at` or a movie or show object", to replace ratings, skipping any "outside 1 to 10", and to clear all three tables, with tests on an in-memory database
+- [X] T077 [US8] Add a variant of `State::request` in `src-tauri/src/trakt.rs` that also returns `X-Pagination-Item-Count`, leaving `trakt` unchanged
+- [X] T078 [US8] Add the `history_sync` command in `src-tauri/src/trakt.rs` with the behaviour in `specs/002-trakt-design-parity/contracts/tauri-commands.md`, using `end_at` for backfill, `start_at` for incremental and a count comparison for removals, and register it in `src-tauri/src/main.rs`
+- [X] T079 [US8] Add the `stats` command and its SQL to `src-tauri/src/db.rs` per `contracts/tauri-commands.md`, using `date(watched_at, 'unixepoch', 'localtime')`, with tests for totals, genres, months and zeros when empty, and register it in `src-tauri/src/main.rs`
+- [X] T080 [US8] Clear the three tables in `sign_out` in `src-tauri/src/trakt.rs`, keeping the `history` table, with a test on `Db`
+- [X] T081 [P] [US8] Add pure `streakFrom(days, today)` and `weekHeatmap(days, today)` to `ui/lib.js`, exported and tested in `tests/ui.test.js`, including a streak ending yesterday and a gap
+- [X] T082 [US8] Drive `history_sync` from `syncInBackground` in `ui/app.js`, at most once a second while `complete` is false, stopping when the page's token changes or on sign-out
+- [X] T083 [US8] Build `#/profile` in `ui/pages-me.js` with totals, top genres, ratings and activity over time, progress during first sync, and Recently played totals with a sign-in prompt when signed out. Charts are CSS bars, with no new dependency
+- [X] T084 [US8] Add the streak callout with week heatmap to `pages.home` in `ui/pages-browse.js`, linking to Profile, shown only with a streak
+- [X] T085 [P] [US8] Describe local history and ratings in `PRIVACY.md`, `site/public/privacy.html` and the Saved on this PC card in `ui/pages-me.js`, including that signing out deletes them
 
 **Checkpoint**: Stats work offline. Review with the user.
 
@@ -214,11 +214,11 @@ description: "Task list for Trakt design parity with filters"
 
 ## Phase 11: Polish
 
-- [ ] T086 [P] Update `CLAUDE.md` for the new script layout, `bar`, mode and filters, drawers, rows and local history, and correct anything from feature 001 that this replaced
-- [ ] T087 [P] Update the feature list in `README.md`
-- [ ] T088 Check that every destination works at the 800 × 500 minimum window with the rail wide and narrow, and fix `ui/style.css`
-- [ ] T089 Check keyboard access and reduced motion across pages and fix `ui/style.css` and `ui/controls.js`, including 001's rule that the context menu stays only on text fields and selected text
-- [ ] T090 Remove temporary pages and unused CSS and code left over from feature 001 in `ui/`
+- [X] T086 [P] Update `CLAUDE.md` for the new script layout, `bar`, mode and filters, drawers, rows and local history, and correct anything from feature 001 that this replaced
+- [X] T087 [P] Update the feature list in `README.md`
+- [X] T088 Check that every destination works at the 800 × 500 minimum window with the rail wide and narrow, and fix `ui/style.css`
+- [X] T089 Check keyboard access and reduced motion across pages and fix `ui/style.css` and `ui/controls.js`, including 001's rule that the context menu stays only on text fields and selected text
+- [X] T090 Remove temporary pages and unused CSS and code left over from feature 001 in `ui/`
 - [ ] T091 Run all of `specs/002-trakt-design-parity/quickstart.md`, including the licence and branding check, in the real app, with the user for signed-in scenarios
 
 ---

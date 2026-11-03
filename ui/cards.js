@@ -8,12 +8,14 @@ function cardMenuButton(it) {
 // The one action a card shows directly: mark watched where the next step is watching it, rate where it's already been watched.
 const watchAction = (it, s, e) => user ? `<button type="button" class="card-action" title="Mark watched" aria-label="Mark ${esc(it.title)} watched" data-watch="${it.type}" data-id-value="${it.id}"${s ? ` data-s="${s}" data-e="${e}"` : ''}>${icon('check')}</button>` : '';
 const rateAction = (title, kind, id) => `<button type="button" class="card-action" title="Rate" aria-label="Rate ${esc(title)}" data-rate="${kind}" data-id-value="${id}" data-rate-title="${esc(title)}">${icon('star')}</button>`;
+// Takes a title off a list of the person's own. `path` is the Trakt route that removes it.
+const removeAction = (it, path, label, done = 'Removed') => `<button type="button" class="card-action" title="${esc(label)}" aria-label="${esc(label)}: ${esc(it.title)}" data-remove-path="${esc(path)}" data-remove-type="${it.type}" data-id-value="${it.id}" data-remove-done="${esc(done)}">${icon('close')}</button>`;
 
 function posterCard(it, { label, titled, action } = {}) {
   const tt = traktType(it.type);
   const started = it.type === 'tv' && nextEps.has(it.id);
   const watched = it.type === 'movie' ? watchedMovie(it.id) : !!watchedShow(it.id) && !started;
-  const status = statusTag({ watched, started, postCredits: it.postCredits, watchlisted: inWatchlist(tt, it.id) });
+  const status = statusTag({ dropped: it.type === 'tv' && droppedShow(it.id), watched, started, postCredits: it.postCredits, watchlisted: inWatchlist(tt, it.id) });
   // Media mode mixes both types, so each card says which it is.
   const typeTag = getMode() === 'media' ? `<i class="tag type-tag" title="${it.type === 'tv' ? 'Show' : 'Movie'}">${icon(it.type === 'tv' ? 'tv' : 'film')}</i>` : '';
   const tags = (label ? [label] : [it.year, it.type === 'tv' ? it.episodes && `${it.episodes} eps` : runtimeText(it.runtime)]).filter(Boolean);
@@ -64,14 +66,28 @@ function calendarCard(x) {
     : progressCard(`#/title/movie/${it.id}`, it, it.year ?? 'Movie', null, date, { play: false });
 }
 
-// A history entry, with the rating action on what was watched.
-function historyCard(x) {
+// A history entry, with the rating action on what was watched. The History page also lets each play be removed.
+function historyCard(x, { removable } = {}) {
   const it = norm(x, x.movie ? 'movie' : 'show');
   if (!it) return '';
   const date = shortDate(x.watched_at);
-  if (!x.episode) return progressCard(`#/title/movie/${it.id}`, it, it.year ?? 'Movie', null, date, { play: false, action: user ? rateAction(it.title, 'movie', it.id) : '' });
-  return progressCard(`#/title/tv/${it.id}/${x.episode.season}`, it, episodeLine(x.episode), null, date, { play: false, action: x.episode.ids?.trakt ? rateAction(`${it.title} ${episodeLine(x.episode)}`, 'episode', x.episode.ids.trakt) : '' });
+  const remove = removable && x.id ? `<button type="button" class="card-action second" title="Remove this play" aria-label="Remove this play of ${esc(it.title)}" data-remove-play="${+x.id}">${icon('close')}</button>` : '';
+  if (!x.episode) return progressCard(`#/title/movie/${it.id}`, it, it.year ?? 'Movie', null, date, { play: false, action: (user ? rateAction(it.title, 'movie', it.id) : '') + remove });
+  return progressCard(`#/title/tv/${it.id}/${x.episode.season}`, it, episodeLine(x.episode), null, date, { play: false, action: (x.episode.ids?.trakt ? rateAction(`${it.title} ${episodeLine(x.episode)}`, 'episode', x.episode.ids.trakt) : '') + remove });
 }
+
+// For a grid of calendar entries in date order: adds a heading wherever the day changes.
+function dayHeadings(card) {
+  let day = '';
+  const today = shortDate(isoDate());
+  return x => {
+    const date = shortDate(x.first_aired ?? x.released);
+    const heading = date !== day ? `<h2 class="grid-day">${date === today ? `Today, ${esc(date)}` : esc(date)}</h2>` : '';
+    day = date;
+    return heading + card(x);
+  };
+}
+const byAirDate = (a, b) => (a.first_aired ?? a.released ?? '').localeCompare(b.first_aired ?? b.released ?? '');
 
 // Start Watching: the watchlist, titled, with one press to mark it watched. A show starts at its first episode.
 function startCard(x) {
@@ -92,8 +108,7 @@ const recentCards = async () => (await invoke('history_list', { limit: 30 })).fi
 const personCard = c => `<a class="person" href="#/person/${+c.id}"><div class="art"${c.profile_path ? ` style="background-image:url('${IMG}w185${esc(c.profile_path)}')"` : ''}>${c.profile_path ? '' : icon('user')}</div>
   <b>${esc(c.name)}</b><span>${esc(c.character)}</span></a>`;
 
-const watchlistTile = () => `<a class="list-tile" href="#/watchlist"><b>Watchlist</b><span>${watchlistItems(['movies', 'shows']).length} items</span><p>Movies and shows you want to watch.</p></a>`;
-const listTile = l => `<a class="list-tile" href="#/list/${l.ids.trakt}"><b>${esc(l.name)}</b><span>${num(l.item_count)} items · ${esc(l.privacy)}</span>${l.description ? `<p>${esc(l.description)}</p>` : ''}</a>`;
+const listTile = (l, href = `#/list/${+l.ids.trakt}`) => `<a class="list-tile" href="${esc(href)}"><b>${esc(l.name)}</b><span>${num(l.item_count)} items${l.privacy ? ` · ${esc(l.privacy)}` : ''}</span>${l.description ? `<p>${esc(l.description)}</p>` : ''}</a>`;
 
 // Rich card for the full grids: backdrop behind, poster on the left, details on the right.
 function summaryCard(it, { sortValue, label, line, href, action } = {}) {
@@ -128,7 +143,7 @@ const artObserver = new IntersectionObserver(entries => entries.forEach(async en
   const landscape = art === 'backdrop';
   const d = await (landscape ? tmdb(`/${type}/${id}`, { append_to_response: 'images', include_image_language: 'en,null' }) : tmdb(`/${type}/${id}`)).catch(() => null);
   const cover = en.target.querySelector('.art');
-  const path = landscape ? d?.backdrop_path ?? d?.poster_path : d?.poster_path ?? d?.backdrop_path;
+  const path = landscape ? d?.backdrop_path ?? d?.poster_path : d?.poster_path ?? d?.backdrop_path ?? d?.profile_path;
   if (path) {
     cover.style.backgroundImage = `url('${IMG}${landscape ? 'w780' : 'w342'}${path}')`;
     cover.classList.add('has-art');
@@ -151,7 +166,7 @@ function skeleton(kind) {
   }[kind];
   return body ? `<div aria-hidden="true">${body}</div>` : '';
 }
-const SKELETONS = { home: 'rows', discover: 'rows', progress: 'grid', title: 'title', person: 'title', lists: 'grid', watchlist: 'grid', list: 'grid', search: 'grid' };
+const SKELETONS = { home: 'rows', discover: 'rows', progress: 'grid', title: 'title', person: 'title', lists: 'rows', watchlist: 'grid', list: 'grid', search: 'grid', history: 'grid', library: 'grid', calendar: 'grid', hidden: 'grid' };
 
 // ---------- rows
 function collapsedRows() {
@@ -212,7 +227,8 @@ async function renderGrid(into, { load, card, pageSize = 100, cls = '', filtered
     grid.insertAdjacentHTML('beforeend', items.map(card).join(''));
     [...grid.children].slice(before).forEach(observeArt);
     done = items.length < pageSize;
-    if (!grid.children.length) grid.outerHTML = filtered && filterCount(activeFilters()) ? FILTER_EMPTY : `<div class="row-empty"><p class="muted">${esc(empty)}</p></div>`;
+    // `card` may leave a whole page out, so an empty grid only means nothing once the pages run out.
+    if (done && !grid.children.length) grid.outerHTML = filtered && filterCount(activeFilters()) ? FILTER_EMPTY : `<div class="row-empty"><p class="muted">${esc(empty)}</p></div>`;
   };
   const pageHeight = () => document.documentElement.scrollHeight;
   const grow = () => {
@@ -280,6 +296,9 @@ document.addEventListener('wheel', ev => {
 document.addEventListener('scroll', ev => { if (ev.target.classList?.contains('track')) updateFade(ev.target); }, { passive: true, capture: true });
 
 // ---------- card menu
+// A 420 means an account limit. /users/settings says what the limit is, when Trakt sent it.
+const listLimitMessage = (e, key, message) => String(e).startsWith('420') && user?.limits?.list?.[key] ? message : e;
+
 function openListPicker(it) {
   const tt = traktType(it.type);
   const d = drawer({ title: 'Add to list', body: '<p class="muted">Loading your lists…</p>' });
@@ -295,7 +314,7 @@ function openListPicker(it) {
         const r = await trakt('POST', `/users/me/lists/${list.ids.trakt}/items`, { [`${tt}s`]: [ids(it.id)] });
         toast(`${r?.added?.[`${tt}s`] ? 'Added to' : 'Already in'} ${list.name}`);
         d.close();
-      } catch (e) { toast(e); }
+      } catch (e) { toast(listLimitMessage(e, 'item_count', `Lists can hold ${num(user?.limits?.list?.item_count)} items on your Trakt account.`)); }
     };
   }, e => { body.innerHTML = `<p class="error">${esc(e)}</p>`; });
 }
@@ -351,8 +370,36 @@ document.addEventListener('click', ev => {
   const watch = ev.target.closest('[data-watch]');
   if (watch) return markWatchedFromCard(watch);
   const rate = ev.target.closest('[data-rate]');
-  if (rate) openRatePicker(rate.dataset.rateTitle, rate.dataset.rate, +rate.dataset.idValue);
+  if (rate) return openRatePicker(rate.dataset.rateTitle, rate.dataset.rate, +rate.dataset.idValue);
+  const removal = ev.target.closest('[data-remove-path]');
+  if (removal) {
+    const { removePath, removeType, idValue, removeDone } = removal.dataset;
+    return removeCard(removal, removePath, { [`${traktType(removeType)}s`]: [ids(+idValue)] }, removeDone);
+  }
+  const play = ev.target.closest('[data-remove-play]');
+  if (play) {
+    modal({
+      title: 'Remove this play?',
+      body: '<p class="muted">It will be removed from your Trakt history. Other plays of this title stay.</p>',
+      actions: [{ label: 'Cancel' }, { label: 'Remove play', primary: true, onClick: () => removeCard(play, '/sync/history/remove', { ids: [+play.dataset.removePlay] }, 'Removed from your history') }],
+    });
+  }
 });
+
+async function removeCard(button, path, body, done) {
+  button.disabled = true;
+  const grid = button.closest('.grid');
+  try {
+    await write(path, body);
+    await refreshProgress().catch(console.warn);
+    button.closest('.media-card')?.remove();
+    toast(done);
+    if (grid && !grid.querySelector('.media-card')) route({ soft: true }); // shows the page's empty message
+  } catch (e) {
+    button.disabled = false;
+    toast(e);
+  }
+}
 
 // Only ever runs on a press: Filmie doesn't check in or scrobble.
 async function markWatchedFromCard(button) {
@@ -390,13 +437,31 @@ function openRatePicker(title, kind, id) {
 const signInPrompt = what => `<div class="page"><section class="callout"><h2>Sign in with Trakt</h2>
   <p>Connect your Trakt account to see your ${what}.</p><a class="btn primary" href="#/settings">Sign in with Trakt</a></section></div>`;
 
-function profileHeader() {
+function profileHeader(s) {
   const u = user.user;
-  const plays = (lib?.watched_shows ?? []).reduce((n, s) => n + (s.plays ?? 0), 0);
-  const stat = (n, label) => `<div><b>${num(n)}</b><span>${label}</span></div>`;
+  const stat = (value, label) => `<div><b>${esc(value)}</b><span>${esc(label)}</span></div>`;
+  const streak = streakFrom(s.days, isoDate());
+  const totals = [
+    getMode() !== 'show' && stat(num(s.movies), 'movies'),
+    getMode() !== 'movie' && stat(num(s.shows), 'shows'),
+    getMode() !== 'movie' && stat(num(s.episodes), 'episodes'),
+    stat(durationText(s.minutes), 'watched'),
+    stat(num(streak), 'day streak'),
+  ].filter(Boolean).join('');
   return `<section class="profile">${avatar('big')}
     <div class="who"><h1>${esc(u.name || u.username)}</h1><p class="muted">@${esc(u.username)}${u.location ? ` · ${esc(u.location)}` : ''}${u.vip ? ' · VIP' : ''}</p></div>
-    <div class="stats">${stat(lib?.watched_movies?.length, 'movies')}${stat(lib?.watched_shows?.length, 'shows')}${stat(plays, 'episode plays')}${stat(watchlistItems(['movies', 'shows']).length, 'on watchlist')}</div></section>`;
+    <div class="stats">${totals}</div></section>`;
+}
+
+// The Home callout. It only appears with a streak going, and leads to Profile.
+function streakCallout(days) {
+  const today = isoDate();
+  const streak = streakFrom(days, today);
+  if (!streak) return '';
+  const week = weekHeatmap(days, today);
+  const label = n => new Date(`${addDays(today, n - 6)}T00:00:00Z`).toLocaleDateString('en-US', { weekday: 'narrow', timeZone: 'UTC' });
+  return `<a class="streak" href="#/profile">${icon('flame')}<span class="streak-text"><b>${num(streak)}-day streak</b><small class="muted">See your stats</small></span>
+    <span class="streak-week" role="img" aria-label="Watched on ${week.filter(Boolean).length} of the last 7 days">${week.map((on, i) => `<span class="${on ? 'on' : ''}"><i></i><small>${esc(label(i))}</small></span>`).join('')}</span>${icon('forward')}</a>`;
 }
 
 const watchers = x => `${num(x.watchers)} watching`;

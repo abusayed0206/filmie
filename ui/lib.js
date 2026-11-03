@@ -119,6 +119,72 @@ const isoDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 
 // A date with no time (a movie's release) means that calendar day everywhere, so it mustn't shift with the timezone.
 const shortDate = s => !s ? '' : new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', ...(s.length === 10 ? { timeZone: 'UTC' } : {}) });
 
+const fullDate = s => !s ? '' : new Date(s).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', ...(s.length === 10 ? { timeZone: 'UTC' } : {}) });
+// Date arithmetic on YYYY-MM-DD. It's done in UTC so a clock change can't move a day.
+const addDays = (iso, n) => new Date(Date.parse(`${iso}T00:00:00Z`) + n * 86400e3).toISOString().slice(0, 10);
+const weekStart = iso => addDays(iso, -((new Date(`${iso}T00:00:00Z`).getUTCDay() + 6) % 7));
+
+// What a summary card shows in place of the rating under a given sort. Undefined keeps the rating.
+function sortValue(x, by, mine) {
+  const m = x?.movie ?? x?.show ?? x;
+  if (by === 'added') return fullDate(x?.listed_at) || undefined;
+  if (by === 'runtime') return runtimeText(m?.runtime) || undefined;
+  if (by === 'my_rating') return mine ? `${mine}/10` : undefined;
+  if (by === 'released') return fullDate(m?.released ?? m?.first_aired) || undefined;
+  if (by === 'rank') return x?.rank ? `#${x.rank}` : undefined;
+  return undefined;
+}
+
+// Trakt's progress page splits finished shows on whether more episodes can come.
+const hasEnded = status => status === 'ended' || status === 'canceled';
+
+// Trakt returns lists in the person's own order, so 'rank' keeps it.
+function sortLists(lists, by) {
+  const newest = key => (a, b) => (b[key] ?? '').localeCompare(a[key] ?? '');
+  const order = { name: (a, b) => a.name.localeCompare(b.name), updated: newest('updated_at'), created: newest('created_at') }[by];
+  return order ? [...lists].sort(order) : lists;
+}
+
+// Consecutive watched days ending today or yesterday, so a streak survives until a day is really missed.
+function streakFrom(days, today) {
+  const seen = new Set(days);
+  let day = seen.has(today) ? today : addDays(today, -1);
+  let streak = 0;
+  while (seen.has(day)) {
+    streak++;
+    day = addDays(day, -1);
+  }
+  return streak;
+}
+// The last seven days, today last.
+const weekHeatmap = (days, today) => [6, 5, 4, 3, 2, 1, 0].map(n => days.includes(addDays(today, -n)));
+
+// A long total reads better in days than in hundreds of hours.
+function durationText(minutes) {
+  const m = minutes ?? 0;
+  if (m < 60) return `${m}m`;
+  if (m < 1440) return runtimeText(m);
+  return [`${Math.floor(m / 1440)}d`, m % 1440 >= 60 && `${Math.floor(m % 1440 / 60)}h`].filter(Boolean).join(' ');
+}
+
+// The last n months, oldest first, including those with no plays so the chart's time axis is even.
+function recentMonths(byMonth, today, n) {
+  const plays = new Map(byMonth.map(x => [x.month, x.plays]));
+  const [year, month] = today.split('-').map(Number);
+  return Array.from({ length: n }, (_, i) => {
+    const d = new Date(Date.UTC(year, month - 1 - (n - 1 - i), 1));
+    const key = d.toISOString().slice(0, 7);
+    return { month: key, plays: plays.get(key) ?? 0 };
+  });
+}
+
+// Trakt's exact search still returns near-matches, so true title matches go first. The rest keep their order.
+function exactFirst(items, query) {
+  const q = query.toLowerCase();
+  const exact = x => (x.movie ?? x.show)?.title?.toLowerCase() === q;
+  return [...items].sort((a, b) => exact(b) - exact(a));
+}
+
 // Continue Watching mixes shows in progress with paused movies, most recent first.
 const continueTime = x => x.progress?.last_watched_at ?? x.paused_at ?? '';
 const mergeContinue = (shows, movies) => [...shows, ...movies].sort((a, b) => continueTime(b).localeCompare(continueTime(a)));
@@ -186,7 +252,7 @@ function validProgress(p, runtimeMinutes) {
 // The rail items a route highlights, the exact one first. Title and player pages belong to none.
 const RAIL_ITEMS = {
   '': [''], search: ['search'], progress: ['progress', ''], calendar: ['calendar', ''], discover: ['discover'],
-  lists: ['lists'], list: ['lists'], watchlist: ['watchlist', 'lists'], history: ['history'], library: ['library'], settings: ['settings'], profile: ['profile'],
+  lists: ['lists'], list: ['lists'], watchlist: ['watchlist', 'lists'], history: ['history'], library: ['library'], settings: ['settings'], hidden: ['settings'], profile: ['profile'],
 };
 function navFor(page, sub) {
   if (page === 'discover' && sub) return sub === 'recommended' ? ['discover/recommended', ''] : [`discover/${sub}`, 'discover'];
@@ -284,4 +350,4 @@ function playedNote(p, now = Date.now() / 1000) {
   return `Opened ${Math.floor(mins / 1440)} d ago`;
 }
 
-if (typeof module !== 'undefined') module.exports = { validProgress, playedNote, ratingRows, historyBody, safeColor, youtubeUrl, newestCredits, isoDate, shortDate, mergeContinue, startWatching, runtimeText, statusTag, navFor, modeOf, FILTERS, decadeOptions, cleanFilters, filterQuery, filterCount, addQuery, fitsSimple, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm };
+if (typeof module !== 'undefined') module.exports = { validProgress, playedNote, ratingRows, historyBody, safeColor, youtubeUrl, newestCredits, isoDate, shortDate, fullDate, addDays, weekStart, sortValue, hasEnded, sortLists, exactFirst, streakFrom, weekHeatmap, durationText, recentMonths, mergeContinue, startWatching, runtimeText, statusTag, navFor, modeOf, FILTERS, decadeOptions, cleanFilters, filterQuery, filterCount, addQuery, fitsSimple, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm };

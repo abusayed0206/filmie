@@ -74,22 +74,14 @@ async function releasesPage(into) {
   const kind = getMode() === 'movie' ? 'all' : releasesKind;
   const path = kind === 'all' ? forMode('media', 'shows', 'movies') : `shows/${kind}`;
   if (getMode() !== 'movie') into.insertAdjacentHTML('beforeend', `<div class="page-tools">${segmented('release-kind', RELEASE_KINDS, kind, v => { releasesKind = v; route({ soft: true }); }, 'Release type')}</div>`);
-  const all = (await traktGet(withFilters(`/calendars/all/${path}/${isoDate()}/30`))).sort((a, b) => (a.first_aired ?? a.released ?? '').localeCompare(b.first_aired ?? b.released ?? ''));
-  let day = '';
+  const all = (await traktGet(withFilters(`/calendars/all/${path}/${isoDate()}/30`))).sort(byAirDate);
   // Calendars ignore paging and can return over a thousand items, so this hands them out a screen at a time.
   return renderGrid(into, {
     cls: 'landscape-grid', filtered: true, empty: 'No releases in the next 30 days.', pageSize: 60,
     load: async page => all.slice((page - 1) * 60, page * 60),
-    card: x => {
-      const date = shortDate(x.first_aired ?? x.released);
-      const heading = date !== day ? `<h2 class="grid-day">${esc(date)}</h2>` : '';
-      day = date;
-      return heading + calendarCard(x);
-    },
+    card: dayHeadings(calendarCard),
   });
 }
-
-const comingSoon = title => { app.innerHTML = `<div class="page"><h1 class="sr-only">${esc(title)}</h1><p class="muted">This page is coming in a later step.</p></div>`; };
 
 Object.assign(pages, {
   async home() {
@@ -104,8 +96,14 @@ Object.assign(pages, {
         chart('Most anticipated', 'anticipated', anticipated, '#/discover/anticipated'),
       ], app.firstElementChild);
     }
+    const token = routeToken;
+    const stats = await invoke('stats', { kind: null }).catch(() => null);
+    if (token !== routeToken) return;
     app.innerHTML = '<div class="page"><h1 class="sr-only">Home</h1></div>';
-    await renderRows([continueRow(), startRow(), calendarRow(), recommendedRow('#/discover/recommended'), historyRow(), recentRow()], app.firstElementChild);
+    const rows = renderRows([continueRow(), startRow(), calendarRow(), recommendedRow('#/discover/recommended'), historyRow(), recentRow()], app.firstElementChild);
+    // The rows' sections exist by now, even though their contents are still loading.
+    app.querySelector('[data-row="calendar"]').insertAdjacentHTML('beforebegin', streakCallout(stats?.days ?? []));
+    await rows;
   },
 
   async discover(sub) {
@@ -127,29 +125,68 @@ Object.assign(pages, {
     ], into);
   },
 
-  // Trakt search: exact title matches first, then broader results (Trakt's recommended flow).
   async search(q) {
     const query = decodeURIComponent(q ?? '');
-    if (traversing || !query) searchBox.value = query; // otherwise it holds what's being typed right now
-    if (!query) { app.innerHTML = '<div class="page"><h1 class="sr-only">Search</h1><p class="muted">Find movies and shows by title.</p></div>'; return; }
-    const enc = encodeURIComponent(query);
-    const none = () => [];
-    const token = routeToken;
-    const [exactM, exactS, broad] = await Promise.all([
-      traktGet(`/search/movie/exact?query=${enc}&limit=5`).catch(none),
-      traktGet(`/search/show/exact?query=${enc}&limit=5`).catch(none),
-      traktGet(`/search/movie,show?query=${enc}&limit=40`),
-    ]);
-    if (token !== routeToken) return;
-    const seen = new Set();
-    const exact = it => it.title?.toLowerCase() === query.toLowerCase();
-    const items = [...exactM, ...exactS, ...broad].map(x => norm(x)).filter(it => it && !seen.has(it.type + it.id) && seen.add(it.type + it.id))
-      .sort((a, b) => exact(b) - exact(a)); // exact endpoints still return near-matches; true title matches go first
-    app.innerHTML = `<div class="page"><h1>Results for “${esc(query)}”</h1>
-      ${items.length ? `<div class="grid">${items.map(it => posterCard(it, { label: `${it.year ?? ''} · ${it.type === 'tv' ? 'Show' : 'Movie'}` })).join('')}</div>` : '<p class="muted">Nothing found.</p>'}</div>`;
-    observeArt(app);
+    if (traversing || !query || !searchBox.value) searchBox.value = query; // otherwise it holds what's being typed right now
+    const mode = getSearchMode();
+    searchBox.placeholder = SEARCH_PLACEHOLDERS[mode];
+    searchBox.setAttribute('aria-label', SEARCH_PLACEHOLDERS[mode]);
+    app.innerHTML = `<div class="page"><h1 class="sr-only">${query ? `Results for ${esc(query)}` : 'Search'}</h1></div>`;
+    const into = app.firstElementChild;
+    return query ? searchResults(into, query, mode) : searchEmpty(into, mode);
   },
 });
+
+const SEARCH_PLACEHOLDERS = { media: 'Search movies and shows', show: 'Search shows', movie: 'Search movies', person: 'Search people', list: 'Search lists' };
+const SEARCH_PAGE = 40;
+const publicListTile = l => l?.ids?.trakt ? listTile(l, `#/list/${+l.ids.trakt}/public`) : '';
+// Trakt has no photos we can load, so this asks TMDB for one when the card comes near the screen.
+const searchPersonCard = p => p?.ids?.tmdb ? `<div class="media-card"><a class="person" href="#/person/${+p.ids.tmdb}" data-type="person" data-id="${+p.ids.tmdb}" title="${esc(p.name)}"><div class="art">${icon('user')}</div><b>${esc(p.name)}</b>${p.known_for_department ? `<span>${esc(statusText(p.known_for_department))}</span>` : ''}</a></div>` : '';
+
+function searchResults(into, query, mode) {
+  const enc = encodeURIComponent(query);
+  const page = (type, n) => traktGet(`/search/${type}?query=${enc}&page=${n}&limit=${SEARCH_PAGE}&extended=full`);
+  const empty = `Nothing found for “${query}”.`;
+  if (mode === 'person' || mode === 'list') {
+    return renderGrid(into, {
+      cls: mode === 'list' ? 'list-grid' : '', empty, pageSize: SEARCH_PAGE,
+      load: n => page(mode, n),
+      card: x => mode === 'list' ? publicListTile(x.list) : searchPersonCard(x.person),
+    });
+  }
+  // Exact title matches first, then broader results, as Trakt recommends. A title can come back from both.
+  const seen = new Set();
+  return renderGrid(into, {
+    empty, pageSize: SEARCH_PAGE,
+    load: async n => {
+      const broad = await page({ media: 'movie,show', show: 'show', movie: 'movie' }[mode], n);
+      if (n > 1) return broad;
+      const exact = await Promise.all({ media: ['movie', 'show'], show: ['show'], movie: ['movie'] }[mode].map(t => traktGet(`/search/${t}/exact?query=${enc}&limit=5&extended=full`).catch(() => [])));
+      return exactFirst([...exact.flat(), ...broad], query);
+    },
+    card: x => {
+      const it = norm(x);
+      if (!it || seen.has(it.type + it.id)) return '';
+      seen.add(it.type + it.id);
+      return posterCard(it);
+    },
+  });
+}
+
+// What an empty search box shows: what others are searching for, or popular lists.
+// shortcut: no Birthdays This Month for People, because the free API has no route for it. Upgrade if Trakt adds one.
+function searchEmpty(into, mode) {
+  const top = type => traktGet(`/search/recent_by_id/global/${type}?limit=30&extended=full`).catch(() => []);
+  into.insertAdjacentHTML('beforeend', `<h2 class="search-heading">${mode === 'list' ? 'Popular Lists' : 'Top Searches'}</h2>`);
+  const grid = { pageSize: Infinity, empty: 'Nothing to show right now. Type above to search.' };
+  if (mode === 'list') return renderGrid(into, { ...grid, cls: 'list-grid', load: () => traktGet('/lists/popular?limit=30').catch(() => []), card: x => publicListTile(x.list) });
+  if (mode === 'person') return renderGrid(into, { ...grid, load: () => top('people'), card: x => searchPersonCard(x.person) });
+  return renderGrid(into, {
+    ...grid,
+    load: async () => (await Promise.all({ media: ['movies', 'shows'], show: ['shows'], movie: ['movies'] }[mode].map(top))).flat(),
+    card: x => { const it = norm(x); return it ? posterCard(it) : ''; },
+  });
+}
 
 const DISCOVER_TITLES = { trending: 'Trending', releases: 'Releases', anticipated: 'Anticipated', popular: 'Popular', recommended: 'Recommended' };
 const discoverTitle = sub => DISCOVER_TITLES[sub] ?? { media: 'Discover', show: 'Shows', movie: 'Movies' }[getMode()];
@@ -162,4 +199,4 @@ pages.discover.bar = sub => ({
   mode: sub && sub !== 'releases' ? 'drawer' : 'bar',
   filters: sub === 'recommended' ? false : sub ? 'local' : 'global',
 });
-pages.search.bar = { title: 'Search' };
+pages.search.bar = { title: 'Search', mode: 'search' };

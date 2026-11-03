@@ -120,6 +120,23 @@ The player is a cross-origin iframe, so the app can't read the playback position
 - The native side can: WebView2's `AddScriptToExecuteOnDocumentCreated` applies to "all future top level document and child frame navigations", and Tauri exposes `initialization_script_for_all_frames`. Tauri's docs don't mention cross-origin frames, so test it first. The page's sandbox or CSP can still limit the script. Injected fixes depend on the page's markup and can break when it changes.
 - A server's direct embed URL can be added as a source in Settings, which skips the wrapper page with no code.
 
+### Stats from a local copy of the history (read from trakt-api `090d333`, 2026-11-03; not yet called with a real account)
+- `/users/{id}/stats` is VIP only and returned 204 for a free account, so Filmie copies `/sync/history` and `/sync/ratings/{type}` into SQLite and adds them up there. The API use policy allows caching for features people use, and this copy stays on the PC and is deleted on sign-out.
+- `/sync/history` takes `start_at` and `end_at`. The contract doesn't say whether they're inclusive, so a backfill asks up to one second past its oldest stored play, skips whole pages of plays it already has in that window, and stops if a full page adds nothing new.
+- The `X-Pagination-Item-Count` header on a filtered request is assumed to count only what the filter matches, so the total comes from a separate `/sync/history?limit=1`.
+- `/sync/last_activities` has no marker for a removed play, so `activities.all` triggers a check and the counts decide. Whether `all` moves on a removal is unconfirmed: run scenario 32 in `specs/002-trakt-design-parity/quickstart.md`.
+- [Sync contract](https://github.com/trakt/trakt-api/blob/main/projects/api/src/contracts/sync/index.ts).
+
+### Your own tracking pages (read from trakt-api `090d333` and trakt-web `9ebdbff`, 2026-11-03; not yet called with a real account)
+- **Shared lists:** `GET /users/{id}/lists/collaborations`. Items of a shared list live under the owner's slug, not `/users/me`. The earlier `/users/me/collaborations` returned 405.
+- **Liked lists:** `/users/likes/lists` wraps each one in `{ liked_at, list }`.
+- **Progress tabs:** trakt-web asks `/sync/progress/up_next_nitro` with `intent=continue` or `intent=completed`, then splits Completed and Ended on the show's status, where `ended` and `canceled` count as ended. Dropped is `/users/hidden/dropped`.
+- **Single types differ by route:** list items take `movie` or `show`, and the sync routes Filmie already uses take `movies` or `shows`.
+- **Notes:** `/notes/{id}` takes `PUT` and `DELETE`. `POST /notes` exists, but the contract doesn't say what `item` must hold, and trakt-web uses a private `/v3/users/me/notes` route instead. Filmie shows, edits and deletes notes but can't add one yet.
+- **Dropped activity:** `/sync/last_activities` has `shows.dropped_at` and `shows.hidden_at`.
+- **Search empty states:** `/search/recent_by_id/global/{movies,shows,people}` returns `{ id, count, type, movie | show | person }`, and `/lists/popular` wraps each one in `{ list }`. The contracts have no route behind Trakt's Birthdays This Month, so Filmie shows Top Searches for People too. Only the movies route was probed.
+- **Sources:** [sync contract](https://github.com/trakt/trakt-api/blob/main/projects/api/src/contracts/sync/index.ts), [notes contract](https://github.com/trakt/trakt-api/blob/main/projects/api/src/contracts/notes/index.ts), [user lists contract](https://github.com/trakt/trakt-api/blob/main/projects/api/src/contracts/users/subroutes/userLists.ts).
+
 ## 5. Ratings and links
 | Source | How |
 |---|---|

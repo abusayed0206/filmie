@@ -8,7 +8,7 @@ Runs one step of local history sync and returns progress. The frontend calls it 
 
 | Situation | One step does |
 |---|---|
-| Signed out | Returns zeros |
+| Signed out | Returns zeros, with `complete` true so nothing repeats the call |
 | Not complete | Fetches one page, older than `MIN(watched_at)` |
 | Complete, activity unchanged | Nothing, with no request beyond `last_activities` |
 | Complete, activity moved | Fetches newer than `MAX(watched_at)`, updates ratings if `rated_at` moved, then compares counts |
@@ -16,9 +16,9 @@ Runs one step of local history sync and returns progress. The frontend calls it 
 
 Errors return `Err(String)` in the existing format and leave stored data alone. The next call retries.
 
-## `stats() -> Stats`
+## `stats(kind?) -> Stats`
 
-Reads only local data and makes no network request. It works offline and when signed out, returning zeros.
+Reads only local data and makes no network request. It works offline and when signed out, returning zeros. `kind` is `movie` or `episode`, narrowing everything except `days` to follow the mode switch on Profile.
 
 ```text
 {

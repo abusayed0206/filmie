@@ -89,7 +89,7 @@ async function detailsDrawer({ d, t, tt, links }) {
   const statLine = stats && [['Watchers', stats.watchers], ['Plays', stats.plays], ['Collectors', stats.collectors], ['Lists', stats.lists], ['Favorited', stats.favorited], ['Comments', stats.comments]].filter(([, v]) => v);
   const more = [
     statLine?.length && `<h3 class="filter-section">On Trakt</h3><div class="fact-list">${watching?.length ? `<div class="fact"><span class="muted">Watching now</span><span>${num(watching.length)}</span></div>` : ''}${statLine.map(([k, v]) => `<div class="fact"><span class="muted">${k}</span><span>${num(v)}</span></div>`).join('')}</div>`,
-    releases?.length && `<h3 class="filter-section">Releases in ${esc(REGION())}</h3><div class="fact-list">${releases.map(r => `<div class="fact"><span class="muted">${esc(statusText(r.release_type) || 'Release')}${r.note ? ` · ${esc(r.note)}` : ''}</span><span>${esc(shortDate(r.release_date))}, ${esc(r.release_date.slice(0, 4))}</span></div>`).join('')}</div>`,
+    releases?.length && `<h3 class="filter-section">Releases in ${esc(REGION())}</h3><div class="fact-list">${releases.map(r => `<div class="fact"><span class="muted">${esc(statusText(r.release_type) || 'Release')}${r.note ? ` · ${esc(r.note)}` : ''}</span><span>${esc(fullDate(r.release_date))}</span></div>`).join('')}</div>`,
     studios?.length && `<h3 class="filter-section">Studios</h3><p>${esc(studios.map(s => s.name).join(', '))}</p>`,
     aliases?.length && `<h3 class="filter-section">Also known as</h3><p class="muted">${esc([...new Set(aliases.map(a => a.title))].slice(0, 12).join(', '))}</p>`,
     translations?.length && `<h3 class="filter-section">Translated into</h3><p class="muted">${esc([...new Set(translations.map(x => languageName(x.language)))].join(', '))}</p>`,
@@ -159,7 +159,7 @@ async function showTitle(type, id, season = null) {
   const started = !!next;
   const watched = type === 'movie' ? watchedMovie(id) : !!watchedShow(id) && !started;
   const listed = inWatchlist(tt, id);
-  const status = statusTag({ watched, started, postCredits: t?.after_credits || t?.during_credits, watchlisted: listed });
+  const status = statusTag({ dropped: type === 'tv' && droppedShow(id), watched, started, postCredits: t?.after_credits || t?.during_credits, watchlisted: listed });
   const credits = type === 'movie'
     ? ['Directed by', (d.credits?.crew ?? []).filter(c => c.job === 'Director')]
     : ['Created by', d.created_by ?? []];
@@ -209,7 +209,9 @@ async function showTitle(type, id, season = null) {
       { label: 'Add to list', icon: 'list', onClick: () => openListPicker({ type, id, title: name }) },
       { label: 'Add to library', icon: 'library', onClick: () => titleWrite('/sync/collection', body, 'Added to your library').catch(toast) },
       t && { label: 'Your history', icon: 'history', onClick: () => historyDrawer(name, tt, t) },
-      type === 'tv' && { label: 'Drop this show', icon: 'close', danger: true, onClick: () => modal({
+      // shortcut: no way to add a note here, because Trakt's contract doesn't say what the note's `item` must hold. Upgrade once a real POST /notes is confirmed.
+      type === 'tv' && droppedShow(id) && { label: 'Undrop this show', icon: 'plus', onClick: () => titleWrite('/users/hidden/dropped/remove', body, 'Back in your progress').catch(toast) },
+      type === 'tv' && !droppedShow(id) && { label: 'Drop this show', icon: 'close', danger: true, onClick: () => modal({
         title: 'Drop this show?',
         body: `<p class="muted">${esc(name)} will move to your dropped shows, and leave Continue Watching.</p>`,
         actions: [{ label: 'Cancel' }, { label: 'Drop show', primary: true, onClick: () => titleWrite('/users/hidden/dropped', body, 'Show dropped').catch(toast) }],

@@ -159,6 +159,79 @@ async function loadFilterSources() {
 }
 
 const MODE_OPTIONS = [{ value: 'media', label: 'Media', icon: 'media' }, { value: 'show', label: 'Shows', icon: 'tv' }, { value: 'movie', label: 'Movies', icon: 'film' }];
+const SEARCH_OPTIONS = [...MODE_OPTIONS, { value: 'person', label: 'People', icon: 'user' }, { value: 'list', label: 'Lists', icon: 'list' }];
+
+// The command palette: Ctrl+K or /. The focus stays in the box, and the arrows move a highlight through the options.
+const PALETTE_PAGES = [
+  ['Home', '#/'], ['Continue Watching', '#/progress', true], ['Calendar', '#/calendar', true], ['Recommended', '#/discover/recommended', true],
+  ['Discover', '#/discover'], ['Trending', '#/discover/trending'], ['Releases', '#/discover/releases'], ['Anticipated', '#/discover/anticipated'], ['Popular', '#/discover/popular'],
+  ['Lists', '#/lists', true], ['Watchlist', '#/watchlist', true], ['History', '#/history', true], ['Library', '#/library', true], ['Profile', '#/profile', true],
+  ['Search', '#/search'], ['Settings', '#/settings'],
+];
+function togglePalette() {
+  const open = document.querySelector('dialog.palette[open]');
+  if (open) return open.close();
+  let timer;
+  let asked = 0; // drops answers to anything but the latest query
+  const d = openDialog('palette', `<label class="search"><svg class="i" aria-hidden="true"><use href="#i-search"/></svg>
+      <input id="palette-input" type="text" role="combobox" placeholder="Where to?" aria-label="Where to?" aria-expanded="true" aria-controls="palette-list" aria-autocomplete="list" autocomplete="off" spellcheck="false"></label>
+    <div id="palette-list" class="palette-list" role="listbox" aria-label="Results"></div>
+    <div class="palette-hints" aria-hidden="true"><span><kbd>↑</kbd> <kbd>↓</kbd> Move</span><span><kbd>Enter</kbd> Open</span><span><kbd>Esc</kbd> Close</span></div>`, () => { clearTimeout(timer); asked++; });
+  const input = d.querySelector('input');
+  const list = d.querySelector('.palette-list');
+  let active = 0;
+  const options = () => [...list.querySelectorAll('[role="option"]')];
+  const setActive = i => {
+    const all = options();
+    active = all.length ? (i + all.length) % all.length : 0;
+    all.forEach((o, n) => o.setAttribute('aria-selected', String(n === active)));
+    if (all[active]) input.setAttribute('aria-activedescendant', all[active].id);
+    else input.removeAttribute('aria-activedescendant');
+    all[active]?.scrollIntoView({ block: 'nearest' });
+  };
+  // sections: [{ title, icon, items: [{ label, sub, href }] }]. Nothing found only counts once the search has answered.
+  const draw = (sections, searching) => {
+    let n = 0;
+    const filled = sections.filter(s => s.items.length);
+    list.innerHTML = filled.map(s => `<div role="group" aria-label="${esc(s.title)}"><div class="palette-section" aria-hidden="true">${esc(s.title)}</div>
+      ${s.items.map(x => `<a id="palette-${n++}" role="option" tabindex="-1" aria-selected="false" href="${esc(x.href)}">${icon(s.icon)}<span>${esc(x.label)}</span>${x.sub ? `<small class="muted">${esc(x.sub)}</small>` : ''}</a>`).join('')}</div>`).join('')
+      || (searching ? '' : '<p class="palette-none muted">Nothing found.</p>');
+    setActive(0);
+  };
+  const results = (items, kind) => items.map(x => norm(x, kind)).filter(Boolean).map(it => ({ label: it.title, sub: it.year, href: `#/title/${it.type}/${it.id}` }));
+  const update = () => {
+    const query = input.value.trim();
+    const q = query.toLowerCase();
+    const pages = { title: 'Pages', icon: 'compass', items: PALETTE_PAGES.filter(([label, , auth]) => (user || !auth) && label.toLowerCase().includes(q)).map(([label, href]) => ({ label, href })) };
+    const token = ++asked;
+    clearTimeout(timer);
+    draw([pages], !!query);
+    if (!query) return;
+    timer = setTimeout(async () => {
+      const search = type => traktGet(`/search/${type}?query=${encodeURIComponent(query)}&limit=5`).catch(() => []);
+      const [movies, shows] = await Promise.all([search('movie'), search('show')]);
+      if (token !== asked) return;
+      draw([pages, { title: 'Movies', icon: 'film', items: results(movies, 'movie') }, { title: 'Shows', icon: 'tv', items: results(shows, 'show') }]);
+    }, 130);
+  };
+  input.addEventListener('input', update);
+  input.addEventListener('keydown', ev => {
+    if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+      ev.preventDefault();
+      setActive(active + (ev.key === 'ArrowDown' ? 1 : -1));
+    } else if (ev.key === 'Enter') {
+      ev.preventDefault();
+      options()[active]?.click();
+    }
+  });
+  list.addEventListener('click', ev => { if (ev.target.closest('[role="option"]')) d.close(); });
+  list.addEventListener('mousemove', ev => {
+    const i = options().indexOf(ev.target.closest('[role="option"]'));
+    if (i >= 0 && i !== active) setActive(i);
+  });
+  update();
+  input.focus();
+}
 
 // The filter drawer. It edits a draft, and the page only reloads on close if something changed.
 async function openFilterDrawer() {

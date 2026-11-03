@@ -1,4 +1,5 @@
-//! Local SQLite store: a response cache so repeat views skip the network, and the "Recently played" list.
+//! Local SQLite store: a response cache so repeat views skip the network, the "Recently played" list,
+//! and a copy of the Trakt history and ratings that stats are worked out from.
 
 use crate::trakt::State;
 use rusqlite::{Connection, OptionalExtension, params};
@@ -30,6 +31,30 @@ const SCHEMA: &str = "
         updated_at INTEGER NOT NULL,
         PRIMARY KEY (kind, id)
     );
+    CREATE TABLE IF NOT EXISTS trakt_history (
+        id INTEGER PRIMARY KEY,
+        kind TEXT NOT NULL,
+        watched_at INTEGER NOT NULL,
+        trakt_id INTEGER NOT NULL,
+        tmdb_id INTEGER,
+        title TEXT NOT NULL,
+        season INTEGER,
+        episode INTEGER,
+        runtime INTEGER NOT NULL DEFAULT 0,
+        genres TEXT NOT NULL DEFAULT '[]'
+    );
+    CREATE INDEX IF NOT EXISTS trakt_history_watched_at ON trakt_history (watched_at);
+    CREATE TABLE IF NOT EXISTS trakt_ratings (
+        kind TEXT NOT NULL,
+        trakt_id INTEGER NOT NULL,
+        rating INTEGER NOT NULL,
+        rated_at INTEGER NOT NULL,
+        PRIMARY KEY (kind, trakt_id)
+    );
+    CREATE TABLE IF NOT EXISTS sync_state (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+    );
 ";
 // Expired rows stay a while as an offline fallback.
 const KEEP_EXPIRED_SECS: i64 = 30 * 86_400;
@@ -50,6 +75,66 @@ pub struct Played {
     pub duration: f64,
     #[serde(default)]
     pub updated_at: i64,
+}
+
+/// How much of the Trakt history is stored locally.
+pub struct HistoryBounds {
+    pub count: i64,
+    pub oldest: Option<i64>,
+    pub newest: Option<i64>,
+}
+
+fn unix_time(conn: &Connection, text: &str) -> Option<i64> {
+    conn.query_row("SELECT CAST(strftime('%s', ?1) AS INTEGER)", [text], |r| r.get(0)).ok().flatten()
+}
+
+/// Stores one /sync/history item. Returns false, storing nothing, if it lacks what a play needs.
+fn store_play(conn: &Connection, item: &Value) -> rusqlite::Result<bool> {
+    let (kind, media) = match (item.get("movie").filter(|m| m.is_object()), item.get("show").filter(|s| s.is_object())) {
+        (Some(movie), _) => ("movie", movie),
+        (None, Some(show)) => ("episode", show),
+        (None, None) => return Ok(false),
+    };
+    let watched_at = item["watched_at"].as_str().and_then(|t| unix_time(conn, t));
+    let (Some(id), Some(watched_at), Some(trakt_id), Some(title)) =
+        (item["id"].as_i64(), watched_at, media["ids"]["trakt"].as_i64(), media["title"].as_str())
+    else {
+        return Ok(false);
+    };
+    let episode = &item["episode"];
+    let genres = media.get("genres").filter(|g| g.is_array()).map_or_else(|| "[]".to_string(), Value::to_string);
+    conn.prepare_cached(
+        "INSERT OR REPLACE INTO trakt_history (id, kind, watched_at, trakt_id, tmdb_id, title, season, episode, runtime, genres)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+    )?
+    .execute(params![
+        id,
+        kind,
+        watched_at,
+        trakt_id,
+        media["ids"]["tmdb"].as_i64(),
+        title,
+        episode["season"].as_i64(),
+        episode["number"].as_i64(),
+        episode["runtime"].as_i64().or(media["runtime"].as_i64()).unwrap_or(0),
+        genres
+    ])?;
+    Ok(true)
+}
+
+/// Stores one rating. Returns false, storing nothing, if it isn't a rating from 1 to 10 of something identifiable.
+fn store_rating(conn: &Connection, item: &Value) -> rusqlite::Result<bool> {
+    let kind = item["type"].as_str().unwrap_or_default();
+    let rated_at = item["rated_at"].as_str().and_then(|t| unix_time(conn, t));
+    let (Some(trakt_id), Some(rating), Some(rated_at)) = (item[kind]["ids"]["trakt"].as_i64(), item["rating"].as_i64(), rated_at) else {
+        return Ok(false);
+    };
+    if !(1..=10).contains(&rating) {
+        return Ok(false);
+    }
+    conn.prepare_cached("INSERT OR REPLACE INTO trakt_ratings (kind, trakt_id, rating, rated_at) VALUES (?1, ?2, ?3, ?4)")?
+        .execute(params![kind, trakt_id, rating, rated_at])?;
+    Ok(true)
 }
 
 pub struct Db(Mutex<Connection>);
@@ -169,6 +254,136 @@ impl Db {
     fn cache_stats(&self) -> rusqlite::Result<(i64, i64)> {
         self.conn().query_row("SELECT COUNT(*), COALESCE(SUM(LENGTH(body)), 0) FROM cache", [], |r| Ok((r.get(0)?, r.get(1)?)))
     }
+
+    /// Stores a page of history in one transaction, so closing the app can't leave half a page.
+    pub fn store_history(&self, items: &[Value]) -> rusqlite::Result<()> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        for item in items {
+            if !store_play(&tx, item)? {
+                eprintln!("skipped a Trakt history item without an id, a date or a title");
+            }
+        }
+        tx.commit()
+    }
+
+    pub fn replace_ratings(&self, items: &[Value]) -> rusqlite::Result<()> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        tx.execute("DELETE FROM trakt_ratings", [])?;
+        for item in items {
+            if !store_rating(&tx, item)? {
+                eprintln!("skipped a Trakt rating that wasn't 1 to 10 of a known title");
+            }
+        }
+        tx.commit()
+    }
+
+    pub fn history_bounds(&self) -> rusqlite::Result<HistoryBounds> {
+        self.conn().query_row("SELECT COUNT(*), MIN(watched_at), MAX(watched_at) FROM trakt_history", [], |r| {
+            Ok(HistoryBounds { count: r.get(0)?, oldest: r.get(1)?, newest: r.get(2)? })
+        })
+    }
+
+    /// Stored plays in the second of `at` and the one after, which a backfill asking up to `at + 1` gets back first.
+    pub fn plays_near(&self, at: i64) -> rusqlite::Result<i64> {
+        self.conn().query_row("SELECT COUNT(*) FROM trakt_history WHERE watched_at BETWEEN ?1 AND ?1 + 1", [at], |r| r.get(0))
+    }
+
+    pub fn iso_time(&self, at: i64) -> rusqlite::Result<String> {
+        self.conn().query_row("SELECT strftime('%Y-%m-%dT%H:%M:%S.000Z', ?1, 'unixepoch')", [at], |r| r.get(0))
+    }
+
+    pub fn sync_value(&self, key: &str) -> Option<String> {
+        self.conn().query_row("SELECT value FROM sync_state WHERE key = ?1", [key], |r| r.get(0)).optional().ok().flatten()
+    }
+
+    pub fn set_sync_value(&self, key: &str, value: &str) -> rusqlite::Result<()> {
+        self.conn().execute("INSERT OR REPLACE INTO sync_state (key, value) VALUES (?1, ?2)", [key, value]).map(|_| ())
+    }
+
+    /// Starts the history sync over, for when the local copy no longer matches Trakt.
+    pub fn restart_history(&self) -> rusqlite::Result<()> {
+        self.conn().execute_batch("DELETE FROM trakt_history; DELETE FROM sync_state;")
+    }
+
+    /// Deletes everything copied from a Trakt account. Recently played isn't Trakt's and stays.
+    pub fn clear_trakt_data(&self) -> rusqlite::Result<()> {
+        self.conn().execute_batch("DELETE FROM trakt_history; DELETE FROM trakt_ratings; DELETE FROM sync_state;")
+    }
+
+    pub fn history_progress(&self) -> rusqlite::Result<Value> {
+        let synced = self.history_bounds()?.count;
+        let total: i64 = self.sync_value("history_total").and_then(|t| t.parse().ok()).unwrap_or(0);
+        Ok(json!({ "synced": synced, "total": total, "complete": self.sync_value("history_complete").as_deref() == Some("1") }))
+    }
+
+    /// Totals worked out from the local copy, so this needs no network. `kind` narrows them to `movie` or `episode`,
+    /// where a rating of a show or season counts with episodes. `days` always covers everything, for the streak.
+    fn stats(&self, kind: Option<&str>) -> rusqlite::Result<Value> {
+        let mut result = self.history_progress()?;
+        let conn = self.conn();
+        let (movies, shows, episodes, minutes): (i64, i64, i64, i64) = conn.query_row(
+            "SELECT COUNT(DISTINCT CASE WHEN kind = 'movie' THEN trakt_id END), COUNT(DISTINCT CASE WHEN kind = 'episode' THEN trakt_id END),
+                    COUNT(CASE WHEN kind = 'episode' THEN 1 END), COALESCE(SUM(runtime), 0)
+             FROM trakt_history WHERE ?1 IS NULL OR kind = ?1",
+            [kind],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+        )?;
+        let pairs = |sql: &str, field: &str, value: &str, param: Option<&str>| -> rusqlite::Result<Vec<Value>> {
+            let mut query = conn.prepare(sql)?;
+            query
+                .query_map([param], |r| {
+                    let name: rusqlite::types::Value = r.get(0)?;
+                    let name = match name {
+                        rusqlite::types::Value::Integer(n) => json!(n),
+                        rusqlite::types::Value::Text(t) => json!(t),
+                        _ => Value::Null,
+                    };
+                    Ok(json!({ field: name, value: r.get::<_, i64>(1)? }))
+                })?
+                .collect()
+        };
+        let top_genres = pairs(
+            "SELECT g.value, COUNT(*) AS plays FROM trakt_history h, json_each(h.genres) g
+             WHERE ?1 IS NULL OR h.kind = ?1 GROUP BY g.value ORDER BY plays DESC, g.value LIMIT 10",
+            "genre",
+            "plays",
+            kind,
+        )?;
+        let ratings = pairs(
+            "SELECT rating, COUNT(*) FROM trakt_ratings
+             WHERE ?1 IS NULL OR (?1 = 'movie' AND kind = 'movie') OR (?1 = 'episode' AND kind <> 'movie') GROUP BY rating ORDER BY rating",
+            "rating",
+            "count",
+            kind,
+        )?;
+        let by_month = pairs(
+            "SELECT strftime('%Y-%m', watched_at, 'unixepoch', 'localtime') AS month, COUNT(*) FROM trakt_history
+             WHERE ?1 IS NULL OR kind = ?1 GROUP BY month ORDER BY month",
+            "month",
+            "plays",
+            kind,
+        )?;
+        let days: Vec<String> = conn
+            .prepare("SELECT DISTINCT date(watched_at, 'unixepoch', 'localtime') AS day FROM trakt_history ORDER BY day DESC")?
+            .query_map([], |r| r.get(0))?
+            .collect::<rusqlite::Result<_>>()?;
+        let extra = json!({
+            "movies": movies, "shows": shows, "episodes": episodes, "minutes": minutes,
+            "top_genres": top_genres, "ratings": ratings, "by_month": by_month, "days": days,
+        });
+        for (k, v) in extra.as_object().into_iter().flatten() {
+            result[k] = v.clone();
+        }
+        Ok(result)
+    }
+}
+
+/// Reads only local data, so it works offline and when signed out.
+#[tauri::command]
+pub fn stats(s: tauri::State<'_, State>, kind: Option<String>) -> Result<Value, String> {
+    s.db.stats(kind.as_deref()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -281,6 +496,117 @@ mod tests {
         let got = db.list_played(1000).unwrap();
         assert_eq!(got.len(), HISTORY_LIMIT as usize);
         assert_eq!(got[0].id, HISTORY_LIMIT + 19);
+    }
+
+    fn movie_play(id: i64, at: &str, trakt: i64, runtime: i64, genres: &[&str]) -> Value {
+        json!({ "id": id, "watched_at": at, "movie": { "title": "M", "runtime": runtime, "genres": genres, "ids": { "trakt": trakt, "tmdb": 1 } } })
+    }
+
+    fn episode_play(id: i64, at: &str, show: i64, genres: &[&str]) -> Value {
+        json!({ "id": id, "watched_at": at, "episode": { "season": 1, "number": id, "runtime": 45 }, "show": { "title": "S", "runtime": 60, "genres": genres, "ids": { "trakt": show } } })
+    }
+
+    #[test]
+    fn repeated_pages_are_idempotent_and_bad_items_are_skipped() {
+        let db = db();
+        let page = [
+            movie_play(1, "2026-01-02T03:04:05.000Z", 10, 100, &["drama"]),
+            json!({ "id": 2, "watched_at": "2026-01-01T00:00:00.000Z" }),
+            json!({ "watched_at": "2026-01-01T00:00:00.000Z", "movie": { "title": "No id", "ids": { "trakt": 3 } } }),
+            json!({ "id": 4, "movie": { "title": "No date", "ids": { "trakt": 4 } } }),
+            json!({ "id": 5, "watched_at": "nonsense", "movie": { "title": "Bad date", "ids": { "trakt": 5 } } }),
+            json!({ "id": 6, "watched_at": "2026-01-01T00:00:00.000Z", "movie": { "ids": { "trakt": 6 } } }),
+        ];
+        db.store_history(&page).unwrap();
+        db.store_history(&page).unwrap();
+        let bounds = db.history_bounds().unwrap();
+        assert_eq!(bounds.count, 1);
+        assert_eq!(bounds.oldest, Some(1_767_323_045));
+        assert_eq!(db.iso_time(1_767_323_045).unwrap(), "2026-01-02T03:04:05.000Z");
+    }
+
+    #[test]
+    fn resume_points_come_from_what_is_stored() {
+        let db = db();
+        assert_eq!(db.history_bounds().unwrap().oldest, None);
+        let plays: Vec<Value> = (1..=3).map(|i| movie_play(i, "2026-01-01T00:00:00.000Z", i, 90, &[])).collect();
+        db.store_history(&plays).unwrap();
+        db.store_history(&[movie_play(4, "2026-06-01T00:00:00.000Z", 4, 90, &[])]).unwrap();
+        let bounds = db.history_bounds().unwrap();
+        assert!(bounds.oldest < bounds.newest);
+        assert_eq!(db.plays_near(bounds.oldest.unwrap()).unwrap(), 3);
+    }
+
+    #[test]
+    fn stats_add_up() {
+        let db = db();
+        db.store_history(&[
+            movie_play(1, "2026-01-15T12:00:00.000Z", 10, 100, &["drama", "war"]),
+            movie_play(2, "2026-02-15T12:00:00.000Z", 10, 100, &["drama", "war"]), // a rewatch
+            episode_play(3, "2026-02-16T12:00:00.000Z", 20, &["drama"]),
+            episode_play(4, "2026-02-16T13:00:00.000Z", 20, &["drama"]),
+            episode_play(5, "2026-02-17T12:00:00.000Z", 21, &["comedy"]),
+        ])
+        .unwrap();
+        db.replace_ratings(&[
+            json!({ "type": "movie", "rating": 8, "rated_at": "2026-01-16T00:00:00.000Z", "movie": { "ids": { "trakt": 10 } } }),
+            json!({ "type": "show", "rating": 8, "rated_at": "2026-01-16T00:00:00.000Z", "show": { "ids": { "trakt": 20 } } }),
+            json!({ "type": "episode", "rating": 11, "rated_at": "2026-01-16T00:00:00.000Z", "episode": { "ids": { "trakt": 30 } } }),
+            json!({ "type": "season", "rating": 0, "rated_at": "2026-01-16T00:00:00.000Z", "season": { "ids": { "trakt": 31 } } }),
+        ])
+        .unwrap();
+
+        let all = db.stats(None).unwrap();
+        assert_eq!((&all["movies"], &all["shows"], &all["episodes"], &all["minutes"]), (&json!(1), &json!(2), &json!(3), &json!(335)));
+        assert_eq!(
+            all["top_genres"],
+            json!([{ "genre": "drama", "plays": 4 }, { "genre": "war", "plays": 2 }, { "genre": "comedy", "plays": 1 }])
+        );
+        assert_eq!(all["ratings"], json!([{ "rating": 8, "count": 2 }]), "ratings outside 1 to 10 are skipped");
+        assert_eq!(all["by_month"].as_array().unwrap().len(), 2);
+        assert_eq!(all["by_month"][1]["plays"], json!(4));
+        assert_eq!(all["days"].as_array().unwrap().len(), 4);
+        assert_eq!(all["days"][0], "2026-02-17", "newest first");
+
+        let movies = db.stats(Some("movie")).unwrap();
+        assert_eq!((&movies["movies"], &movies["shows"], &movies["minutes"]), (&json!(1), &json!(0), &json!(200)));
+        assert_eq!(movies["ratings"], json!([{ "rating": 8, "count": 1 }]));
+        assert_eq!(movies["days"].as_array().unwrap().len(), 4, "the streak ignores the mode");
+        let shows = db.stats(Some("episode")).unwrap();
+        assert_eq!(shows["top_genres"], json!([{ "genre": "drama", "plays": 2 }, { "genre": "comedy", "plays": 1 }]));
+        assert_eq!(shows["ratings"], json!([{ "rating": 8, "count": 1 }]));
+    }
+
+    #[test]
+    fn stats_are_zero_when_empty() {
+        let stats = db().stats(None).unwrap();
+        assert_eq!(
+            stats,
+            json!({ "movies": 0, "shows": 0, "episodes": 0, "minutes": 0, "top_genres": [], "ratings": [], "by_month": [], "days": [], "synced": 0, "total": 0, "complete": false })
+        );
+    }
+
+    #[test]
+    fn restarting_keeps_ratings_and_clearing_keeps_recently_played() {
+        let db = db();
+        let rating = json!({ "type": "movie", "rating": 8, "rated_at": "2026-01-16T00:00:00.000Z", "movie": { "ids": { "trakt": 10 } } });
+        let fill = |db: &Db| {
+            db.store_history(&[movie_play(1, "2026-01-15T12:00:00.000Z", 10, 100, &[])]).unwrap();
+            db.replace_ratings(std::slice::from_ref(&rating)).unwrap();
+            db.set_sync_value("history_complete", "1").unwrap();
+        };
+        fill(&db);
+        db.save_played(&played(None, None, 1.0, 2.0)).unwrap();
+        db.restart_history().unwrap();
+        assert_eq!(db.history_bounds().unwrap().count, 0);
+        assert_eq!(db.sync_value("history_complete"), None);
+        assert_eq!(db.stats(None).unwrap()["ratings"].as_array().unwrap().len(), 1);
+
+        fill(&db);
+        db.clear_trakt_data().unwrap();
+        let stats = db.stats(None).unwrap();
+        assert_eq!((&stats["synced"], &stats["complete"], &stats["ratings"]), (&json!(0), &json!(false), &json!([])));
+        assert_eq!(db.list_played(10).unwrap().len(), 1, "Recently played stays");
     }
 
     // A budget far above normal so slow CI machines pass, while a broken index or query still fails.

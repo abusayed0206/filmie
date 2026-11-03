@@ -309,11 +309,13 @@ fn main() {
             trakt::sync,
             trakt::library,
             trakt::avatar,
+            trakt::history_sync,
             db::history_save,
             db::history_list,
             db::history_clear,
             db::cache_info,
-            db::cache_clear
+            db::cache_clear,
+            db::stats
         ])
         .run(tauri::generate_context!())
         .expect("error while running Filmie");

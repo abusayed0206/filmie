@@ -1,7 +1,7 @@
 // Run: node --test tests/ui.test.js
 const test = require('node:test');
 const assert = require('node:assert');
-const { validProgress, playedNote, ratingRows, historyBody, safeColor, youtubeUrl, newestCredits, isoDate, shortDate, mergeContinue, startWatching, runtimeText, statusTag, navFor, modeOf, FILTERS, decadeOptions, cleanFilters, filterQuery, filterCount, addQuery, fitsSimple, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm } = require('../ui/lib.js');
+const { validProgress, playedNote, ratingRows, historyBody, safeColor, youtubeUrl, newestCredits, isoDate, shortDate, fullDate, addDays, weekStart, sortValue, hasEnded, sortLists, exactFirst, streakFrom, weekHeatmap, durationText, recentMonths, mergeContinue, startWatching, runtimeText, statusTag, navFor, modeOf, FILTERS, decadeOptions, cleanFilters, filterQuery, filterCount, addQuery, fitsSimple, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm } = require('../ui/lib.js');
 
 test('norm', () => {
   const ids = { trakt: 1, tmdb: 272 };
@@ -32,6 +32,75 @@ test('dates for calendars and cards', () => {
   assert.equal(shortDate(''), '');
   assert.equal(shortDate('2026-11-03'), 'Nov 3'); // a plain date doesn't shift with the timezone
   assert.match(shortDate('2026-11-03T12:00:00.000Z'), /^Nov [34]$/);
+});
+
+test('calendar date arithmetic', () => {
+  assert.equal(addDays('2026-11-03', 7), '2026-11-10');
+  assert.equal(addDays('2026-03-01', -1), '2026-02-28');
+  assert.equal(addDays('2026-12-31', 1), '2027-01-01');
+  assert.equal(weekStart('2026-11-03'), '2026-11-02'); // Tuesday
+  assert.equal(weekStart('2026-11-02'), '2026-11-02'); // Monday stays
+  assert.equal(weekStart('2026-11-08'), '2026-11-02'); // Sunday belongs to the week before it
+  assert.equal(fullDate('2026-11-03'), 'Nov 3, 2026');
+  assert.equal(fullDate(null), '');
+});
+
+test('sortValue shows what the list is sorted by', () => {
+  const x = { rank: 4, listed_at: '2026-01-05', movie: { runtime: 148, rating: 8.4, released: '2010-07-16' } };
+  assert.equal(sortValue(x, 'added'), 'Jan 5, 2026');
+  assert.equal(sortValue(x, 'runtime'), '2h 28m');
+  assert.equal(sortValue(x, 'my_rating', 8), '8/10');
+  assert.equal(sortValue(x, 'my_rating'), undefined);
+  assert.equal(sortValue(x, 'released'), 'Jul 16, 2010');
+  assert.equal(sortValue(x, 'rank'), '#4');
+  // These keep the rating.
+  for (const by of ['', 'title', 'percentage']) assert.equal(sortValue(x, by), undefined);
+  assert.equal(sortValue({ show: {} }, 'released'), undefined);
+});
+
+test('hasEnded and sortLists', () => {
+  assert.ok(hasEnded('ended') && hasEnded('canceled'));
+  assert.ok(!hasEnded('returning series') && !hasEnded(undefined));
+  const a = { name: 'B', updated_at: '2026-01-01', created_at: '2026-03-01' };
+  const b = { name: 'A', updated_at: '2026-02-01', created_at: '2026-01-01' };
+  assert.deepEqual(sortLists([a, b], 'rank'), [a, b]);
+  assert.deepEqual(sortLists([a, b], 'name'), [b, a]);
+  assert.deepEqual(sortLists([a, b], 'updated'), [b, a]);
+  assert.deepEqual(sortLists([a, b], 'created'), [a, b]);
+});
+
+test('exactFirst moves true title matches up and keeps the rest in order', () => {
+  const near = { movie: { title: 'Heat Wave' } };
+  const exact = { show: { title: 'HEAT' } };
+  const other = { movie: { title: 'Hot' } };
+  assert.deepEqual(exactFirst([near, other, exact], 'heat'), [exact, near, other]);
+  assert.deepEqual(exactFirst([{ person: {} }], 'x'), [{ person: {} }]);
+});
+
+test('streakFrom counts days ending today or yesterday', () => {
+  const today = '2026-11-03';
+  assert.equal(streakFrom(['2026-11-03', '2026-11-02', '2026-11-01'], today), 3);
+  assert.equal(streakFrom(['2026-11-02', '2026-11-01'], today), 2); // today isn't over yet
+  assert.equal(streakFrom(['2026-11-01', '2026-10-31'], today), 0); // yesterday was missed
+  assert.equal(streakFrom(['2026-11-03', '2026-11-01'], today), 1); // a gap ends it
+  assert.equal(streakFrom(['2026-03-01', '2026-02-28'], '2026-03-01'), 2); // across a month
+  assert.equal(streakFrom([], today), 0);
+});
+
+test('weekHeatmap marks the last seven days, today last', () => {
+  assert.deepEqual(weekHeatmap(['2026-11-03', '2026-10-28', '2026-10-27'], '2026-11-03'), [true, false, false, false, false, false, true]); // Oct 27 is too old to show
+  assert.deepEqual(weekHeatmap([], '2026-11-03'), Array(7).fill(false));
+});
+
+test('durationText and recentMonths', () => {
+  assert.equal(durationText(0), '0m');
+  assert.equal(durationText(undefined), '0m');
+  assert.equal(durationText(45), '45m');
+  assert.equal(durationText(125), '2h 5m');
+  assert.equal(durationText(1440), '1d');
+  assert.equal(durationText(1440 + 125), '1d 2h');
+  assert.deepEqual(recentMonths([{ month: '2026-01', plays: 4 }, { month: '2025-12', plays: 2 }, { month: '2020-01', plays: 9 }], '2026-02-10', 3),
+    [{ month: '2025-12', plays: 2 }, { month: '2026-01', plays: 4 }, { month: '2026-02', plays: 0 }]);
 });
 
 test('mergeContinue puts the most recent first', () => {

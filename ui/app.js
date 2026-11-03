@@ -197,11 +197,12 @@ function setBar(next = {}) {
     <div class="topbar-title"><b>${esc(next.title ?? '')}</b>${next.meta ? `<small>${esc(next.meta)}</small>` : ''}</div>`;
   // Kept between pages so the indicator slides and keyboard focus stays on the switch.
   const center = topbar.querySelector('.topbar-center');
-  const showSwitch = next.mode === 'bar';
-  if (center.dataset.shown !== String(showSwitch)) {
-    center.dataset.shown = showSwitch;
-    center.innerHTML = showSwitch ? segmented('mode', MODE_OPTIONS, getMode(), setMode, 'Media type') : '';
-  } else if (showSwitch) center.querySelector(`input[value="${getMode()}"]`).checked = true;
+  const shown = next.mode === 'bar' || next.mode === 'search' ? next.mode : '';
+  if (center.dataset.shown !== shown) {
+    center.dataset.shown = shown;
+    center.innerHTML = shown === 'bar' ? segmented('mode', MODE_OPTIONS, getMode(), setMode, 'Media type')
+      : shown === 'search' ? segmented('search-mode', SEARCH_OPTIONS, getSearchMode(), setSearchMode, 'Search for') : '';
+  } else if (shown) center.querySelector(`input[value="${shown === 'search' ? getSearchMode() : getMode()}"]`).checked = true;
   updateFilterButton();
 }
 busy(filterButton, openFilterDrawer);
@@ -256,32 +257,45 @@ async function route({ soft = false } = {}) {
   try { await open(...args); }
   catch (e) { if (token === routeToken) app.innerHTML = `<div class="page"><p class="error">${esc(e)}</p></div>`; }
   if (token !== routeToken) return;
+  main.removeAttribute('aria-busy'); // a soft refresh can overtake a page that was still loading
   if (soft) {
+    // The swap replaces whatever had keyboard focus, so it moves to the same control in the new copy.
+    const focused = main.contains(document.activeElement) ? document.activeElement : null;
+    const again = focused?.id ? `#${CSS.escape(focused.id)}` : focused?.name ? `[name="${CSS.escape(focused.name)}"]:checked` : focused?.hasAttribute('data-sort-open') ? '[data-sort-open]' : null;
     main.replaceChildren(...app.childNodes);
     app.remove();
     app = main;
+    if (again) main.querySelector(again)?.focus({ preventScroll: true });
     return;
   }
-  main.removeAttribute('aria-busy');
   if (restoreTarget) scrollTo(0, restoreTarget);
 }
 
-// Search as you type (debounced); clearing the box goes home.
+// Search as you type. The box only shows on the search page, so each query replaces the last in history,
+// and the results swap in place so the page doesn't flash between keystrokes.
 let searchTimer;
+let typing = false;
 searchBox.addEventListener('input', () => {
   clearTimeout(searchTimer);
   searchTimer = setTimeout(() => {
+    if (!location.hash.startsWith('#/search')) return; // the person left before the timer ran
     const q = searchBox.value.trim();
-    const target = q ? `#/search/${encodeURIComponent(q)}` : '#/';
-    location.hash.startsWith('#/search/') ? location.replace(target) : (location.hash = target);
-  }, 400);
+    const target = q ? `#/search/${encodeURIComponent(q)}` : '#/search';
+    if (target === location.hash) return;
+    typing = true;
+    location.replace(target);
+  }, 130);
 });
 
+// Ctrl+K toggles the palette and / opens it, except in the player. / is still a character inside a text field.
+const TEXT_FIELD = 'input:not([type="radio"], [type="range"], [type="checkbox"]), textarea, select, [contenteditable]';
 document.addEventListener('keydown', ev => {
-  if (!ev.ctrlKey || ev.key.toLowerCase() !== 'k' || document.body.classList.contains('playing')) return;
+  if (document.body.classList.contains('playing')) return;
+  const toggle = ev.ctrlKey && ev.key.toLowerCase() === 'k';
+  const slash = ev.key === '/' && !ev.ctrlKey && !ev.altKey && !ev.metaKey && !ev.target.closest?.(TEXT_FIELD);
+  if (!toggle && !slash) return;
   ev.preventDefault();
-  if (location.hash.startsWith('#/search')) searchBox.select();
-  else location.hash = '#/search';
+  togglePalette();
 });
 
 // The rail starts narrow, and a saved 'wide' is the only thing that widens it.
@@ -308,7 +322,12 @@ const openRailMenu = open => {
 };
 for (const [event, open] of [['mouseenter', true], ['mouseleave', false], ['focusin', true], ['focusout', false]]) railBottom.addEventListener(event, () => openRailMenu(open));
 
-window.addEventListener('hashchange', () => route());
+window.addEventListener('hashchange', () => {
+  const soft = typing;
+  typing = false;
+  if (soft) scrollTo(0, 0);
+  route({ soft });
+});
 // Only text fields and selected text get a menu; the rest of the app shouldn't offer "Reload" or "Save as".
 document.addEventListener('contextmenu', ev => { if (!ev.target.closest('input, textarea') && !String(getSelection())) ev.preventDefault(); });
 setInterval(() => syncInBackground().catch(console.warn), 15 * 60e3);

@@ -28,6 +28,7 @@ const SECTIONS: &[(&str, &str, &[&str])] = &[
     ("watchlist_shows", "/sync/watchlist/shows/rank/asc", &["/shows/watchlisted_at"]),
     ("ratings_movies", "/sync/ratings/movies", &["/movies/rated_at"]),
     ("ratings_shows", "/sync/ratings/shows", &["/shows/rated_at"]),
+    ("dropped_shows", "/users/hidden/dropped", &["/shows/dropped_at", "/shows/hidden_at"]),
     ("playback", "/sync/playback", &["/movies/paused_at", "/episodes/paused_at"]),
 ];
 
@@ -73,6 +74,7 @@ pub struct State {
     pub http: reqwest::Client,
     tokens: Mutex<Option<Tokens>>,
     last_write: Mutex<Instant>,
+    history_step: Mutex<()>,
     library_path: PathBuf,
     pub db: Db,
 }
@@ -120,7 +122,14 @@ fn clear_tokens() {
 
 impl State {
     pub fn new(library_path: PathBuf, db: Db) -> Self {
-        Self { http: reqwest::Client::new(), tokens: Mutex::new(None), last_write: Mutex::new(Instant::now()), library_path, db }
+        Self {
+            http: reqwest::Client::new(),
+            tokens: Mutex::new(None),
+            last_write: Mutex::new(Instant::now()),
+            history_step: Mutex::new(()),
+            library_path,
+            db,
+        }
     }
 
     fn read_library(&self) -> Value {
@@ -183,6 +192,11 @@ impl State {
     }
 
     async fn request(&self, method: Method, path: &str, body: Option<Value>) -> Result<Value, String> {
+        self.request_counted(method, path, body).await.map(|(json, _)| json)
+    }
+
+    /// `request`, plus the total Trakt reports for a paged list.
+    async fn request_counted(&self, method: Method, path: &str, body: Option<Value>) -> Result<(Value, Option<i64>), String> {
         let token = self.access_token().await?;
         let write = method != Method::GET;
         if write && token.is_none() {
@@ -218,10 +232,11 @@ impl State {
                 continue;
             }
             let upgrade = res.headers().get("x-upgrade-url").and_then(|v| v.to_str().ok()).map(String::from);
+            let item_count = res.headers().get("x-pagination-item-count").and_then(|v| v.to_str().ok()?.parse().ok());
             let text = res.text().await.map_err(err)?;
             let json = if text.is_empty() { Value::Null } else { serde_json::from_str(&text).unwrap_or(Value::String(text)) };
             return match status {
-                200..=299 => Ok(json),
+                200..=299 => Ok((json, item_count)),
                 420 => Err("420 Trakt account limit reached (for example a full watchlist). Remove items or upgrade to Trakt VIP.".into()),
                 423 => Err("423 Your Trakt account is locked. Contact Trakt support.".into()),
                 426 => Err(format!("426 This needs Trakt VIP: {}", upgrade.as_deref().unwrap_or("https://app.trakt.tv/vip"))),
@@ -230,6 +245,141 @@ impl State {
         }
         Err("429 Trakt rate limit. Try again in a minute.".into())
     }
+
+    /// Writes to the local copy only while signed in. `sign_out` takes the tokens before it clears that copy,
+    /// so a fetch still in flight can't put anything back afterwards. `None` means it was dropped.
+    async fn while_signed_in<T>(&self, write: impl FnOnce(&Db) -> rusqlite::Result<T>) -> Result<Option<T>, String> {
+        let tokens = self.tokens.lock().await;
+        if tokens.is_none() {
+            return Ok(None);
+        }
+        write(&self.db).map(Some).map_err(err)
+    }
+
+    /// Replaces the local ratings when Trakt says any of them changed.
+    async fn sync_ratings(&self, activities: &Value) -> Result<(), String> {
+        let stamp = RATING_TYPES.map(|t| activities[t]["rated_at"].as_str().unwrap_or_default()).join(",");
+        if self.db.sync_value("activity_rated").as_deref() == Some(&stamp) {
+            return Ok(());
+        }
+        let mut items = Vec::new();
+        for t in RATING_TYPES {
+            for page in 1.. {
+                let batch = self.request(Method::GET, &format!("/sync/ratings/{t}?page={page}&limit={HISTORY_PAGE}"), None).await?;
+                let batch = batch.as_array().cloned().unwrap_or_default();
+                let last = batch.len() < HISTORY_PAGE;
+                items.extend(batch);
+                if last {
+                    break;
+                }
+            }
+        }
+        self.while_signed_in(|db| {
+            db.replace_ratings(&items)?;
+            db.set_sync_value("activity_rated", &stamp)
+        })
+        .await?;
+        Ok(())
+    }
+
+    /// The whole history's size. The count on a filtered request only covers what the filter let through.
+    async fn history_total(&self) -> Result<Option<i64>, String> {
+        Ok(self.request_counted(Method::GET, "/sync/history?limit=1", None).await?.1)
+    }
+
+    /// One page further back. The first run and a restart after closing the app are the same thing: carry on from the oldest play stored.
+    async fn backfill_history(&self, activities: &Value) -> Result<(), String> {
+        let before = self.db.history_bounds().map_err(err)?;
+        let resume = match before.oldest {
+            Some(oldest) => Some((self.db.iso_time(oldest + 1).map_err(err)?, self.db.plays_near(oldest).map_err(err)?)),
+            None => None,
+        };
+        let path = backfill_path(resume.as_ref().map(|(at, near)| (at.as_str(), *near)));
+        let (page, count) = self.request_counted(Method::GET, &path, None).await?;
+        let items = page.as_array().cloned().unwrap_or_default();
+        let stored = self
+            .while_signed_in(|db| {
+                db.store_history(&items)?;
+                if let (None, Some(count)) = (before.oldest, count) {
+                    db.set_sync_value("history_total", &count.to_string())?; // for the progress shown during the first sync
+                }
+                Ok(db.history_bounds()?.count)
+            })
+            .await?;
+        let Some(stored) = stored else { return Ok(()) };
+        // A full page with nothing new can't get any further either, so it ends the backfill instead of looping.
+        if items.len() == HISTORY_PAGE && stored > before.count {
+            return Ok(());
+        }
+        // Trakt's count can differ from what it lists. The gap is remembered so only a change in it means removed plays.
+        let total = self.history_total().await?.unwrap_or(stored);
+        self.while_signed_in(|db| {
+            db.set_sync_value("history_total", &total.to_string())?;
+            db.set_sync_value("history_gap", &(total - stored).to_string())?;
+            db.set_sync_value("activity_all", &activities["all"].to_string())?;
+            db.set_sync_value("history_complete", "1")
+        })
+        .await?;
+        Ok(())
+    }
+
+    /// Picks up new plays once Trakt reports activity. A removed play has no marker of its own, so the counts catch it.
+    async fn update_history(&self, activities: &Value) -> Result<(), String> {
+        let stamp = activities["all"].to_string();
+        if self.db.sync_value("activity_all").as_deref() == Some(&stamp) {
+            return Ok(());
+        }
+        let start = match self.db.history_bounds().map_err(err)?.newest {
+            Some(newest) => Some(self.db.iso_time(newest).map_err(err)?),
+            None => None,
+        };
+        for page in 1.. {
+            let batch = self.request(Method::GET, &newer_path(start.as_deref(), page), None).await?;
+            let batch = batch.as_array().cloned().unwrap_or_default();
+            if self.while_signed_in(|db| db.store_history(&batch)).await?.is_none() {
+                return Ok(());
+            }
+            if batch.len() < HISTORY_PAGE {
+                break;
+            }
+        }
+        let total = self.history_total().await?;
+        self.while_signed_in(|db| {
+            let stored = db.history_bounds()?.count;
+            let gap = db.sync_value("history_gap").and_then(|g| g.parse().ok()).unwrap_or(0);
+            let Some(total) = total else { return db.set_sync_value("activity_all", &stamp) };
+            if history_diverged(total, gap, stored) {
+                return db.restart_history();
+            }
+            db.set_sync_value("history_total", &total.to_string())?;
+            db.set_sync_value("activity_all", &stamp)
+        })
+        .await?;
+        Ok(())
+    }
+}
+
+const RATING_TYPES: [&str; 4] = ["movies", "shows", "seasons", "episodes"];
+const HISTORY_PAGE: usize = 100;
+
+/// `resume` is the time to read back from, and how many stored plays that time will return first. Many plays can
+/// share one second after an import, so those are paged past rather than asked for forever.
+fn backfill_path(resume: Option<(&str, i64)>) -> String {
+    match resume {
+        None => format!("/sync/history?page=1&limit={HISTORY_PAGE}&extended=full"),
+        Some((end_at, near)) => {
+            format!("/sync/history?page={}&limit={HISTORY_PAGE}&extended=full&end_at={end_at}", near / HISTORY_PAGE as i64 + 1)
+        }
+    }
+}
+
+fn newer_path(start_at: Option<&str>, page: usize) -> String {
+    let base = format!("/sync/history?page={page}&limit={HISTORY_PAGE}&extended=full");
+    start_at.map_or_else(|| base.clone(), |t| format!("{base}&start_at={t}"))
+}
+
+fn history_diverged(total: i64, gap: i64, stored: i64) -> bool {
+    total - gap != stored
 }
 
 #[tauri::command]
@@ -265,6 +415,8 @@ pub async fn device_poll(s: tauri::State<'_, State>, device_code: String) -> Res
             let t = tokens_from(&res.json().await.map_err(err)?).ok_or("Trakt sent an unexpected token response")?;
             save_tokens(&t)?;
             *s.tokens.lock().await = Some(t);
+            // A session that expired leaves its copy behind, and this may be someone else signing in.
+            s.db.clear_trakt_data().map_err(err)?;
             Ok("ok")
         }
         400 => Ok("pending"),
@@ -302,6 +454,9 @@ pub async fn sign_out(s: tauri::State<'_, State>) -> Result<(), String> {
     let tokens = s.tokens.lock().await.take().or_else(load_tokens);
     clear_tokens();
     s.db.clear_user();
+    if let Err(e) = s.db.clear_trakt_data() {
+        eprintln!("could not clear the local Trakt history: {e}");
+    }
     let _ = std::fs::remove_file(&s.library_path);
     if let Some(dir) = s.library_path.parent().and_then(|d| std::fs::read_dir(d).ok()) {
         for f in dir.flatten().filter(|f| f.file_name().to_string_lossy().starts_with("avatar-")) {
@@ -364,9 +519,53 @@ pub async fn sync(s: tauri::State<'_, State>) -> Result<Value, String> {
     Ok(lib)
 }
 
+/// One step of keeping the local history and ratings current, returning progress. The page calls it after `sync`,
+/// and again while `complete` is false. A failure leaves stored data alone, and the next call retries.
+#[tauri::command]
+pub async fn history_sync(s: tauri::State<'_, State>) -> Result<Value, String> {
+    if s.access_token().await?.is_none() {
+        return Ok(json!({ "synced": 0, "total": 0, "complete": true }));
+    }
+    // Only one step at a time. A second caller just reports where the first has got to.
+    if let Ok(_step) = s.history_step.try_lock() {
+        let library = s.read_library();
+        let activities = match library.get("activities").filter(|a| a.is_object()) {
+            Some(activities) => activities.clone(),
+            None => s.request(Method::GET, "/sync/last_activities", None).await?,
+        };
+        s.sync_ratings(&activities).await?;
+        if s.db.sync_value("history_complete").is_some() {
+            s.update_history(&activities).await?;
+        } else {
+            s.backfill_history(&activities).await?;
+        }
+    }
+    s.db.history_progress().map_err(err)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn history_paths_resume_from_the_oldest_and_page_past_ties() {
+        assert_eq!(backfill_path(None), "/sync/history?page=1&limit=100&extended=full");
+        let at = "2026-01-01T00:00:01.000Z";
+        assert_eq!(backfill_path(Some((at, 3))), format!("/sync/history?page=1&limit=100&extended=full&end_at={at}"));
+        assert_eq!(backfill_path(Some((at, 99))), format!("/sync/history?page=1&limit=100&extended=full&end_at={at}"));
+        assert_eq!(backfill_path(Some((at, 100))), format!("/sync/history?page=2&limit=100&extended=full&end_at={at}"));
+        assert_eq!(backfill_path(Some((at, 250))), format!("/sync/history?page=3&limit=100&extended=full&end_at={at}"));
+        assert_eq!(newer_path(None, 1), "/sync/history?page=1&limit=100&extended=full");
+        assert_eq!(newer_path(Some(at), 2), format!("/sync/history?page=2&limit=100&extended=full&start_at={at}"));
+    }
+
+    #[test]
+    fn only_a_changed_gap_restarts_the_history() {
+        assert!(!history_diverged(100, 0, 100));
+        assert!(!history_diverged(102, 2, 100), "Trakt counts two plays it never lists");
+        assert!(history_diverged(99, 0, 100), "a play was removed on Trakt");
+        assert!(history_diverged(101, 0, 100), "a play is missing here");
+    }
 
     #[test]
     fn token_response_parsing() {

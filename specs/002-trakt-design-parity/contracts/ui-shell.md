@@ -12,13 +12,13 @@ Design values come from [trakt-design-reference.md](../trakt-design-reference.md
 | `#/discover/releases` | Calendar view | Yes | Yes |
 | `#/progress` | Continue Watching grid | Yes | Yes |
 | `#/calendar` | Calendar | Yes | Yes |
-| `#/lists` | Lists hub | Yes | Global, list rows only |
+| `#/lists` | Lists hub | Yes | No, since the sync route behind its Watchlist row takes none |
 | `#/lists/{personal,liked,shared}` | Lists by type | Yes | No |
 | `#/list/{id}` | List page | Yes | Yes |
-| `#/watchlist` | Watchlist | Yes | Yes |
+| `#/watchlist` | Watchlist | Yes | No, since `/sync/watchlist` takes none |
 | `#/history` | History | Yes | No |
 | `#/library` | Library | Yes | No |
-| `#/profile` | Profile and stats | Yes | Yes, global |
+| `#/profile` | Profile and stats | Yes, signed in | No, since local stats don't hold what filters ask about |
 | `#/title/{type}/{id}[/{season}]` | Title, unchanged | No | No |
 | `#/person/{id}` | Person | No | No |
 | `#/search[/{query}]` | Search | Search version | No |

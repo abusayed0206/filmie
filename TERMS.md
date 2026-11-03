@@ -23,7 +23,7 @@ You alone are responsible for the servers you add and for what you do with them.
 
 Filmie relies on services the developer doesn't run. They may change, limit or end access at any time, which can stop features from working. Your use of them is covered by their own terms and privacy policies.
 
-Filmie uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB. Filmie uses Trakt but is not endorsed or certified by Trakt. Streaming availability data is provided by JustWatch.
+Filmie uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB. Filmie uses Trakt but is not endorsed or certified by Trakt.
 
 ## Software license
 

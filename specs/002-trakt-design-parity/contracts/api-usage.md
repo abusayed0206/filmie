@@ -39,7 +39,6 @@ Probed on 2026-11-03 with a real account that made 156 read-only requests, then 
 | Section | Endpoint | Auth |
 |---|---|---|
 | Details and colour | `/{movies,shows}/{id}?extended=full,colors` | No |
-| Ratings drawer | `/{type}/{id}/ratings?extended=all`: Trakt with distribution, TMDB, IMDb, Metacritic, Rotten Tomatoes, MAL, Letterboxd | No |
 | Seasons and episodes | `/shows/{id}/seasons`, TMDB season for stills | No |
 | Episode drawer | `/shows/{id}/seasons/{s}/episodes/{e}` | No |
 | Next and last episode | `/shows/{id}/next_episode`, `/last_episode` | No |
@@ -51,7 +50,6 @@ Probed on 2026-11-03 with a real account that made 156 read-only requests, then 
 | Details drawer | `/stats`, `/studios`, `/aliases`, `/translations`, `/releases/{country}` | No |
 | Watching now | `/{type}/{id}/watching` | No |
 | Progress | `/shows/{id}/progress/watched` | Yes |
-| Where to watch | TMDB `watch/providers`, unchanged | No |
 | Cast | TMDB `credits`, unchanged, then `/search/tmdb/{id}?type=person` to open a person | No |
 
 **Actions:**

@@ -14,6 +14,8 @@ const INJECT_PLAYER: &str = r##"
 (() => {
   const top = (() => { try { return window.top === window; } catch { return false; } })();
   if (top || !/^https?:$/.test(location.protocol) || location.hostname === 'tauri.localhost') return;
+  // Trailers. YouTube's terms forbid changing its player, and this script clicks settings menus and removes nodes.
+  if (/(^|\.)youtube(-nocookie)?\.com$/.test(location.hostname)) return;
 
   const adSrc = /(doubleclick\.net|googlesyndication\.com|googleadservices\.com|adservice\.google|popads|popcash|propellerads|onclickads|adsterra|highperformanceformat|juicyads|exoclick|trafficjunky|revcontent|mgid\.com|taboola\.com|outbrain\.com)/i;
   const adNode = '[id*="ad-overlay" i],[class*="ad-overlay" i],[id*="ad-banner" i],[class*="ad-banner" i],[id^="div-gpt-ad" i],[id^="google_ads" i],[class*="adsbygoogle" i],[data-ad-slot],[data-ad-client],[aria-label*="advertisement" i]';
@@ -213,17 +215,8 @@ const INJECT_PLAYER: &str = r##"
 "##;
 
 // Every pop-up is denied. Only links to these sites open, in the system browser.
-const EXTERNAL_HOSTS: &[&str] = &[
-    "imdb.com",
-    "letterboxd.com",
-    "trakt.tv",
-    "themoviedb.org",
-    "rottentomatoes.com",
-    "metacritic.com",
-    "youtube.com",
-    "justwatch.com",
-    "myanimelist.net",
-];
+const EXTERNAL_HOSTS: &[&str] =
+    &["imdb.com", "letterboxd.com", "trakt.tv", "themoviedb.org", "rottentomatoes.com", "metacritic.com", "youtube.com", "myanimelist.net"];
 
 fn is_external_allowed(url: &Url) -> bool {
     url.scheme() == "https" && url.host_str().is_some_and(|h| EXTERNAL_HOSTS.iter().any(|d| h == *d || h.ends_with(&format!(".{d}"))))

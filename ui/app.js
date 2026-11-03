@@ -2,12 +2,23 @@
 Object.assign(pages, {
   async play(type, id, s, e) {
     const sources = getSources();
-    if (!sources.length) {
-      app.innerHTML = '<div class="page"><p>No video servers yet. Add one you have the right to use in <a href="#/settings">Settings</a>.</p></div>';
-      return;
-    }
     [id, s, e] = [+id, +s, +e];
     const token = routeToken;
+    if (!sources.length) {
+      const d = await tmdb(`/${type}/${id}`).catch(() => null);
+      if (token !== routeToken) return;
+      const name = d?.title ?? d?.name;
+      const what = type === 'tv' && name ? `${name}, S${s}E${e}` : name;
+      setBarTitle('Play');
+      app.innerHTML = `<div class="page"><section class="no-server">
+        ${d?.poster_path ? `<img class="no-server-poster" src="${IMG}w342${esc(d.poster_path)}" alt="">` : ''}
+        <div class="no-server-text"><h1>Add a video server to play ${esc(what ?? 'this')}</h1>
+          <p>Filmie doesn't come with any video servers. Add one and it will play here, with your place in a show kept for you.</p>
+          <ol><li>Open Settings, where the form is ready to fill in.</li><li>Enter the server's link and how its movie and TV addresses are built.</li><li>Press Back to return here and start watching.</li></ol>
+          <div class="no-server-actions"><a class="btn primary" href="#/settings/servers">${icon('plus')}Add a server</a><a class="btn" href="#/title/${type === 'tv' ? 'tv' : 'movie'}/${id}">View details</a></div>
+          <p class="muted">Only add servers you have the right to use.</p></div></section></div>`;
+      return;
+    }
     const server = getServer(sources.length);
     const tt = traktType(type);
     const d = await tmdb(`/${type}/${id}`);
@@ -167,6 +178,10 @@ Object.assign(pages, {
   },
 });
 
+// With no server to play, this is an ordinary page and keeps the rail and top bar.
+const showsPlayer = page => page === 'play' && getSources().length > 0;
+pages.play.bar = () => showsPlayer('play') ? {} : { title: 'Play', back: true };
+
 // ---------- router
 const searchBox = document.getElementById('q');
 
@@ -238,6 +253,7 @@ async function route({ soft = false } = {}) {
     app.hidden = true;
     main.before(app);
   } else {
+    document.querySelectorAll('dialog.video-dialog[open]').forEach(d => d.close()); // or its sound carries on behind the new page
     const current = navFor(page, args[0]);
     document.querySelectorAll('[data-nav]').forEach(a => {
       const i = current.indexOf(a.dataset.nav);
@@ -245,7 +261,8 @@ async function route({ soft = false } = {}) {
       if (i < 0) a.removeAttribute('aria-current');
       else a.setAttribute('aria-current', i === 0 ? 'page' : 'true');
     });
-    document.body.classList.toggle('playing', page === 'play');
+    document.body.classList.toggle('playing', showsPlayer(page));
+    syncRailGroups();
     document.body.classList.toggle('searching', page === 'search');
     if (page !== 'search') searchBox.value = '';
     scrollTo(0, 0);
@@ -312,15 +329,38 @@ railToggle.onclick = () => {
   try { localStorage.setItem('rail', wide ? 'wide' : 'narrow'); } catch {}
 };
 
-// The bottom group opens on hover or keyboard focus when the rail is narrow. The delay lets the pointer cross the gap.
-const railBottom = document.getElementById('rail-bottom');
-let railTimer;
-const openRailMenu = open => {
-  clearTimeout(railTimer);
-  if (open) railBottom.classList.add('open');
-  else railTimer = setTimeout(() => railBottom.classList.remove('open'), 150);
-};
-for (const [event, open] of [['mouseenter', true], ['mouseleave', false], ['focusin', true], ['focusout', false]]) railBottom.addEventListener(event, () => openRailMenu(open));
+// On a wide rail one group's sub-pages show at a time, starting with the group of the current page.
+const railGroups = [...document.querySelectorAll('.rail-group')];
+function openRailGroup(group) {
+  for (const g of railGroups) {
+    const on = g === group;
+    g.classList.toggle('open', on);
+    const toggle = g.querySelector('.rail-group-toggle');
+    toggle.setAttribute('aria-expanded', String(on));
+    toggle.setAttribute('aria-label', `${on ? 'Hide' : 'Show'} ${g.dataset.group} pages`);
+  }
+}
+function syncRailGroups() {
+  const current = railGroups.find(g => g.querySelector('.active'));
+  if (current) openRailGroup(current);
+}
+for (const g of railGroups) g.querySelector('.rail-group-toggle').onclick = () => openRailGroup(g.classList.contains('open') ? null : g);
+openRailGroup(null);
+
+// On a narrow rail the groups and the bottom menu open beside it, on hover or keyboard focus. The delay lets the pointer cross the gap.
+const railFlyouts = [...railGroups, document.getElementById('rail-bottom')];
+for (const el of railFlyouts) {
+  let timer;
+  const open = () => {
+    clearTimeout(timer);
+    railFlyouts.forEach(other => other.classList.toggle('flyout', other === el));
+  };
+  const close = () => { timer = setTimeout(() => el.classList.remove('flyout'), 150); };
+  el.addEventListener('mouseenter', open);
+  el.addEventListener('focusin', open);
+  el.addEventListener('mouseleave', close);
+  el.addEventListener('focusout', close);
+}
 
 window.addEventListener('hashchange', () => {
   const soft = typing;

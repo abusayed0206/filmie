@@ -14,7 +14,7 @@ Filmie is a lightweight Windows app for browsing movies and TV shows and keeping
 
 - **Browse:** trending, releases, anticipated, popular and more charts, switching between Media, Shows and Movies, with filters for genre, decade, runtime, rating and more.
 - **Find anything:** press **Ctrl+K** to jump to a page or title, or search movies, shows, people and lists.
-- **See the details:** ratings, seasons and episodes, cast and person pages, comments, videos, related titles, lists and where to stream.
+- **See the details:** seasons and episodes, cast and person pages, comments, videos, related titles and lists.
 - **Track with Trakt:** continue watching, calendar, watchlist, history, library, progress, your lists, ratings, favorites, notes and recommendations.
 - **See your stats:** totals, top genres, ratings, activity and a watching streak, worked out on your PC with no VIP needed. They work offline too.
 - **Stay in control:** nothing is marked as watched until you ask, with no check-ins or scrobbling.
@@ -119,4 +119,4 @@ These repository secrets are needed:
 - [Privacy](PRIVACY.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
 
-Filmie uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB. Filmie uses Trakt but is not endorsed or certified by Trakt. Streaming availability data is provided by JustWatch.
+Filmie uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB. Filmie uses Trakt but is not endorsed or certified by Trakt.

@@ -42,6 +42,18 @@ function modal({ title, body = '', actions = [], onClose }) {
   return d;
 }
 
+// A YouTube video in its own dialog. YouTube requires the Referer it gets from this policy, and that nothing covers the
+// player, so the title and buttons sit above it. Leaving the iframe in place would keep the sound going until it's removed.
+function playVideo(key, title) {
+  if (!/^[\w-]+$/.test(key)) return;
+  const d = openDialog('video-dialog', `<div class="video-head"><h2>${esc(title)}</h2>
+      <a class="btn" href="https://www.youtube.com/watch?v=${key}" target="_blank">Open on YouTube</a>
+      <button type="button" class="icon-btn ghost" data-close aria-label="Close">${icon('close')}</button></div>
+    <div class="video-frame"><iframe src="https://www.youtube.com/embed/${key}?autoplay=1&rel=0" title="${esc(title)}" allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowfullscreen referrerpolicy="strict-origin-when-cross-origin"></iframe></div>`,
+  () => d.querySelector('iframe').remove());
+  d.querySelector('[data-close]').onclick = () => d.close();
+}
+
 // Pop-up menu for a button. items: [{ label, icon, danger, onClick }]. The popover API handles Escape and clicks outside.
 function menu(button, items) {
   const m = document.createElement('div');
@@ -87,42 +99,6 @@ function segmented(name, options, value, onChange, label = name) {
 document.addEventListener('change', ev => {
   if (ev.target.closest('.segmented')) segmentedChanges.get(ev.target.name)?.(ev.target.value);
 });
-
-// Five half-step stars on Trakt's 10-point scale. A range input gives it arrow keys, a name for screen readers and dragging.
-const starRating = (value, label) => `<span class="stars" style="--v:${value ?? 0}" title="${value ? `Your rating: ${value}/10` : 'Not rated'}">
-  <input type="range" min="0" max="10" step="1" value="${value ?? 0}" aria-label="${esc(label)}, out of 10"></span>`;
-function bindStars(root, onRate) {
-  const box = root.querySelector('.stars');
-  if (!box) return;
-  const input = box.querySelector('input');
-  const show = v => box.style.setProperty('--v', v);
-  let saved = +input.value;
-  // Hovering previews a rating, and only a press or a key saves it.
-  box.addEventListener('mousemove', ev => {
-    const r = box.getBoundingClientRect();
-    const v = Math.max(1, Math.min(10, Math.ceil(10 * (ev.clientX - r.left) / r.width)));
-    input.value = v;
-    show(v);
-    box.classList.add('preview');
-    box.title = `${v}/10`;
-  });
-  box.addEventListener('mouseleave', () => { input.value = saved; show(saved); box.classList.remove('preview'); });
-  input.addEventListener('input', () => show(input.value));
-  input.addEventListener('change', async () => {
-    const v = +input.value;
-    if (v === saved) return;
-    try {
-      await onRate(v);
-      saved = v;
-      box.classList.remove('preview');
-      box.title = v ? `Your rating: ${v}/10` : 'Not rated';
-    } catch (e) {
-      input.value = saved;
-      show(saved);
-      toast(e);
-    }
-  });
-}
 
 // A min and max slider from two range inputs. value is 'a-b'; grades, when given, name the positions.
 function rangeSlider(def, label, value) {
@@ -291,7 +267,6 @@ async function openFilterDrawer() {
     const controls = tab === 'simple' ? shown.filter(f => !f.advancedOnly && !f.display).map(simpleControl) : shown.filter(f => !f.display).map(advancedControl);
     const display = shown.filter(f => f.display).map(f => select(f, f.options));
     body.innerHTML = `<div class="filter-actions"><button type="button" class="btn danger" data-reset>Reset</button><button type="button" class="btn primary" data-save>Set as default</button></div>
-      ${bar.mode === 'drawer' ? `<div class="filter-switch">${segmented('filter-mode', MODE_OPTIONS, getMode(), setMode, 'Media type')}</div>` : ''}
       <div class="filter-switch">${segmented('filter-tab', [{ value: 'simple', label: 'Simple' }, { value: 'advanced', label: 'Advanced' }], tab, changeTab, 'Filter detail')}</div>
       ${controls.join('')}${display.length ? `<h3 class="filter-section">Display</h3>${display.join('')}` : ''}`;
     updateReset();

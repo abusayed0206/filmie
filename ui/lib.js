@@ -198,21 +198,6 @@ function startWatching(items, today, showsInProgress) {
   });
 }
 
-// The rows of a title's ratings from /ratings?extended=all. `main` ones go in the header, the rest only in the drawer.
-function ratingRows(r) {
-  const rows = [];
-  const add = (label, value, votes, link, main) => { if (value) rows.push({ label, value, votes, link, main }); };
-  add('Trakt', r?.trakt?.rating && `${Math.round(r.trakt.rating * 10)}%`, r?.trakt?.votes, '', true);
-  add('IMDb', r?.imdb?.rating?.toFixed(1), r?.imdb?.votes, r?.imdb?.link, true);
-  add('MAL', r?.mal?.rating?.toFixed(1), r?.mal?.votes, r?.mal?.link, true);
-  add('RT Critics', r?.rotten_tomatoes?.rating && `${r.rotten_tomatoes.rating}%`, null, r?.rotten_tomatoes?.link, true);
-  add('RT Audience', r?.rotten_tomatoes?.user_rating && `${r.rotten_tomatoes.user_rating}%`, null, r?.rotten_tomatoes?.link, true);
-  add('TMDB', r?.tmdb?.rating?.toFixed(1), r?.tmdb?.votes, r?.tmdb?.link, false);
-  add('Metacritic', r?.metascore?.rating && `${Math.round(r.metascore.rating)}`, null, r?.metascore?.link, false);
-  add('Letterboxd', r?.letterboxd?.rating?.toFixed(1), r?.letterboxd?.votes, r?.letterboxd?.link, false);
-  return rows;
-}
-
 // What goes to /sync/history. watchedAt is left out for "now", or is a UTC time or 'released'.
 function historyBody({ type, id, season, episode }, watchedAt) {
   const at = watchedAt ? { watched_at: watchedAt } : {};
@@ -223,7 +208,15 @@ function historyBody({ type, id, season, episode }, watchedAt) {
 
 // A title's colour goes into a style attribute, so only a plain hex colour gets through.
 const safeColor = c => /^#[0-9a-f]{6}$/i.test(c ?? '') ? c : null;
-const youtubeUrl = u => /^https:\/\/(www\.)?youtube\.com\/\S+$/.test(u ?? '') ? u : null;
+// A YouTube video's id, which goes into an embed address, so nothing else gets through.
+function youtubeKey(url) {
+  return /^https:\/\/(?:(?:www\.|m\.)?youtube\.com\/(?:watch\?(?:[^#]*&)?v=|embed\/)|youtu\.be\/)([\w-]{1,32})(?:[&?#/]|$)/.exec(url ?? '')?.[1] ?? null;
+}
+// TMDB lists videos in no useful order: an official trailer first, then any trailer, then a teaser.
+function pickTrailer(videos) {
+  const rank = v => ({ Trailer: 0, Teaser: 2 })[v.type] + (v.official ? 0 : 1);
+  return (videos ?? []).filter(v => v.site === 'YouTube' && /^[\w-]{1,32}$/.test(v.key ?? '') && rank(v) >= 0).sort((a, b) => rank(a) - rank(b))[0] ?? null;
+}
 // A person's credits, newest first, with each title once however many characters they played.
 function newestCredits(credits) {
   const seen = new Set();
@@ -350,4 +343,4 @@ function playedNote(p, now = Date.now() / 1000) {
   return `Opened ${Math.floor(mins / 1440)} d ago`;
 }
 
-if (typeof module !== 'undefined') module.exports = { validProgress, playedNote, ratingRows, historyBody, safeColor, youtubeUrl, newestCredits, isoDate, shortDate, fullDate, addDays, weekStart, sortValue, hasEnded, sortLists, exactFirst, streakFrom, weekHeatmap, durationText, recentMonths, mergeContinue, startWatching, runtimeText, statusTag, navFor, modeOf, FILTERS, decadeOptions, cleanFilters, filterQuery, filterCount, addQuery, fitsSimple, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm };
+if (typeof module !== 'undefined') module.exports = { validProgress, playedNote, historyBody, safeColor, youtubeKey, pickTrailer, newestCredits, isoDate, shortDate, fullDate, addDays, weekStart, sortValue, hasEnded, sortLists, exactFirst, streakFrom, weekHeatmap, durationText, recentMonths, mergeContinue, startWatching, runtimeText, statusTag, navFor, modeOf, FILTERS, decadeOptions, cleanFilters, filterQuery, filterCount, addQuery, fitsSimple, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm };

@@ -192,11 +192,5 @@ const DISCOVER_TITLES = { trending: 'Trending', releases: 'Releases', anticipate
 const discoverTitle = sub => DISCOVER_TITLES[sub] ?? { media: 'Discover', show: 'Shows', movie: 'Movies' }[getMode()];
 
 pages.home.bar = { title: 'Home', mode: 'bar', filters: 'global' };
-pages.discover.bar = sub => ({
-  title: discoverTitle(sub),
-  // Trakt's full grids move the switch into the filter drawer and show the mode here instead.
-  meta: sub && sub !== 'releases' ? forMode('Media', 'Shows', 'Movies') : '',
-  mode: sub && sub !== 'releases' ? 'drawer' : 'bar',
-  filters: sub === 'recommended' ? false : sub ? 'local' : 'global',
-});
+pages.discover.bar = sub => ({ title: discoverTitle(sub), mode: 'bar', filters: sub === 'recommended' ? false : sub ? 'local' : 'global' });
 pages.search.bar = { title: 'Search', mode: 'search' };

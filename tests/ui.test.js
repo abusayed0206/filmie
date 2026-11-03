@@ -1,7 +1,7 @@
 // Run: node --test tests/ui.test.js
 const test = require('node:test');
 const assert = require('node:assert');
-const { validProgress, playedNote, ratingRows, historyBody, safeColor, youtubeUrl, newestCredits, isoDate, shortDate, fullDate, addDays, weekStart, sortValue, hasEnded, sortLists, exactFirst, streakFrom, weekHeatmap, durationText, recentMonths, mergeContinue, startWatching, runtimeText, statusTag, navFor, modeOf, FILTERS, decadeOptions, cleanFilters, filterQuery, filterCount, addQuery, fitsSimple, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm } = require('../ui/lib.js');
+const { validProgress, playedNote, historyBody, safeColor, youtubeKey, pickTrailer, newestCredits, isoDate, shortDate, fullDate, addDays, weekStart, sortValue, hasEnded, sortLists, exactFirst, streakFrom, weekHeatmap, durationText, recentMonths, mergeContinue, startWatching, runtimeText, statusTag, navFor, modeOf, FILTERS, decadeOptions, cleanFilters, filterQuery, filterCount, addQuery, fitsSimple, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm } = require('../ui/lib.js');
 
 test('norm', () => {
   const ids = { trakt: 1, tmdb: 272 };
@@ -103,6 +103,21 @@ test('durationText and recentMonths', () => {
     [{ month: '2025-12', plays: 2 }, { month: '2026-01', plays: 4 }, { month: '2026-02', plays: 0 }]);
 });
 
+test('youtubeKey only takes YouTube video addresses', () => {
+  for (const u of ['https://www.youtube.com/watch?v=abc-_1', 'https://youtube.com/watch?v=abc-_1&t=4', 'https://m.youtube.com/watch?list=x&v=abc-_1', 'https://youtu.be/abc-_1', 'https://www.youtube.com/embed/abc-_1?rel=0']) assert.equal(youtubeKey(u), 'abc-_1', u);
+  for (const u of ['http://www.youtube.com/watch?v=abc', 'https://evil.test/watch?v=abc', 'https://youtube.com.evil.test/watch?v=abc', 'https://www.youtube.com/watch?v=a"b', 'https://www.youtube.com/channel/abc', '', null, undefined]) assert.equal(youtubeKey(u), null, u);
+});
+
+test('pickTrailer prefers an official trailer', () => {
+  const v = (key, type, official, site = 'YouTube') => ({ key, type, official, site });
+  assert.equal(pickTrailer([v('c', 'Clip', true), v('t', 'Teaser', true), v('u', 'Trailer', false), v('o', 'Trailer', true)]).key, 'o');
+  assert.equal(pickTrailer([v('t', 'Teaser', false), v('u', 'Trailer', false)]).key, 'u');
+  assert.equal(pickTrailer([v('t', 'Teaser', true)]).key, 't');
+  assert.equal(pickTrailer([v('c', 'Clip', true), v('f', 'Featurette', true)]), null);
+  assert.equal(pickTrailer([v('v', 'Trailer', true, 'Vimeo'), v('a"b', 'Trailer', true)]), null);
+  assert.equal(pickTrailer(undefined), null);
+});
+
 test('mergeContinue puts the most recent first', () => {
   const show = { show: {}, progress: { last_watched_at: '2026-01-02T00:00:00Z' } };
   const movie = { movie: {}, paused_at: '2026-01-03T00:00:00Z' };
@@ -120,13 +135,6 @@ test('startWatching hides what is unreleased or already started', () => {
   assert.deepEqual(startWatching([out, soon, noDate, newShow, started], '2026-11-03', new Set([5])), [out, newShow]);
 });
 
-test('ratingRows keeps what a title has', () => {
-  const rows = ratingRows({ trakt: { rating: 8.29, votes: 100 }, imdb: { rating: 7.8, votes: 5, link: 'https://i' }, rotten_tomatoes: { rating: 91, user_rating: 80, link: 'https://r' }, tmdb: { rating: 7.1, votes: 2, link: 'https://t' }, metascore: { rating: 66.4, link: 'https://m' }, mal: {}, letterboxd: null });
-  assert.deepEqual(rows.map(r => [r.label, r.value, r.main]), [['Trakt', '83%', true], ['IMDb', '7.8', true], ['RT Critics', '91%', true], ['RT Audience', '80%', true], ['TMDB', '7.1', false], ['Metacritic', '66', false]]);
-  assert.deepEqual(ratingRows(null), []);
-  assert.deepEqual(ratingRows({ trakt: { rating: 0 } }), []);
-});
-
 test('historyBody says what was watched and when', () => {
   assert.deepEqual(historyBody({ type: 'movie', id: 1 }), { movies: [{ ids: { tmdb: 1 } }] });
   assert.deepEqual(historyBody({ type: 'movie', id: 1 }, 'released'), { movies: [{ ids: { tmdb: 1 }, watched_at: 'released' }] });
@@ -138,8 +146,6 @@ test('historyBody says what was watched and when', () => {
 test('values from Trakt are checked before they reach a page', () => {
   assert.equal(safeColor('#a1B2c3'), '#a1B2c3');
   for (const bad of ['red', '#12', 'url(x)', '#000000;x', null, undefined]) assert.equal(safeColor(bad), null);
-  assert.equal(youtubeUrl('https://www.youtube.com/watch?v=x'), 'https://www.youtube.com/watch?v=x');
-  for (const bad of ['http://youtube.com/x', 'https://evil.test/youtube.com/x', 'javascript:alert(1)', null]) assert.equal(youtubeUrl(bad), null);
 });
 
 test('newestCredits sorts and removes repeats', () => {

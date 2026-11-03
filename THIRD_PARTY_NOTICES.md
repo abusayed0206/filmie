@@ -30,4 +30,3 @@ The app is built with [Tauri](https://tauri.app) and other open-source crates, l
 
 - Movie and TV data: [TMDB](https://www.themoviedb.org). Filmie uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB.
 - Watch tracking: [Trakt](https://trakt.tv). Filmie uses Trakt but is not endorsed or certified by Trakt.
-- Streaming availability: [JustWatch](https://www.justwatch.com).

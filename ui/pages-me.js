@@ -230,12 +230,12 @@ Object.assign(pages, {
       // shortcut: a hidden season has no card, since Filmie has no season cards. Upgrade if people hide single seasons.
       card: x => {
         const it = x.season ? null : norm(x);
-        return it ? summaryCard(it, { label: x.hidden_at ? fullDate(x.hidden_at) : '', action: removeAction(it, `/users/hidden/${section.value}/remove`, 'Unhide', 'Unhidden') }) : '';
+        return it && forMode(true, it.type === 'tv', it.type === 'movie') ? summaryCard(it, { label: x.hidden_at ? fullDate(x.hidden_at) : '', action: removeAction(it, `/users/hidden/${section.value}/remove`, 'Unhide', 'Unhidden') }) : '';
       },
     });
   },
 
-  async settings() {
+  async settings(sub) {
     const limits = user?.limits;
     const field = (title, help, control) => `<div class="field"><div><b>${title}</b><p class="muted">${help}</p></div>${control}</div>`;
     app.innerHTML = `<div class="page settings"><h1 class="sr-only">Settings</h1>
@@ -266,7 +266,6 @@ Object.assign(pages, {
         <p>Filmie uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB.
         <a href="https://www.themoviedb.org/" target="_blank">themoviedb.org</a></p>
         <p>Filmie uses Trakt but is not endorsed or certified by Trakt.</p>
-        <p>Streaming availability data by <a href="https://www.justwatch.com/" target="_blank">JustWatch</a>.</p>
         <p>Ad blocking by uBlock Origin Lite (GPLv3), <a href="https://github.com/uBlockOrigin/uBOL-home" target="_blank">source</a>.</p>
         <p class="muted">Privacy: your Trakt tokens are kept in Windows Credential Manager, and your library copy and avatar in this app's data folder. Signing out deletes all of them. Your Recently played list, cached pages, and a copy of your Trakt history and ratings are kept in a local database. You can clear the first two above, and signing out deletes the copy of your history and ratings.</p></section></div>`;
     const $ = id => document.getElementById(id);
@@ -286,6 +285,7 @@ Object.assign(pages, {
     busy($('clear-recent'), async () => { await invoke('history_clear'); toast('Recently played cleared'); });
     $('quality').onchange = ev => { setQuality(ev.target.value); toast('Preferred quality saved'); };
     renderServers($('servers'));
+    if (sub === 'servers') $('servers').scrollIntoView({ block: 'start' });
   },
 });
 
@@ -304,8 +304,9 @@ pages.watchlist.bar = () => {
   return { title: 'Watchlist', meta: user ? `${num(count)} items` : '', mode: 'bar' };
 };
 pages.list.bar = { title: 'List', back: true, mode: 'bar', filters: 'local' };
-pages.hidden.bar = { title: 'Hidden items', back: true };
-pages.settings.bar = { title: 'Settings' };
+pages.hidden.bar = { title: 'Hidden items', back: true, mode: 'bar' };
+// #/settings/servers is where the player sends someone with no servers, so Back returns them to what they wanted to play.
+pages.settings.bar = sub => ({ title: 'Settings', back: sub === 'servers' });
 
 // ---------- calendar and hidden-item state, kept until the app closes
 let calendarView = 'week';
@@ -419,7 +420,7 @@ function statsCharts(s) {
   const monthName = m => new Date(`${m}-01T00:00:00Z`).toLocaleDateString('en-US', { month: 'short', year: 'numeric', timeZone: 'UTC' });
   const empty = what => `<p class="muted">${what}</p>`;
   return `<div class="stat-charts">
-    <section class="stat-chart"><h2>Top genres</h2>${s.top_genres.length ? `<div class="stat-bars">${s.top_genres.map(g => `<div class="rating-bar stat-bar"><span>${esc(statusText(g.genre))}</span><i style="--w:${100 * g.plays / topPlays}%"></i><small class="muted">${num(g.plays)}</small></div>`).join('')}</div>` : empty('Nothing yet.')}</section>
+    <section class="stat-chart"><h2>Top genres</h2>${s.top_genres.length ? `<div class="stat-bars">${s.top_genres.map(g => `<div class="stat-bar"><span>${esc(statusText(g.genre))}</span><i style="--w:${100 * g.plays / topPlays}%"></i><small class="muted">${num(g.plays)}</small></div>`).join('')}</div>` : empty('Nothing yet.')}</section>
     <section class="stat-chart"><h2>Your ratings</h2>${topRating ? `<div class="stat-columns" role="img" aria-label="${esc(ratings.map(r => `${r.count} rated ${r.rating}`).join(', '))}">${ratings.map(r => `<div title="${num(r.count)} rated ${r.rating}"><i style="${barStyle(r.count, topRating)}"></i><small class="muted">${r.rating}</small></div>`).join('')}</div>` : empty('Nothing rated yet.')}</section>
     <section class="stat-chart stat-wide"><h2>Activity</h2>${topMonth ? `<div class="stat-columns months" role="img" aria-label="${esc(`Plays in the last 24 months, with ${num(months.reduce((n, m) => n + m.plays, 0))} in total`)}">${months.map((m, i) => `<div title="${esc(monthName(m.month))}: ${num(m.plays)} plays"><i style="${barStyle(m.plays, topMonth)}"></i>${i % 6 === 5 ? `<small class="muted">${esc(monthName(m.month))}</small>` : ''}</div>`).join('')}</div>` : empty('No plays in the last 24 months.')}</section></div>`;
 }
@@ -499,7 +500,8 @@ async function notesView() {
   await renderGrid(into, {
     cls: 'note-grid', empty: "You haven't written any notes yet.",
     load: page => traktGet(`/users/me/notes/all?page=${page}&limit=100&extended=full`),
-    card: noteCard,
+    // A note on anything but a movie or show has no type to filter on, so it only shows in Media.
+    card: n => { const type = norm(n.item ?? n)?.type; return forMode(true, type === 'tv', type === 'movie') ? noteCard(n) : ''; },
   });
   into.onclick = ev => {
     const card = ev.target.closest('[data-note]');
@@ -538,7 +540,7 @@ const PROFILE_VIEWS = {
   progress: { title: 'Progress', about: 'Shows you finished, are watching or dropped.', open: progressView },
   ratings: { title: 'Ratings', about: 'Everything you have rated.', open: ratingsView, mode: 'bar' },
   favorites: { title: 'Favorites', about: 'The titles you love most.', open: favoritesView, mode: 'bar' },
-  notes: { title: 'Notes', about: 'Notes you wrote on Trakt.', open: notesView },
+  notes: { title: 'Notes', about: 'Notes you wrote on Trakt.', open: notesView, mode: 'bar' },
 };
 
 // The Video servers card. editing: null for just the list, -1 for a new server, or the index being edited.

@@ -18,7 +18,8 @@ Filmie has no accounts, servers, analytics or telemetry of its own. The develope
 ## Sent to other services
 
 - **TMDB** receives requests for movie and TV information.
-- **Trakt** receives your requests and any watchlist, rating, list or history changes you make, once you sign in.
+- **Trakt** receives your requests and any watchlist, list or history changes you make, once you sign in.
+- **YouTube** loads in an embedded player when you play a trailer or video, and can see your IP address and whatever else a website normally sees.
 - **Video servers you add** load in an embedded player and can see your IP address and whatever else a website normally sees.
 - **Sites you open from links**, such as IMDb or YouTube, open in your default browser.
 

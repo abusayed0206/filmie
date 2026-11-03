@@ -5,7 +5,7 @@ Object.assign(pages, {
 });
 
 pages.title.bar = { back: true };
-pages.person.bar = { back: true, title: 'Person' };
+pages.person.bar = { back: true, title: 'Person', mode: 'bar' };
 
 const seasonChoice = new Map(); // show id -> the season being viewed, so a refresh stays on it
 const statusText = s => s ? s.replace(/\b\w/g, c => c.toUpperCase()) : '';
@@ -59,21 +59,21 @@ function trackDrawer({ type, id, name, next, watched }) {
   };
 }
 
-function ratingsDrawer(rows, distribution) {
-  const total = Object.values(distribution ?? {}).reduce((a, b) => a + b, 0);
-  drawer({
-    title: 'Ratings', width: 400,
-    body: `<div class="rating-list">${rows.map(r => `<div class="rating-line"><span>${esc(r.label)}</span><b>${esc(r.value)}</b>${r.votes ? `<small class="muted">${num(r.votes)} votes</small>` : ''}${r.link ? `<a href="${esc(r.link)}" target="_blank" class="muted">Open</a>` : ''}</div>`).join('') || '<p class="muted">No ratings yet.</p>'}</div>
-      ${total ? `<h3 class="filter-section">Trakt votes</h3><div class="rating-bars">${Object.entries(distribution).reverse().map(([k, v]) => `<div class="rating-bar"><span>${esc(k)}</span><i style="--w:${100 * v / total}%"></i><small class="muted">${num(v)}</small></div>`).join('')}</div>` : ''}`,
-  });
+// Language and country codes as words. of() throws on a malformed code, so that falls back to the code itself.
+function codeName(code, type) {
+  if (!code) return '';
+  try { return new Intl.DisplayNames(['en'], { type }).of(type === 'region' ? code.toUpperCase() : code); } catch { return code; }
 }
+const factRows = facts => facts.filter(([, v]) => v).map(([k, v]) => `<div class="fact"><span class="muted">${esc(k)}</span><span>${esc(v)}</span></div>`).join('');
+// The essentials, beside the overview. The Details drawer repeats them with everything else.
+const aboutFacts = (d, t) => [
+  ['Released', fullDate(t?.released ?? t?.first_aired ?? d.release_date ?? d.first_air_date)], ['Network', t?.network], ['Language', codeName(t?.language ?? d.original_language, 'language')],
+  ['Country', codeName(t?.country, 'region')], ['Genres', (d.genres ?? []).map(g => g.name).join(', ')],
+];
 
 async function detailsDrawer({ d, t, tt, links }) {
-  const facts = [
-    ['Status', statusText(t?.status ?? d.status)], ['Certification', t?.certification], ['Released', t?.released ?? t?.first_aired?.slice(0, 10) ?? d.first_air_date], ['Runtime', runtimeText(t?.runtime ?? d.runtime)],
-    ['Language', t?.language?.toUpperCase()], ['Country', t?.country?.toUpperCase()], ['Network', t?.network], ['Genres', (d.genres ?? []).map(g => g.name).join(', ')], ['Tagline', t?.tagline ?? d.tagline],
-  ].filter(([, v]) => v);
-  const box = drawer({ title: 'Details', body: `<div class="fact-list">${facts.map(([k, v]) => `<div class="fact"><span class="muted">${esc(k)}</span><span>${esc(v)}</span></div>`).join('')}</div><div id="details-more"></div>
+  const facts = [['Status', statusText(t?.status ?? d.status)], ['Certification', t?.certification], ['Runtime', runtimeText(t?.runtime ?? d.runtime)], ...aboutFacts(d, t)];
+  const box = drawer({ title: 'Details', body: `<div class="fact-list">${factRows(facts)}</div><div id="details-more"></div>
     <h3 class="filter-section">Elsewhere</h3><div class="links">${links.map(([n, u]) => `<a href="${esc(u)}" target="_blank">${esc(n)}</a>`).join('')}</div>` });
   if (!t) return;
   const base = `/${tt}s/${t.ids.trakt}`;
@@ -83,24 +83,15 @@ async function detailsDrawer({ d, t, tt, links }) {
     traktGet(`${base}/stats`).catch(none), traktGet(`${base}/studios`).catch(none), traktGet(`${base}/aliases`).catch(none), traktGet(`${base}/watching`).catch(none),
     traktGet(`${base}/translations`).catch(none), tt === 'movie' ? traktGet(`${base}/releases/${REGION().toLowerCase()}`).catch(none) : null,
   ]);
-  const names = new Intl.DisplayNames(['en'], { type: 'language' });
-  // of() throws on a malformed code, which would lose the whole section.
-  const languageName = code => { try { return names.of(code); } catch { return code; } };
   const statLine = stats && [['Watchers', stats.watchers], ['Plays', stats.plays], ['Collectors', stats.collectors], ['Lists', stats.lists], ['Favorited', stats.favorited], ['Comments', stats.comments]].filter(([, v]) => v);
   const more = [
     statLine?.length && `<h3 class="filter-section">On Trakt</h3><div class="fact-list">${watching?.length ? `<div class="fact"><span class="muted">Watching now</span><span>${num(watching.length)}</span></div>` : ''}${statLine.map(([k, v]) => `<div class="fact"><span class="muted">${k}</span><span>${num(v)}</span></div>`).join('')}</div>`,
     releases?.length && `<h3 class="filter-section">Releases in ${esc(REGION())}</h3><div class="fact-list">${releases.map(r => `<div class="fact"><span class="muted">${esc(statusText(r.release_type) || 'Release')}${r.note ? ` · ${esc(r.note)}` : ''}</span><span>${esc(fullDate(r.release_date))}</span></div>`).join('')}</div>`,
     studios?.length && `<h3 class="filter-section">Studios</h3><p>${esc(studios.map(s => s.name).join(', '))}</p>`,
     aliases?.length && `<h3 class="filter-section">Also known as</h3><p class="muted">${esc([...new Set(aliases.map(a => a.title))].slice(0, 12).join(', '))}</p>`,
-    translations?.length && `<h3 class="filter-section">Translated into</h3><p class="muted">${esc([...new Set(translations.map(x => languageName(x.language)))].join(', '))}</p>`,
+    translations?.length && `<h3 class="filter-section">Translated into</h3><p class="muted">${esc([...new Set(translations.map(x => codeName(x.language, 'language')))].join(', '))}</p>`,
   ].filter(Boolean).join('');
   box.querySelector('#details-more').innerHTML = more;
-}
-
-function whereDrawer(prov) {
-  const group = (title, list) => list?.length ? `<h3 class="filter-section">${title}</h3><div class="providers">${list.map(p => `<img src="${IMG}w92${esc(p.logo_path)}" alt="${esc(p.provider_name)}" title="${esc(p.provider_name)}">`).join('')}</div>` : '';
-  drawer({ title: 'Where to watch', width: 400, body: `${group('Stream', prov.flatrate)}${group('Free', prov.free)}${group('With ads', prov.ads)}${group('Rent', prov.rent)}${group('Buy', prov.buy)}
-    <p><a href="${esc(prov.link)}" target="_blank" class="muted">Availability by JustWatch</a></p>` });
 }
 
 async function historyDrawer(title, tt, t) {
@@ -114,15 +105,22 @@ async function historyDrawer(title, tt, t) {
 const commentCard = c => {
   const who = c.user?.username ?? 'Trakt member';
   // shortcut: initials rather than avatars, because Trakt blocks hotlinked images. Upgrade if an image cache is added.
-  return `<article class="comment-card"><div class="comment-head"><span class="avatar small" aria-hidden="true">${esc(who[0].toUpperCase())}</span><b>${esc(who)}</b><small class="muted">${esc(shortDate(c.created_at))}</small>${c.user_rating ? `<span class="meta-tag">${esc(c.user_rating)}/10</span>` : ''}</div>
+  return `<article class="comment-card"><div class="comment-head"><span class="avatar small" aria-hidden="true">${esc(who[0].toUpperCase())}</span><b>${esc(who)}</b><small class="muted">${esc(shortDate(c.created_at))}</small></div>
     ${c.spoiler ? '<button type="button" class="btn spoiler-show">Contains spoilers. Show</button>' : ''}
     <p class="comment-text"${c.spoiler ? ' hidden' : ''}>${esc(c.comment)}</p>
     <div class="comment-foot muted"><small>${num(c.likes)} likes</small><small>${num(c.replies)} replies</small></div></article>`;
 };
-const videoCard = v => `<a class="video-card" href="${esc(v.url)}" target="_blank" title="${esc(v.title)}"><span class="play-icon">${icon('play')}</span><b>${esc(v.title)}</b><small class="muted">${esc(statusText(v.type))}</small></a>`;
+// A real link underneath, so it's still a link to the keyboard and screen readers. A press plays it here instead.
+const videoLink = (key, title) => `href="https://www.youtube.com/watch?v=${esc(key)}" target="_blank" data-video="${esc(key)}" data-video-title="${esc(title)}"`;
+const videoCard = v => `<a class="video-card" ${videoLink(youtubeKey(v.url), v.title)} title="${esc(v.title)}"><span class="play-icon">${icon('play')}</span><b>${esc(v.title)}</b><small class="muted">${esc(statusText(v.type))}</small></a>`;
 const publicListCard = l => `<a class="list-tile" href="#/list/${l.ids.trakt}/public"><b>${esc(l.name)}</b><span>${num(l.item_count)} items${l.user?.username ? ` · ${esc(l.user.username)}` : ''}</span>${l.description ? `<p>${esc(l.description)}</p>` : ''}</a>`;
 
 document.addEventListener('click', ev => {
+  const video = ev.target.closest('[data-video]');
+  if (video) {
+    ev.preventDefault();
+    return playVideo(video.dataset.video, video.dataset.videoTitle);
+  }
   const show = ev.target.closest('.spoiler-show');
   if (!show) return;
   show.nextElementSibling.hidden = false;
@@ -134,7 +132,7 @@ async function showTitle(type, id, season = null) {
   const tt = traktType(type);
   const none = e => { console.warn('Trakt lookup failed', e); return null; };
   const [d, t] = await Promise.all([
-    tmdb(`/${type}/${id}`, { append_to_response: 'external_ids,videos,watch/providers,credits' }),
+    tmdb(`/${type}/${id}`, { append_to_response: 'external_ids,videos,credits' }),
     traktGet(`/search/tmdb/${id}?type=${tt}`).then(r => {
       const found = r[0]?.[tt];
       return found ? traktGet(`/${tt}s/${found.ids.trakt}?extended=full,colors`) : null;
@@ -143,9 +141,8 @@ async function showTitle(type, id, season = null) {
   if (token !== routeToken) return;
   const name = d.title ?? d.name;
   const imdb = d.external_ids?.imdb_id;
-  const trailer = d.videos?.results?.find(v => v.site === 'YouTube' && v.type === 'Trailer');
-  const trailerUrl = trailer && `https://www.youtube.com/watch?v=${encodeURIComponent(trailer.key)}`;
-  const prov = d['watch/providers']?.results?.[REGION()];
+  const trailerKey = pickTrailer(d.videos?.results)?.key ?? youtubeKey(t?.trailer);
+  const trailerLink = trailerKey && videoLink(trailerKey, `${name}: Trailer`);
   const q = encodeURIComponent(name);
   const links = [
     t && ['Trakt', `https://app.trakt.tv/${tt}s/${encodeURIComponent(t.ids.slug)}`],
@@ -167,40 +164,37 @@ async function showTitle(type, id, season = null) {
   const length = runtimeText(t?.runtime ?? d.runtime);
   const line = [yearOf(d), length, type === 'tv' && (t?.aired_episodes ?? d.number_of_episodes) && `${t?.aired_episodes ?? d.number_of_episodes} episodes`, t?.certification, statusText(t?.genres?.[0] ?? d.genres?.[0]?.name)].filter(Boolean);
   const glow = safeColor(t?.colors?.poster?.[0]);
-  const tiles = (prov?.flatrate ?? prov?.free ?? prov?.rent ?? []).slice(0, 6);
   const canPlay = playHref(type, id);
+  const tagline = t?.tagline ?? d.tagline;
+  const about = factRows(aboutFacts(d, t));
 
   app.innerHTML = `<section class="summary"${glow ? ` style="--glow:${glow}"` : ''}>
     <div class="summary-inner">
-      <div class="hero-poster">${trailerUrl ? `<a href="${esc(trailerUrl)}" target="_blank" aria-label="Watch the trailer">` : '<div>'}
-        ${d.poster_path ? `<img class="summary-poster" src="${IMG}w500${esc(d.poster_path)}" alt="">` : `<div class="summary-poster no-poster">${esc(name)}</div>`}${trailerUrl ? '</a>' : '</div>'}
+      <div class="hero-poster">${trailerLink ? `<a ${trailerLink} aria-label="Watch the trailer">` : '<div>'}
+        ${d.poster_path ? `<img class="summary-poster" src="${IMG}w500${esc(d.poster_path)}" alt="">` : `<div class="summary-poster no-poster">${esc(name)}</div>`}${trailerLink ? '</a>' : '</div>'}
         ${status ? `<i class="status-tag">${esc(status)}</i>` : ''}</div>
       <div class="summary-info">
         <h1>${esc(name)}</h1>
         ${people.length ? `<p class="credit-line">${esc(credits[0])} ${people.map(p => `<a href="#/person/${+p.id}">${esc(p.name)}</a>`).join(', ')}</p>` : ''}
         <p class="meta-line muted"><span>${esc(line.join(' • '))}</span> <button type="button" class="link-btn" id="open-details">Details</button></p>
         ${t?.status || d.status ? `<p class="status-line">${esc(statusText(t?.status ?? d.status))}</p>` : ''}
-        <button type="button" class="ratings" id="ratings" aria-label="Show ratings"><span class="rating-item"><b>TMDB</b> ${(d.vote_average ?? 0).toFixed(1)}</span>${icon('chevron')}</button>
+        ${tagline ? `<p class="tagline">${esc(tagline)}</p>` : ''}
         <p class="overview" id="overview">${esc(t?.overview ?? d.overview)}</p>
         <div class="action-bar">
           <a class="action-play" href="${canPlay}">${icon('play')}<span>${next ? `S${next[0]}E${next[1]}` : 'Play'}</span></a>
           ${user ? `<button type="button" class="action-btn track-btn${watched ? ' on' : ''}" id="track" title="Mark as watched" aria-label="Mark as watched">${icon('check')}</button>
             <button type="button" class="action-btn${listed ? ' on' : ''}" id="watchlist" title="${listed ? 'On your watchlist' : 'Add to watchlist'}" aria-label="${listed ? 'Remove from watchlist' : 'Add to watchlist'}" aria-pressed="${!!listed}">${icon('bookmark')}</button>` : ''}
-          ${trailerUrl ? `<a class="action-btn" href="${esc(trailerUrl)}" target="_blank" title="Trailer" aria-label="Watch the trailer">${icon('video')}</a>` : ''}
-          ${user ? `<button type="button" class="action-btn" id="more-actions" title="More" aria-label="More actions">${icon('more')}</button>` : ''}
+          ${trailerLink ? `<a class="action-btn" ${trailerLink} title="Trailer" aria-label="Watch the trailer">${icon('video')}</a>` : ''}
+          ${user ? `<button type="button" class="action-btn" id="favorite" title="Favorite" aria-label="Favorite" aria-pressed="false">${icon('heart')}</button>
+            <button type="button" class="action-btn" id="more-actions" title="More" aria-label="More actions">${icon('more')}</button>` : ''}
         </div>
-        ${user ? `<div class="rate-row">${starRating(myRating(tt, id), `Your rating of ${name}`)}<button type="button" class="action-btn" id="favorite" title="Favorite" aria-label="Favorite" aria-pressed="false">${icon('heart')}</button></div>` : ''}
       </div>
-      ${prov ? `<aside class="where"><div class="where-head"><h2>Where to Watch</h2><button type="button" class="link-btn" id="open-where">All</button></div>
-        <div class="where-tiles">${tiles.map(p => `<span class="where-tile"><img src="${IMG}w154${esc(p.logo_path)}" alt="${esc(p.provider_name)}" title="${esc(p.provider_name)}"></span>`).join('')}</div>
-        <small><a href="${esc(prov.link)}" target="_blank" class="muted">via JustWatch</a></small>
-        <div id="sentiment"></div></aside>` : '<aside class="where where-empty"><div id="sentiment"></div></aside>'}
+      <aside class="title-side">${about ? `<h2>About</h2><div class="fact-list">${about}</div>` : ''}<div id="sentiment"></div></aside>
     </div></section>
     <div class="page title-rows" id="title-rows"></div>`;
 
   const $ = s => document.getElementById(s);
   $('open-details').onclick = () => detailsDrawer({ d, t, tt, links });
-  if (prov) $('open-where').onclick = () => whereDrawer(prov);
   const body = { [`${tt}s`]: [ids(id)] };
   if (user) {
     busy($('track'), () => trackDrawer({ type, id, name, next, watched }));
@@ -218,9 +212,6 @@ async function showTitle(type, id, season = null) {
       }) },
     ].filter(Boolean);
     menu($('more-actions'), moreItems);
-    bindStars(app.querySelector('.rate-row'), v => (v
-      ? write('/sync/ratings', { [`${tt}s`]: [{ ...ids(id), rating: v }] })
-      : write('/sync/ratings/remove', body)).then(() => toast(v ? 'Rating saved' : 'Rating removed')));
     const favorite = $('favorite');
     // Favourites aren't in the library mirror, so this asks once the page is up.
     traktGet(`/sync/favorites/${tt}s/rank/asc?limit=100`).then(list => {
@@ -237,25 +228,13 @@ async function showTitle(type, id, season = null) {
     });
   }
 
-  // Ratings and sentiment fill in without moving what's already on the page.
-  let distribution = null;
-  let ratingList = [{ label: 'TMDB', value: (d.vote_average ?? 0).toFixed(1), votes: d.vote_count }];
-  $('ratings').onclick = () => ratingsDrawer(ratingList, distribution);
+  // Sentiment fills in without moving what's already on the page.
   const base = t && `/${tt}s/${t.ids.trakt}`;
-  const rated = t ? traktGet(`${base}/ratings?extended=all`).then(r => {
-    if (token !== routeToken) return;
-    const rows = ratingRows(r);
-    if (!rows.length) return;
-    ratingList = rows;
-    distribution = r.trakt?.distribution ?? null;
-    const box = $('ratings');
-    if (box) box.innerHTML = rows.filter(x => x.main).map(x => `<span class="rating-item"><b>${esc(x.label)}</b> ${esc(x.value)}</span>`).join('') + icon('chevron');
-  }).catch(console.warn) : null;
   if (t) traktGet(`${base}/sentiments`).then(s => {
     const box = $('sentiment');
     if (!box || token !== routeToken || !(s?.good?.length || s?.bad?.length)) return;
     const list = (title, items, cls) => items?.length ? `<div class="sentiment-group"><b class="${cls}">${title}</b><ul>${items.slice(0, 3).map(i => `<li>${esc(i.sentiment)}</li>`).join('')}</ul></div>` : '';
-    box.innerHTML = `<h2 class="sentiment-title">Sentiment</h2>${list('Good', s.good, 'good')}${list('Bad', s.bad, 'bad')}`;
+    box.innerHTML = `<h2>Sentiment</h2>${list('Good', s.good, 'good')}${list('Bad', s.bad, 'bad')}`;
   }).catch(console.warn);
 
   const into = $('title-rows');
@@ -265,11 +244,11 @@ async function showTitle(type, id, season = null) {
   const rows = renderRows([
     cast.length && { id: 'cast', title: 'Actors', load: async () => cast.map(personCard).join('') },
     t && { id: 'comments', title: 'Comments', kind: 'list', load: async () => (await traktGet(`${base}/comments/likes?limit=10`)).map(commentCard).join('') },
-    t && { id: 'videos', title: 'Videos', kind: 'landscape', load: async () => (await traktGet(`${base}/videos`)).filter(v => youtubeUrl(v.url)).map(videoCard).join('') },
+    t && { id: 'videos', title: 'Videos', kind: 'landscape', load: async () => (await traktGet(`${base}/videos`)).filter(v => youtubeKey(v.url)).map(videoCard).join('') },
     t && { id: 'related', title: 'Related', bright: true, load: async () => posters(await traktGet(`${base}/related?limit=20&extended=full`), tt) },
     t && { id: 'lists', title: 'Lists', kind: 'list', load: async () => (await traktGet(`${base}/lists/personal/popular?limit=10`)).map(publicListCard).join('') },
   ], into);
-  await Promise.all([rated, seasons, rows]);
+  await rows;
 }
 
 // ---------- seasons
@@ -330,34 +309,22 @@ async function seasonRail({ d, id, t, into, season, next }) {
 }
 
 function episodeDrawer({ id, season, e, watched, name, onChange }) {
-  const title = `S${season}E${e.episode_number}: ${e.name}`;
   const d = drawer({
     title: e.name,
     body: `${e.still_path ? `<img class="episode-still" src="${IMG}w780${esc(e.still_path)}" alt="">` : ''}
-      <p class="muted">${esc(name)} · S${season}E${e.episode_number}${e.air_date ? ` · ${esc(shortDate(e.air_date))}` : ''}${e.runtime ? ` · ${runtimeText(e.runtime)}` : ''}${e.vote_average ? ` · TMDB ${e.vote_average.toFixed(1)}` : ''}</p>
+      <p class="muted">${esc(name)} · S${season}E${e.episode_number}${e.air_date ? ` · ${esc(shortDate(e.air_date))}` : ''}${e.runtime ? ` · ${runtimeText(e.runtime)}` : ''}</p>
       <div class="episode-actions"><a class="btn primary" href="#/play/tv/${id}/${season}/${e.episode_number}" data-close>${icon('play')}Play</a>
         ${user ? `<button type="button" class="btn${watched ? ' on' : ''}" id="episode-watch">${icon('check')}${watched ? 'Watched' : 'Mark watched'}</button>` : ''}</div>
-      ${user ? `<div class="rate-row" id="episode-rate"></div>` : ''}
       <p class="overview">${esc(e.overview)}</p>`,
   });
   d.querySelector('a[data-close]').addEventListener('click', () => d.close());
   if (!user) return;
-  // Episode ratings aren't in the library mirror, so the stars wait for them rather than showing a false empty.
-  traktGet('/sync/ratings/episodes').catch(() => []).then(list => {
-    if (!d.open) return;
-    d.querySelector('#episode-rate').innerHTML = starRating(list.find(x => x.episode?.ids?.tmdb === e.id)?.rating, `Your rating of ${title}`);
-    bindStarsFor(d);
-  });
   busy(d.querySelector('#episode-watch'), async () => {
     await write(watched ? '/sync/history/remove' : '/sync/history', episodeBody(id, season, e.episode_number));
     await refreshProgress().catch(console.warn);
     toast(watched ? 'Removed from your history' : 'Marked watched on Trakt');
     d.close();
     onChange();
-  });
-  const bindStarsFor = root => bindStars(root, v => {
-    const item = { ids: { tmdb: e.id } };
-    return (v ? trakt('POST', '/sync/ratings', { episodes: [{ ...item, rating: v }] }) : trakt('POST', '/sync/ratings/remove', { episodes: [item] })).then(() => toast(v ? 'Rating saved' : 'Rating removed'));
   });
 }
 
@@ -384,5 +351,5 @@ async function showPerson(id) {
     id: `person-${kind}`, title: kind === 'movies' ? 'Movies' : 'Shows', bright: true,
     load: async () => (slug ? posters(newestCredits((await traktGet(`/people/${slug}/${kind}?extended=full`)).cast), type, x => x.character || '') : ''),
   });
-  await renderRows([credits('movies', 'movie'), credits('shows', 'show')], document.getElementById('person-rows'));
+  await renderRows([getMode() !== 'show' && credits('movies', 'movie'), getMode() !== 'movie' && credits('shows', 'show')], app.querySelector('#person-rows'));
 }

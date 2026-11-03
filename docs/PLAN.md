@@ -127,6 +127,12 @@ The player is a cross-origin iframe, so the app can't read the playback position
 - `/sync/last_activities` has no marker for a removed play, so `activities.all` triggers a check and the counts decide. Whether `all` moves on a removal is unconfirmed: run scenario 32 in `specs/002-trakt-design-parity/quickstart.md`.
 - [Sync contract](https://github.com/trakt/trakt-api/blob/main/projects/api/src/contracts/sync/index.ts).
 
+### Trailers in an embedded player (checked 2026-11-03)
+- A `target="_blank"` link only reaches `on_new_window`, which hands it to the system browser, so trailers now play in an iframe in a dialog.
+- [YouTube's required minimum functionality](https://developers.google.com/youtube/terms/required-minimum-functionality): embeds must send a `Referer`, with `strict-origin-when-cross-origin` recommended. Nothing may overlay or obscure the player, the player may not be changed, and its viewport must be at least 200 by 200 (480 by 270 recommended for 16:9). In a WebView the `Referer` defaults to empty and the app must supply it. Here the page's origin, `http://tauri.localhost`, supplies it, and a trailer played in the real app on 2026-11-03.
+- [Player parameters](https://developers.google.com/youtube/player_parameters): the format is `https://www.youtube.com/embed/VIDEO_ID`. `rel=0` limits related videos to the same channel. The docs don't cover `youtube-nocookie.com`, so it isn't used.
+- Uploaders can disable embedding, so the dialog always offers Open on YouTube.
+
 ### Your own tracking pages (read from trakt-api `090d333` and trakt-web `9ebdbff`, 2026-11-03; not yet called with a real account)
 - **Shared lists:** `GET /users/{id}/lists/collaborations`. Items of a shared list live under the owner's slug, not `/users/me`. The earlier `/users/me/collaborations` returned 405.
 - **Liked lists:** `/users/likes/lists` wraps each one in `{ liked_at, list }`.
@@ -184,6 +190,8 @@ Trakt's policy allows combining scores only if the app labels the result as its 
 6. **Ship:** NSIS installer with the WebView2 bootstrapper, an About page (TMDB, JustWatch and Trakt credits, privacy note, uBO licence).
 
 ## 8. Decisions
+
+- **2026-11-03, the owner's call, overruling the Trakt reference:** the media switch shows on every page listing both movies and shows, including the full grids where Trakt hides it in the filter drawer. Title pages have no external ratings and no Where to Watch, so nothing asks for `/ratings` or TMDB's `watch/providers`, and the JustWatch credit is gone with the data it covered. The person's own stars went too, along with the rate button on History cards, so Filmie no longer rates anything. The Ratings page still lists what was rated on Trakt.
 **Chosen for v1 (2026-11-02, recommended defaults):**
 - Plain HTML/JS frontend in `ui/`, no build step.
 - Device-code sign-in.

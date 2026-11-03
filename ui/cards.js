@@ -5,9 +5,8 @@ function cardMenuButton(it) {
   return `<button type="button" class="card-menu" aria-label="More for ${esc(it.title)}" data-menu-type="${it.type}" data-menu-id="${it.id}" data-menu-title="${esc(it.title)}">${icon('more')}</button>`;
 }
 
-// The one action a card shows directly: mark watched where the next step is watching it, rate where it's already been watched.
+// The one action a card shows directly: mark watched where the next step is watching it.
 const watchAction = (it, s, e) => user ? `<button type="button" class="card-action" title="Mark watched" aria-label="Mark ${esc(it.title)} watched" data-watch="${it.type}" data-id-value="${it.id}"${s ? ` data-s="${s}" data-e="${e}"` : ''}>${icon('check')}</button>` : '';
-const rateAction = (title, kind, id) => `<button type="button" class="card-action" title="Rate" aria-label="Rate ${esc(title)}" data-rate="${kind}" data-id-value="${id}" data-rate-title="${esc(title)}">${icon('star')}</button>`;
 // Takes a title off a list of the person's own. `path` is the Trakt route that removes it.
 const removeAction = (it, path, label, done = 'Removed') => `<button type="button" class="card-action" title="${esc(label)}" aria-label="${esc(label)}: ${esc(it.title)}" data-remove-path="${esc(path)}" data-remove-type="${it.type}" data-id-value="${it.id}" data-remove-done="${esc(done)}">${icon('close')}</button>`;
 
@@ -66,14 +65,14 @@ function calendarCard(x) {
     : progressCard(`#/title/movie/${it.id}`, it, it.year ?? 'Movie', null, date, { play: false });
 }
 
-// A history entry, with the rating action on what was watched. The History page also lets each play be removed.
+// A history entry. The History page also lets each play be removed.
 function historyCard(x, { removable } = {}) {
   const it = norm(x, x.movie ? 'movie' : 'show');
   if (!it) return '';
   const date = shortDate(x.watched_at);
-  const remove = removable && x.id ? `<button type="button" class="card-action second" title="Remove this play" aria-label="Remove this play of ${esc(it.title)}" data-remove-play="${+x.id}">${icon('close')}</button>` : '';
-  if (!x.episode) return progressCard(`#/title/movie/${it.id}`, it, it.year ?? 'Movie', null, date, { play: false, action: (user ? rateAction(it.title, 'movie', it.id) : '') + remove });
-  return progressCard(`#/title/tv/${it.id}/${x.episode.season}`, it, episodeLine(x.episode), null, date, { play: false, action: (x.episode.ids?.trakt ? rateAction(`${it.title} ${episodeLine(x.episode)}`, 'episode', x.episode.ids.trakt) : '') + remove });
+  const action = removable && x.id ? `<button type="button" class="card-action" title="Remove this play" aria-label="Remove this play of ${esc(it.title)}" data-remove-play="${+x.id}">${icon('close')}</button>` : '';
+  if (!x.episode) return progressCard(`#/title/movie/${it.id}`, it, it.year ?? 'Movie', null, date, { play: false, action });
+  return progressCard(`#/title/tv/${it.id}/${x.episode.season}`, it, episodeLine(x.episode), null, date, { play: false, action });
 }
 
 // For a grid of calendar entries in date order: adds a heading wherever the day changes.
@@ -369,8 +368,6 @@ document.addEventListener('click', ev => {
   }
   const watch = ev.target.closest('[data-watch]');
   if (watch) return markWatchedFromCard(watch);
-  const rate = ev.target.closest('[data-rate]');
-  if (rate) return openRatePicker(rate.dataset.rateTitle, rate.dataset.rate, +rate.dataset.idValue);
   const removal = ev.target.closest('[data-remove-path]');
   if (removal) {
     const { removePath, removeType, idValue, removeDone } = removal.dataset;
@@ -414,24 +411,6 @@ async function markWatchedFromCard(button) {
     button.disabled = false;
     toast(err);
   }
-}
-
-function openRatePicker(title, kind, id) {
-  const send = rating => {
-    const item = kind === 'movie' ? { ...ids(id), rating } : { ids: { trakt: id }, rating };
-    write('/sync/ratings', { [`${kind}s`]: [item] }).then(() => toast('Rating saved'), toast);
-  };
-  const d = modal({
-    title: `Rate ${title}`,
-    body: `<div class="rate-picker">${[...Array(10)].map((_, i) => `<button type="button" class="btn" data-rating="${i + 1}" aria-label="Rate ${i + 1} out of 10">${i + 1}</button>`).join('')}</div>`,
-    actions: [{ label: 'Cancel' }],
-  });
-  d.querySelector('.rate-picker').onclick = ev => {
-    const button = ev.target.closest('[data-rating]');
-    if (!button) return;
-    send(+button.dataset.rating);
-    d.close();
-  };
 }
 
 const signInPrompt = what => `<div class="page"><section class="callout"><h2>Sign in with Trakt</h2>

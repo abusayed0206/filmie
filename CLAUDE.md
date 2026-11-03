@@ -41,14 +41,14 @@ node --test --test-name-pattern=episodeAfter tests/ui.test.js # one UI test
 **Frontend (`ui/`)** is classic scripts sharing globals, with no modules or framework. They load in this order from `index.html`:
 - `lib.js`: pure helpers, `FILTERS` and `DEFAULT_SOURCES`. It is the only file the tests import, so testable logic goes there.
 - `core.js`: Tauri calls, preferences, mode and filter state, the Trakt library lookups, `refreshUser`, `syncInBackground`, `runHistorySync`.
-- `controls.js`: `drawer`, `modal`, `menu`, `segmented`, `starRating`, the filter drawer and the Ctrl+K palette. Drawers and dialogs are native `<dialog>`.
+- `controls.js`: `drawer`, `modal`, `menu`, `segmented`, the filter drawer and the Ctrl+K palette. Drawers and dialogs are native `<dialog>`.
 - `cards.js`: every card, `renderRows`, `renderGrid`, skeletons and the card actions.
 - `pages-browse.js` (Home, Discover, Search), `pages-title.js` (title and person), `pages-me.js` (the signed-in pages and Settings).
 - `app.js`: the player, the top bar, the hash router and start-up. `route()` dispatches to the `pages` object, so `#/play/tv/1396/5/14` calls `pages.play('tv', '1396', '5', '14')`.
 
 How pages work:
 - Pages render with `innerHTML` into `app`, so interpolated data must pass through `esc()`. `routeToken` lets async work drop results after the page has changed, so check it after a page's first `await`.
-- `pages.x.bar` tells the top bar what to show: `{ title, meta, back, mode, filters }`, or a function of the route arguments returning that. `mode` is `'bar'` for the switch, `'drawer'` to put it in the filter drawer, `'search'` for Search's five-way one, or left out. `filters` is `'global'`, `'local'` or left out, and only belongs where Trakt's endpoint takes filters.
+- `pages.x.bar` tells the top bar what to show: `{ title, meta, back, mode, filters }`, or a function of the route arguments returning that. `mode` is `'bar'` for the switch, `'search'` for Search's five-way one, or left out. Any page listing both movies and shows gets the switch. `filters` is `'global'`, `'local'` or left out, and only belongs where Trakt's endpoint takes filters.
 - Mode is `getMode()`, `setMode()` and `forMode(media, show, movie)`. Filters are `{ param: value }` exactly as the API takes them, through `activeFilters()` and `withFilters(path)`. People and Lists only exist on Search, in `getSearchMode()`, and never touch the saved mode.
 - `route()` shows a `skeleton(kind)` placeholder, then runs the page. `SKELETONS` in `cards.js` picks the shape.
 - `route({ soft: true })` refreshes the current page in place, for example after a write or a background sync. It renders into a hidden copy of `#app`, then swaps it in and moves keyboard focus to the same control. A page must await what it loads for the swap to be complete, so use `app`, not `document`, to find what you just rendered.
@@ -57,7 +57,8 @@ How pages work:
 - The side rail is `nav.rail` in `index.html`, and `navFor` in `lib.js` picks its highlighted items. Its width is the `--rail` token, and `localStorage` key `rail` remembers it. Search's `#q` sits outside `#app` so it keeps focus while results swap.
 - `.row` is a container, and `@container` steps in `style.css` set how many whole cards fit.
 - Icons are SVG symbols in `index.html`, used through `icon(name)`. A test fails if a symbol is missing.
-- The design follows Trakt's desktop app, measured in `specs/002-trakt-design-parity/trakt-design-reference.md`. trakt-web is GPLv3 and Filmie is MIT, so build from that description and never copy its code, styles or assets. There is no Trakt logo, and the accent is Filmie's red.
+- The design follows Trakt's desktop app, measured in `specs/002-trakt-design-parity/trakt-design-reference.md`. trakt-web is GPLv3 and Filmie is MIT, so build from that description and never copy its code, styles or assets. There is no Trakt logo, and the accent is Filmie's red. The owner's decisions overrule the reference: every list page has the media switch, and title pages have no ratings of any kind, including the person's own stars, and no Where to Watch.
+- The rail's Home, Discover and Lists are `.rail-group`s. On a wide rail `openRailGroup` shows one group's sub-pages at a time, starting with the current page's. On a narrow rail they and the bottom menu open as flyouts, through the `flyout` class.
 
 **Local database (`src-tauri/src/db.rs`, `filmie.sqlite3` in the app data folder)**
 - `Db::through` caches `tmdb` and `trakt` GET responses, and falls back to an expired copy when a fetch fails, except on 401. `ui/app.js` keeps no response cache of its own and only shares in-flight requests.
@@ -80,7 +81,8 @@ How pages work:
 
 **Player**
 - The iframe is cross-origin, so `app.js` can't read or change it. The toolbar sits above the iframe, and menus overlay it only while open.
-- `INJECT_PLAYER` in `main.rs` runs in every frame through `initialization_script_for_all_frames` and does nothing in the top frame. It removes ad nodes, retries autoplay and applies the preferred quality.
+- `INJECT_PLAYER` in `main.rs` runs in every frame through `initialization_script_for_all_frames` and does nothing in the top frame or on YouTube.
+- Trailers and videos play in `playVideo` in `controls.js`, an embedded YouTube player in a dialog. YouTube's terms require the `Referer` it gets from `strict-origin-when-cross-origin`, and forbid covering or changing the player. It removes ad nodes, retries autoplay and applies the preferred quality.
 - `app.js` sends the quality as a `{ __filmieQuality }` `postMessage`, which the script relays to nested frames.
 
 **Window lockdown (`main.rs`)**

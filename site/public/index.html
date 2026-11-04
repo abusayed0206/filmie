@@ -10,6 +10,7 @@
   <meta name="theme-color" content="#16141a">
   <meta name="color-scheme" content="dark">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="/fonts/bebas-neue-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/fonts/roboto-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/shots/home-1440.webp" as="image" imagesrcset="/shots/home-960.webp 960w, /shots/home-1440.webp 1440w" imagesizes="(max-width: 1180px) 100vw, 1120px">
   <link rel="stylesheet" href="/styles.css">
@@ -22,7 +23,7 @@
   <meta property="og:image" content="https://filmie.sayed.app/og.png">
   <meta property="og:image:width" content="1200">
   <meta property="og:image:height" content="630">
-  <meta property="og:image:alt" content="Filmie's Home page, with Continue Watching and Start Watching rows">
+  <meta property="og:image:alt" content="Filmie's Home page with real Continue Watching and Start Watching rows">
   <meta name="twitter:card" content="summary_large_image">
 
   <script type="application/ld+json">
@@ -59,6 +60,7 @@
     <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.010M10 10h.010M14 10h.010M18 10h.010M7 14h10"/></symbol>
     <symbol id="i-filter" viewBox="0 0 24 24"><path d="M3 5h18l-7 8.500V20l-4-2v-4.500z"/></symbol>
     <symbol id="i-offline" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.700 3.600 3 8 3s8-1.300 8-3V6M4 12v6c0 1.700 3.600 3 8 3s8-1.300 8-3v-6"/></symbol>
+    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.500v15l12-7.500z"/></symbol>
   </svg>
 
   <header class="top">
@@ -77,45 +79,46 @@
   <main id="main">
     <section class="hero">
       <div class="wrap hero-copy">
-        <p class="eyebrow"><span class="pill">New in 0.2</span> A redesign, offline stats and Ctrl+K search</p>
-        <h1>Every movie and show you love, <span class="hl">tracked on your terms.</span></h1>
+        <p class="eyebrow"><span class="pill">Now showing</span> Version 0.2 · offline stats and Ctrl+K search</p>
+        <h1>Every movie and show you love. <span class="hl">Tracked on your terms.</span></h1>
         <p class="lede">Filmie is a small Windows app for browsing what's on, keeping your Trakt history in step and playing from servers you add yourself. Nothing is marked as watched until you say so.</p>
         <div class="cta">
-          <a class="btn primary" href="https://github.com/abusayed0206/filmie/releases/latest/download/Filmie-Setup-x64.exe">
-            <svg class="i" aria-hidden="true"><use href="#i-download"/></svg>Download for Windows
-          </a>
-          <a class="btn" href="https://github.com/abusayed0206/filmie"><svg class="i" aria-hidden="true"><use href="#i-github"/></svg>View source</a>
+          <a class="btn primary" href="https://github.com/abusayed0206/filmie/releases/latest/download/Filmie-Setup-x64.exe"><svg class="i" aria-hidden="true"><use href="#i-download"/></svg>Download for Windows</a>
+          <a class="btn" href="#tour"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg>Take the tour</a>
         </div>
         <p class="fine">Free and open source · Windows 10 or 11, 64-bit · <a href="https://github.com/abusayed0206/filmie/releases">All releases</a></p>
       </div>
       <div class="wrap">
-        <figure class="window hero-shot">
-          <div class="window-bar" aria-hidden="true"><span></span><span></span><span></span></div>
+        <figure class="screen">
           <img src="/shots/home-1440.webp" srcset="/shots/home-960.webp 960w, /shots/home-1440.webp 1440w" sizes="(max-width: 1180px) 100vw, 1120px"
-            width="1440" height="900" fetchpriority="high" alt="Filmie's Home page: a side rail on the left, a Media, Shows and Movies switch at the top, and rows for Continue Watching, Start Watching and a 12-day streak.">
+              width="1440" height="900" fetchpriority="high" alt="Filmie's Home page: the side rail, a Media, Shows and Movies switch, Continue Watching with The Terminal List, Elementary and Fargo, and a row of Start Watching posters.">
         </figure>
       </div>
       <ul class="wrap facts" aria-label="At a glance">
         <li><b>Free</b><span>MIT licensed</span></li>
         <li><b>Trakt</b><span>sync built in</span></li>
-        <li><b>0</b><span>telemetry or ads</span></li>
+        <li><b>Zero</b><span>telemetry or ads</span></li>
         <li><b>Offline</b><span>stats and cache</span></li>
       </ul>
     </section>
+
+    <div class="reel" aria-hidden="true">
+      <ul class="strip"><li><img src="/shots/discover-960.webp" width="960" height="600" loading="lazy" decoding="async" alt=""></li><li><img src="/shots/title-960.webp" width="960" height="600" loading="lazy" decoding="async" alt=""></li><li><img src="/shots/player-960.webp" width="960" height="600" loading="lazy" decoding="async" alt=""></li><li><img src="/shots/profile-960.webp" width="960" height="600" loading="lazy" decoding="async" alt=""></li><li><img src="/shots/palette-960.webp" width="960" height="600" loading="lazy" decoding="async" alt=""></li><li><img src="/shots/filters-960.webp" width="960" height="600" loading="lazy" decoding="async" alt=""></li><li><img src="/shots/home-960.webp" width="960" height="600" loading="lazy" decoding="async" alt=""></li><li><img src="/shots/discover-960.webp" width="960" height="600" loading="lazy" decoding="async" alt=""></li><li><img src="/shots/title-960.webp" width="960" height="600" loading="lazy" decoding="async" alt=""></li><li><img src="/shots/player-960.webp" width="960" height="600" loading="lazy" decoding="async" alt=""></li><li><img src="/shots/profile-960.webp" width="960" height="600" loading="lazy" decoding="async" alt=""></li><li><img src="/shots/palette-960.webp" width="960" height="600" loading="lazy" decoding="async" alt=""></li><li><img src="/shots/filters-960.webp" width="960" height="600" loading="lazy" decoding="async" alt=""></li><li><img src="/shots/home-960.webp" width="960" height="600" loading="lazy" decoding="async" alt=""></li></ul>
+    </div>
 
     <section id="tour" class="section tour" aria-labelledby="tour-title">
       <div class="wrap">
         <header class="section-head">
           <p class="kicker">Take the tour</p>
           <h2 id="tour-title">Built for the way you watch</h2>
-          <p class="sub">A desktop app with the layout of a modern tracker: a side rail, rows you can collapse, and a switch for movies, shows or both on every list.</p>
+          <p class="sub">A side rail, rows you can collapse, and a switch for movies, shows or both on every list. Every screenshot here is the real app on a real Trakt account.</p>
         </header>
 
         <article class="feature">
           <div class="feature-text">
-            <span class="badge"><svg class="i" aria-hidden="true"><use href="#i-list"/></svg>Title pages</span>
+            <span class="scene">Scene 01 · Title pages</span>
             <h3>Everything about a title, then straight to the next episode</h3>
-            <p>Seasons and episodes, cast, comments, videos and related titles in one place. The play button already knows where you are, so S2E3 is one click away.</p>
+            <p>Seasons and episodes, cast, comments, videos and related titles in one place. The play button already knows where you are, so the next episode is one click away.</p>
             <ul class="ticks">
               <li>Mark watched now, on release day or on any date</li>
               <li>Watchlist, favourites and your own Trakt lists</li>
@@ -124,13 +127,13 @@
           </div>
           <figure class="window">
             <img src="/shots/title-1440.webp" srcset="/shots/title-960.webp 960w, /shots/title-1440.webp 1440w" sizes="(max-width: 900px) 100vw, 640px"
-              width="1440" height="900" loading="lazy" decoding="async" alt="A show's page with its poster, overview, a red S2E3 play button, an About panel and a row of season two episodes.">
+              width="1440" height="900" loading="lazy" decoding="async" alt="Fargo's title page with its poster, overview, an About panel, a red S3E1 play button and a row of season three episodes.">
           </figure>
         </article>
 
         <article class="feature flip">
           <div class="feature-text">
-            <span class="badge"><svg class="i" aria-hidden="true"><use href="#i-server"/></svg>Player</span>
+            <span class="scene">Scene 02 · Player</span>
             <h3>Jump to any episode without leaving the video</h3>
             <p>The player bar sits above the video, never over it. Pick a season, skip to an episode, switch servers or press Next. Pop-ups and in-player ads are blocked.</p>
             <ul class="ticks">
@@ -141,13 +144,13 @@
           </div>
           <figure class="window">
             <img src="/shots/player-1440.webp" srcset="/shots/player-960.webp 960w, /shots/player-1440.webp 1440w" sizes="(max-width: 900px) 100vw, 640px"
-              width="1440" height="900" loading="lazy" decoding="async" alt="The player with its episode menu open on Season 2, episode 3 highlighted, and buttons for server, Mark watched, Watchlist and Next.">
+              width="1440" height="900" loading="lazy" decoding="async" alt="The player on Fargo season 3 with the episode menu open, and buttons for Episodes, server, Mark Watched, Watchlist and Next.">
           </figure>
         </article>
 
         <article class="feature">
           <div class="feature-text">
-            <span class="badge"><svg class="i" aria-hidden="true"><use href="#i-chart"/></svg>Stats</span>
+            <span class="scene">Scene 03 · Stats</span>
             <h3>Your stats and streak, no VIP needed</h3>
             <p>Filmie keeps a copy of your Trakt history on your PC and works out your totals, top genres, ratings and monthly activity from it. It's instant, and it works offline.</p>
             <ul class="ticks">
@@ -158,7 +161,7 @@
           </div>
           <figure class="window">
             <img src="/shots/profile-1440.webp" srcset="/shots/profile-960.webp 960w, /shots/profile-1440.webp 1440w" sizes="(max-width: 900px) 100vw, 640px"
-              width="1440" height="900" loading="lazy" decoding="async" alt="The Profile page with totals for movies, shows, episodes and time watched, a top genres chart, a ratings chart and a 24-month activity chart.">
+              width="1440" height="900" loading="lazy" decoding="async" alt="The Profile page: 857 movies, 147 shows, 5,013 episodes and 242 days watched, with top genres, ratings and a 24-month activity chart.">
           </figure>
         </article>
 
@@ -166,14 +169,14 @@
           <figure class="duo-item">
             <div class="window">
               <img src="/shots/palette-1440.webp" srcset="/shots/palette-960.webp 960w, /shots/palette-1440.webp 1440w" sizes="(max-width: 900px) 100vw, 548px"
-                width="1440" height="900" loading="lazy" decoding="async" alt="The Ctrl+K palette over Home, listing movies and shows that match the word 'the'.">
+              width="1440" height="900" loading="lazy" decoding="async" alt="The Ctrl+K palette over Home, listing movies and shows that match the word 'breaking'.">
             </div>
             <figcaption><svg class="i" aria-hidden="true"><use href="#i-keyboard"/></svg><span><b>Go anywhere with Ctrl+K.</b> Search titles and pages from the keyboard.</span></figcaption>
           </figure>
           <figure class="duo-item">
             <div class="window">
               <img src="/shots/filters-1440.webp" srcset="/shots/filters-960.webp 960w, /shots/filters-1440.webp 1440w" sizes="(max-width: 900px) 100vw, 548px"
-                width="1440" height="900" loading="lazy" decoding="async" alt="The filter drawer open beside Discover, with genre, availability, decade, runtime, rating and certification filters.">
+              width="1440" height="900" loading="lazy" decoding="async" alt="The filter drawer with genre, availability, decade, runtime, Trakt rating, certification, region and status filters.">
             </div>
             <figcaption><svg class="i" aria-hidden="true"><use href="#i-filter"/></svg><span><b>Filter every chart.</b> Genre, decade, runtime, rating and more, saved as your default.</span></figcaption>
           </figure>
@@ -223,12 +226,13 @@
         <details><summary>Do I need a Trakt account?</summary><p>No, you can browse without one. You need a free Trakt account for your library, recommendations, stats and watch tracking. Trakt VIP isn't needed.</p></details>
         <details><summary>Why does Windows show a warning when I install it?</summary><p>The installer isn't code-signed yet, so SmartScreen may warn you. To continue, choose More info, then Run anyway. Each release lists a SHA-256 checksum you can verify first.</p></details>
         <details><summary>Does it work on Mac or Linux?</summary><p>Not at the moment. Filmie runs on 64-bit Windows 10 and 11.</p></details>
-        <details><summary>Are the screenshots real?</summary><p>They're the real app, but the titles, people and artwork in them are made up for this page.</p></details>
+        <details><summary>Are the screenshots real?</summary><p>Yes. They're taken from the app itself, signed in to the developer's own Trakt account. The player shows a trailer, because Filmie ships with no video servers.</p></details>
       </div>
     </section>
 
     <section class="section closing">
       <div class="wrap closing-card">
+        <p class="kicker">Roll credits</p>
         <h2>Try Filmie on your PC</h2>
         <p>Free, open source and about a minute to install.</p>
         <a class="btn primary" href="https://github.com/abusayed0206/filmie/releases/latest/download/Filmie-Setup-x64.exe"><svg class="i" aria-hidden="true"><use href="#i-download"/></svg>Download for Windows</a>
@@ -244,7 +248,7 @@
         <a href="https://github.com/abusayed0206/filmie/blob/main/LICENSE">MIT License</a>
         <a href="https://github.com/abusayed0206/filmie/issues">Report an issue</a>
       </nav>
-      <p>Filmie uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB. Filmie uses Trakt but is not endorsed or certified by Trakt. Screenshots show invented titles and artwork.</p>
+      <p>Filmie uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB. Filmie uses Trakt but is not endorsed or certified by Trakt. Posters and artwork in screenshots come from TMDB and belong to their owners.</p>
     </div>
   </footer>
 </body>

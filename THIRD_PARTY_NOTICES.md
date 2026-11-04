@@ -22,6 +22,15 @@ The app bundles the Latin subset of the Roboto variable font for its interface t
 - Version: 5.3.0 of `@fontsource-variable/roboto`, file `ui/fonts/roboto-latin-wght-normal.woff2`
 - Source: <https://github.com/googlefonts/roboto-classic>
 
+## Bebas Neue
+
+The website uses the Latin subset of Bebas Neue for its headings.
+
+- License: [SIL Open Font License 1.1](https://openfontlicense.org)
+- Copyright 2010 Dharma Type
+- Version: 5.2.5 of `@fontsource/bebas-neue`, file `site/public/fonts/bebas-neue-latin-400-normal.woff2`
+- Source: <https://github.com/dharmatype/Bebas-Neue>
+
 ## Rust crates
 
 The app is built with [Tauri](https://tauri.app) and other open-source crates, listed in `src-tauri/Cargo.lock`. Each is distributed under the license stated by its publisher, in most cases MIT or Apache-2.0.

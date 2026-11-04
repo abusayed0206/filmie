@@ -26,7 +26,7 @@ node --test --test-name-pattern=episodeAfter tests/ui.test.js # one UI test
 - `scripts/fetch-ubol.ps1` downloads the pinned uBlock Origin Lite into the git-ignored `src-tauri/extensions/`. Without it the app still runs, with no extension adblocking.
 - The installer needs the Tauri CLI: `cargo install tauri-cli --version "^2" --locked`, then `cargo tauri build --bundles nsis`. Crates.io's newest tauri-cli is a 3.x alpha, so keep the `^2`.
 - `cargo fmt` uses `src-tauri/rustfmt.toml` (140 columns). CI runs `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings`.
-- The website is in `site/`, a static-assets Cloudflare Worker configured in `site/wrangler.jsonc` and served on the custom domain `filmie.sayed.app`: `npm ci`, `npx wrangler dev`, then `npx wrangler deploy` (run locally; CI only dry-runs it). Its screenshots in `site/public/shots/` come from `scripts/site-shots/`, which renders `ui/` with mocked data, so retake them after a visible UI change.
+- The website is in `site/`, a static-assets Cloudflare Worker configured in `site/wrangler.jsonc` and served on the custom domain `filmie.sayed.app`: `npm ci`, `npx wrangler dev`, then `npx wrangler deploy` (run locally; CI only dry-runs it). Its screenshots in `site/public/shots/` are taken from the running app on the owner's real Trakt account with `scripts/site-shots/capture.mjs` (`shoot.js` there is the mocked-data alternative), so retake them after a visible UI change. Headings use Bebas Neue, self-hosted in `site/public/fonts/`.
 
 ## Running changes
 

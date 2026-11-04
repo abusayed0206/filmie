@@ -10,6 +10,24 @@ Filmie is a lightweight Windows app for browsing movies and TV shows and keeping
 
 > **Filmie doesn't host, store or serve any content.** It includes no video servers. It only shows information from TMDB and Trakt, and opens servers you add yourself. See the [Terms of Use](TERMS.md).
 
+<p align="center">
+  <img src="site/public/shots/home-1440.webp" width="900" alt="Filmie's Home page with Continue Watching and Start Watching rows">
+</p>
+
+## Screenshots
+
+These are the real app, signed in to a real Trakt account.
+
+| Title page | Player |
+|---|---|
+| <img src="site/public/shots/title-960.webp" alt="Fargo's title page with seasons and a play button for the next episode"> | <img src="site/public/shots/player-960.webp" alt="The player with the episode menu open"> |
+| **Stats** | **Discover** |
+| <img src="site/public/shots/profile-960.webp" alt="The Profile page with totals, top genres, ratings and activity"> | <img src="site/public/shots/discover-960.webp" alt="Discover with Trending, Releases and Anticipated rows"> |
+| **Ctrl+K palette** | **Filters** |
+| <img src="site/public/shots/palette-960.webp" alt="The Ctrl+K palette searching for 'breaking'"> | <img src="site/public/shots/filters-960.webp" alt="The filter drawer beside Discover"> |
+
+The player shows a trailer because Filmie ships with no video servers.
+
 ## Features
 
 - **Browse:** trending, releases, anticipated, popular and more charts, switching between Media, Shows and Movies, with filters for genre, decade, runtime, rating and more.
@@ -94,23 +112,49 @@ The UI in `ui/` is compiled into the app, so rebuild after changing it. Close an
 
 Architecture notes are in [CLAUDE.md](CLAUDE.md), and API research and decisions are in [docs/PLAN.md](docs/PLAN.md).
 
-## Releases and deployment
+## CI/CD pipeline
+
+All workflows are in [`.github/workflows`](.github/workflows). The shared Rust toolchain, cache, uBlock Origin Lite download and placeholder keys are set up by [`.github/actions/setup`](.github/actions/setup).
+
+```mermaid
+flowchart LR
+  push[Push or pull request] --> fmt[Rustfmt<br/>ubuntu]
+  push --> ui[UI tests<br/>ubuntu]
+  fmt --> rust[Clippy and Rust tests<br/>windows]
+  ui --> rust
+  deps[Cargo.lock change<br/>or weekly] --> audit[cargo audit]
+  site[Change in site/] --> dry[wrangler deploy --dry-run]
+  tag[v* tag] --> build[Build NSIS installer<br/>windows] --> release[GitHub release<br/>Filmie-Setup-x64.exe]
+```
 
 | Workflow | Runs on | What it does |
 |---|---|---|
-| `ci.yml` | Pushes and pull requests | Format check, UI tests, Clippy and Rust tests |
-| `audit.yml` | Dependency changes and weekly | Checks Rust dependencies for known vulnerabilities |
-| `release.yml` | `v*` tags | Builds the installer and publishes a GitHub release |
-| `site.yml` | Changes in `site/` | Deploys the website to Cloudflare Workers |
+| [`ci.yml`](.github/workflows/ci.yml) | Pushes to `main` and pull requests, except docs and `site/` | `cargo fmt --check` and the UI tests on Linux first, then `cargo clippy --all-targets -- -D warnings` and `cargo test` on Windows |
+| [`audit.yml`](.github/workflows/audit.yml) | Changes to `Cargo.toml` or `Cargo.lock`, and every Monday | `cargo audit` against the RustSec advisory database |
+| [`release.yml`](.github/workflows/release.yml) | `v*` tags, or by hand | Checks the tag matches the app version, builds the installer with the real keys and publishes it with its SHA-256 checksum. A manual run only builds |
+| [`site.yml`](.github/workflows/site.yml) | Changes in `site/` | `npm ci` and `wrangler deploy --dry-run`, to check the website's config and assets |
 
-To publish a version, set `version` in `src-tauri/tauri.conf.json`, then push a matching tag such as `v0.1.0`.
+CI compiles with placeholder keys, so forks and pull requests need no secrets. Only `release.yml` uses the `TMDB`, `TRAKT` and `TRAKT_REDIRECT_URI` repository secrets.
 
-These repository secrets are needed:
+### Publish a release
 
-| Secret | Used by |
-|---|---|
-| `TMDB`, `TRAKT`, `TRAKT_REDIRECT_URI` | `release.yml` |
-| `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID` | `site.yml` |
+1. Set `version` in `src-tauri/tauri.conf.json`.
+2. Push a matching tag, such as `v0.2.0`.
+
+The installer is always named `Filmie-Setup-x64.exe`, so the download links on the website and in this README always point to the latest release.
+
+### Deploy the website
+
+The website in [`site/`](site) is a static-assets Cloudflare Worker served at [filmie.sayed.app](https://filmie.sayed.app). It's deployed by hand:
+
+```bash
+cd site
+npm ci
+npx wrangler dev     # preview at http://localhost:8787
+npx wrangler deploy
+```
+
+Its screenshots are taken from the running app. See [`scripts/site-shots`](scripts/site-shots/README.md).
 
 ## Legal
 

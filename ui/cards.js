@@ -124,32 +124,45 @@ function summaryCard(it, { sortValue, label, line, href, action } = {}) {
     ${cardMenuButton(it)}${action ?? ''}</div>`;
 }
 
-// Artwork comes from TMDB, fetched only when a card scrolls near the screen.
-const artObserver = new IntersectionObserver(entries => entries.forEach(async en => {
-  if (!en.isIntersecting) return;
-  artObserver.unobserve(en.target);
-  const { type, id, art } = en.target.dataset;
+// Artwork comes from TMDB, one request per title. Only cards still near the screen wait for it, a few at a time,
+// so scrolling quickly past hundreds of cards doesn't ask for all of them. The newest to arrive goes first.
+const ART_AT_ONCE = 6;
+const artWaiting = new Set();
+let artLoading = 0;
+const artObserver = new IntersectionObserver(entries => {
+  for (const en of entries) {
+    if (en.isIntersecting) artWaiting.add(en.target);
+    else artWaiting.delete(en.target);
+  }
+  pumpArt();
+}, { rootMargin: '300px' });
+function pumpArt() {
+  while (artLoading < ART_AT_ONCE && artWaiting.size) {
+    const card = [...artWaiting].at(-1);
+    artWaiting.delete(card);
+    artObserver.unobserve(card);
+    artLoading++;
+    loadArt(card).catch(console.warn).finally(() => { artLoading--; pumpArt(); });
+  }
+}
+async function loadArt(card) {
+  const { type, id, art } = card.dataset;
+  const a = await once(`art ${type} ${id}`, () => invoke('art', { kind: type, id: +id }));
+  const paint = (el, size, file) => {
+    if (!file) return;
+    el.style.backgroundImage = `url('${IMG}${size}${file}')`;
+    el.classList.add('has-art');
+  };
   if (art === 'summary') {
-    const d = await tmdb(`/${type}/${id}`).catch(() => null);
-    if (d?.backdrop_path) en.target.querySelector('.summary-back').style.backgroundImage = `url('${IMG}w780${d.backdrop_path}')`;
-    if (d?.poster_path) {
-      const thumb = en.target.querySelector('.summary-thumb');
-      thumb.style.backgroundImage = `url('${IMG}w185${d.poster_path}')`;
-      thumb.classList.add('has-art');
-    }
+    paint(card.querySelector('.summary-back'), 'w300', a.backdrop); // dimmed behind the card, so a small one is enough
+    paint(card.querySelector('.summary-thumb'), 'w185', a.poster);
     return;
   }
-  const landscape = art === 'backdrop';
-  const d = await (landscape ? tmdb(`/${type}/${id}`, { append_to_response: 'images', include_image_language: 'en,null' }) : tmdb(`/${type}/${id}`)).catch(() => null);
-  const cover = en.target.querySelector('.art');
-  const path = landscape ? d?.backdrop_path ?? d?.poster_path : d?.poster_path ?? d?.backdrop_path ?? d?.profile_path;
-  if (path) {
-    cover.style.backgroundImage = `url('${IMG}${landscape ? 'w780' : 'w342'}${path}')`;
-    cover.classList.add('has-art');
-  }
-  const logo = landscape && d?.images?.logos?.[0]?.file_path;
-  if (logo) cover.insertAdjacentHTML('afterbegin', `<img class="cover-logo" src="${IMG}w300${esc(logo)}" alt="" loading="lazy">`);
-}), { rootMargin: '400px' });
+  const cover = card.querySelector('.art');
+  if (art !== 'backdrop') return paint(cover, 'w342', a.poster ?? a.backdrop);
+  paint(cover, 'w780', a.backdrop ?? a.poster);
+  if (a.logo) cover.insertAdjacentHTML('afterbegin', `<img class="cover-logo" src="${IMG}w300${esc(a.logo)}" alt="" loading="lazy">`);
+}
 const observeArt = root => root.querySelectorAll('[data-id]').forEach(c => artObserver.observe(c));
 
 // Placeholders shaped like the page on its way, so nothing jumps when it arrives. They hold no data.

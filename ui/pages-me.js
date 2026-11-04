@@ -112,7 +112,8 @@ Object.assign(pages, {
         }
         return [];
       },
-      card: dayHeadings(calendarCard),
+      // Each card carries its date. A heading per day left one card on a wide, otherwise empty line.
+      card: calendarCard,
     });
   },
 

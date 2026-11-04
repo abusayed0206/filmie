@@ -122,10 +122,16 @@ The player is a cross-origin iframe, so the app can't read the playback position
 
 ### Stats from a local copy of the history (read from trakt-api `090d333`, 2026-11-03; not yet called with a real account)
 - `/users/{id}/stats` is VIP only and returned 204 for a free account, so Filmie copies `/sync/history` and `/sync/ratings/{type}` into SQLite and adds them up there. The API use policy allows caching for features people use, and this copy stays on the PC and is deleted on sign-out.
-- `/sync/history` takes `start_at` and `end_at`. The contract doesn't say whether they're inclusive, so a backfill asks up to one second past its oldest stored play, skips whole pages of plays it already has in that window, and stops if a full page adds nothing new.
-- The `X-Pagination-Item-Count` header on a filtered request is assumed to count only what the filter matches, so the total comes from a separate `/sync/history?limit=1`.
+- `/sync/history` takes `start_at` and `end_at`. Imports can stamp up to 276 plays with one second (seen on a real account), so the backfill goes by page with a saved page number, and only picking up newer plays uses `start_at`.
+- Trakt's counts disagree with what it lists. On a real account, reading by time and by page both returned exactly 5,889 distinct plays, while `/sync/watched` and `X-Pagination-Item-Count` on `limit=1` said 5,902, and the same header said 5,889 on the last page. So the total always comes from `limit=1`, and the difference is stored as `history_gap`.
 - `/sync/last_activities` has no marker for a removed play, so `activities.all` triggers a check and the counts decide. Whether `all` moves on a removal is unconfirmed: run scenario 32 in `specs/002-trakt-design-parity/quickstart.md`.
 - [Sync contract](https://github.com/trakt/trakt-api/blob/main/projects/api/src/contracts/sync/index.ts).
+
+### Measured with a real account (2026-11-04, 5,889 listed plays, read-only debug build)
+- Ordinary start with data saved: 5 requests, first paint at 172 ms. First start on an empty profile: 40 in the first 8 seconds, plus 67 to copy the history and ratings.
+- Every page, scrolled to the end, on an empty cache: 1,400 requests before the `art` command and the art queue, 1,076 after (85 Trakt, 991 TMDB). A later full walk: 0 Trakt, 19 TMDB.
+- Profile against Trakt: movies 857 of 857, shows 147 of 147, plays 5,889 of 5,902. Trakt counts 13 plays it doesn't list, so that's as close as a copy can get.
+- Not exercised, because they write to the account: Mark watched, ratings, lists, sign-out, and a removal being noticed (quickstart scenarios 20, 24, 32, 33).
 
 ### Trailers in an embedded player (checked 2026-11-03)
 - A `target="_blank"` link only reaches `on_new_window`, which hands it to the system browser, so trailers now play in an iframe in a dialog.

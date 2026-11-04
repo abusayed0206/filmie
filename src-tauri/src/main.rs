@@ -3,7 +3,7 @@
 mod db;
 mod trakt;
 
-use serde_json::Value;
+use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use tauri::{Manager, Theme, Url, WebviewUrl, WebviewWindowBuilder, webview::NewWindowResponse, window::Color};
 use tauri_plugin_opener::OpenerExt;
@@ -226,6 +226,25 @@ fn is_app_page(url: &Url) -> bool {
     url.host_str() == Some("tauri.localhost")
 }
 
+async fn tmdb_fetch(s: &trakt::State, path: &str, query: &BTreeMap<String, String>) -> Result<Value, String> {
+    let res = s
+        .http
+        .get(format!("https://api.themoviedb.org/3{path}"))
+        .query(&[("api_key", TMDB_KEY)])
+        .query(query)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
+    let status = res.status();
+    trakt::log_request("tmdb", "GET", status.as_u16(), path);
+    let body: Value = res.json().await.map_err(|e| e.to_string())?;
+    if status.is_success() {
+        Ok(body)
+    } else {
+        Err(format!("{} TMDB: {}", status.as_u16(), body["status_message"].as_str().unwrap_or("request failed")))
+    }
+}
+
 #[tauri::command]
 async fn tmdb(s: tauri::State<'_, trakt::State>, path: String, query: Option<BTreeMap<String, String>>) -> Result<Value, String> {
     if !path.starts_with('/') {
@@ -234,25 +253,41 @@ async fn tmdb(s: tauri::State<'_, trakt::State>, path: String, query: Option<BTr
     let query = query.unwrap_or_default();
     // Airing shows gain episodes; a movie's details rarely change. TMDB's terms allow caching for up to 6 months.
     let ttl = if path.starts_with("/movie/") { 7 * 86_400 } else { 86_400 };
+    // The key leaves out the API key, and BTreeMap keeps the query in a stable order.
+    let key = format!("tmdb {path} {}", serde_json::to_string(&query).map_err(|e| e.to_string())?);
+    s.db.through(&key, ttl, false, tmdb_fetch(&s, &path, &query)).await
+}
+
+/// All a card draws from TMDB's record for a title.
+fn art_of(d: &Value) -> Value {
+    json!({
+        "poster": d["poster_path"].as_str().or(d["profile_path"].as_str()),
+        "backdrop": d["backdrop_path"].as_str(),
+        "logo": d["images"]["logos"][0]["file_path"].as_str(),
+    })
+}
+
+/// Artwork for a card. Pictures rarely change, so one small entry lasts a month, whichever kind of card asks,
+/// where storing the whole record for each card cost a request a day per show and many times the disk space.
+#[tauri::command]
+async fn art(s: tauri::State<'_, trakt::State>, kind: String, id: u64) -> Result<Value, String> {
+    if !["movie", "tv", "person"].contains(&kind.as_str()) {
+        return Err("bad art kind".into());
+    }
+    let query = BTreeMap::from([
+        ("append_to_response".to_string(), "images".to_string()),
+        ("include_image_language".to_string(), "en,null".to_string()),
+    ]);
+    let path = format!("/{kind}/{id}");
     let fetch = async {
-        let res = s
-            .http
-            .get(format!("https://api.themoviedb.org/3{path}"))
-            .query(&[("api_key", TMDB_KEY)])
-            .query(&query)
-            .send()
-            .await
-            .map_err(|e| e.to_string())?;
-        let status = res.status();
-        let body: Value = res.json().await.map_err(|e| e.to_string())?;
-        if status.is_success() {
-            Ok(body)
-        } else {
-            Err(format!("{} TMDB: {}", status.as_u16(), body["status_message"].as_str().unwrap_or("request failed")))
+        match tmdb_fetch(&s, &path, &query).await {
+            Ok(d) => Ok(art_of(&d)),
+            // Gone from TMDB, so remember that rather than asking again for every card.
+            Err(e) if e.starts_with("404") => Ok(json!({})),
+            Err(e) => Err(e),
         }
     };
-    // The key leaves out the API key, and BTreeMap keeps the query in a stable order.
-    s.db.through(&format!("tmdb {path} {}", serde_json::to_string(&query).map_err(|e| e.to_string())?), ttl, false, fetch).await
+    s.db.through(&format!("art {kind} {id}"), 30 * 86_400, false, fetch).await
 }
 
 fn main() {
@@ -260,7 +295,10 @@ fn main() {
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
             keyring_core::set_default_store(windows_native_keyring_store::Store::new()?);
-            let data_dir = app.path().app_data_dir()?;
+            let data_dir = match trakt::test_dir() {
+                Some(dir) => dir,
+                None => app.path().app_data_dir()?,
+            };
             std::fs::create_dir_all(&data_dir)?;
             app.manage(trakt::State::new(data_dir.join("library.json"), db::Db::open(data_dir.join("filmie.sqlite3"))));
 
@@ -294,6 +332,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             tmdb,
+            art,
             trakt::trakt,
             trakt::device_start,
             trakt::device_poll,
@@ -317,6 +356,17 @@ fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn art_keeps_only_what_a_card_draws() {
+        let movie = json!({ "title": "x", "poster_path": "/p.jpg", "backdrop_path": "/b.jpg", "images": { "logos": [{ "file_path": "/l.png" }, { "file_path": "/m.png" }] } });
+        assert_eq!(art_of(&movie), json!({ "poster": "/p.jpg", "backdrop": "/b.jpg", "logo": "/l.png" }));
+        assert_eq!(art_of(&json!({ "profile_path": "/f.jpg" })), json!({ "poster": "/f.jpg", "backdrop": null, "logo": null }));
+        assert_eq!(
+            art_of(&json!({ "poster_path": null, "images": { "logos": [] } })),
+            json!({ "poster": null, "backdrop": null, "logo": null })
+        );
+    }
 
     #[test]
     fn external_links_allowlist() {

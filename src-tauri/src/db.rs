@@ -80,7 +80,6 @@ pub struct Played {
 /// How much of the Trakt history is stored locally.
 pub struct HistoryBounds {
     pub count: i64,
-    pub oldest: Option<i64>,
     pub newest: Option<i64>,
 }
 
@@ -280,14 +279,9 @@ impl Db {
     }
 
     pub fn history_bounds(&self) -> rusqlite::Result<HistoryBounds> {
-        self.conn().query_row("SELECT COUNT(*), MIN(watched_at), MAX(watched_at) FROM trakt_history", [], |r| {
-            Ok(HistoryBounds { count: r.get(0)?, oldest: r.get(1)?, newest: r.get(2)? })
+        self.conn().query_row("SELECT COUNT(*), MAX(watched_at) FROM trakt_history", [], |r| {
+            Ok(HistoryBounds { count: r.get(0)?, newest: r.get(1)? })
         })
-    }
-
-    /// Stored plays in the second of `at` and the one after, which a backfill asking up to `at + 1` gets back first.
-    pub fn plays_near(&self, at: i64) -> rusqlite::Result<i64> {
-        self.conn().query_row("SELECT COUNT(*) FROM trakt_history WHERE watched_at BETWEEN ?1 AND ?1 + 1", [at], |r| r.get(0))
     }
 
     pub fn iso_time(&self, at: i64) -> rusqlite::Result<String> {
@@ -521,20 +515,19 @@ mod tests {
         db.store_history(&page).unwrap();
         let bounds = db.history_bounds().unwrap();
         assert_eq!(bounds.count, 1);
-        assert_eq!(bounds.oldest, Some(1_767_323_045));
+        assert_eq!(bounds.newest, Some(1_767_323_045));
         assert_eq!(db.iso_time(1_767_323_045).unwrap(), "2026-01-02T03:04:05.000Z");
     }
 
     #[test]
-    fn resume_points_come_from_what_is_stored() {
+    fn plays_sharing_a_second_are_all_kept() {
         let db = db();
-        assert_eq!(db.history_bounds().unwrap().oldest, None);
-        let plays: Vec<Value> = (1..=3).map(|i| movie_play(i, "2026-01-01T00:00:00.000Z", i, 90, &[])).collect();
+        assert_eq!(db.history_bounds().unwrap().newest, None);
+        let plays: Vec<Value> = (1..=250).map(|i| movie_play(i, "2026-01-01T00:00:00.000Z", i, 90, &[])).collect();
         db.store_history(&plays).unwrap();
-        db.store_history(&[movie_play(4, "2026-06-01T00:00:00.000Z", 4, 90, &[])]).unwrap();
+        db.store_history(&[movie_play(251, "2026-06-01T00:00:00.000Z", 251, 90, &[])]).unwrap();
         let bounds = db.history_bounds().unwrap();
-        assert!(bounds.oldest < bounds.newest);
-        assert_eq!(db.plays_near(bounds.oldest.unwrap()).unwrap(), 3);
+        assert_eq!(bounds.count, 251);
     }
 
     #[test]

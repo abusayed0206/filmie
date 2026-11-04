@@ -83,6 +83,23 @@ fn err(e: impl std::fmt::Display) -> String {
     e.to_string()
 }
 
+/// Debug builds only, for measuring against a real account: with FILMIE_DATA_DIR set the app keeps its data in that
+/// folder, logs each real network request to requests.log there, and refuses Trakt writes. Release builds ignore it.
+pub fn test_dir() -> Option<PathBuf> {
+    if cfg!(debug_assertions) { std::env::var_os("FILMIE_DATA_DIR").map(PathBuf::from) } else { None }
+}
+
+/// Logs the path alone, because TMDB's key travels in the query.
+pub fn log_request(host: &str, method: &str, status: u16, path: &str) {
+    use std::io::Write;
+    let Some(dir) = test_dir() else { return };
+    let ms = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |d| d.as_millis());
+    if let Ok(mut log) = std::fs::OpenOptions::new().create(true).append(true).open(dir.join("requests.log")) {
+        // One write, so requests running side by side can't interleave.
+        let _ = log.write_all(format!("{ms}\t{host}\t{method}\t{status}\t{path}\n").as_bytes());
+    }
+}
+
 fn now() -> u64 {
     SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs()
 }
@@ -123,7 +140,12 @@ fn clear_tokens() {
 impl State {
     pub fn new(library_path: PathBuf, db: Db) -> Self {
         Self {
-            http: reqwest::Client::new(),
+            // Without a limit, a stalled connection would leave a page or sync waiting forever.
+            http: reqwest::Client::builder()
+                .connect_timeout(Duration::from_secs(10))
+                .timeout(Duration::from_secs(30))
+                .build()
+                .unwrap_or_default(),
             tokens: Mutex::new(None),
             last_write: Mutex::new(Instant::now()),
             history_step: Mutex::new(()),
@@ -202,6 +224,10 @@ impl State {
         if write && token.is_none() {
             return Err("401 Sign in to Trakt first.".into());
         }
+        if write && test_dir().is_some() {
+            log_request("trakt", method.as_str(), 0, path);
+            return Err("403 Read-only test run: this write was not sent.".into());
+        }
         // Writes are limited to 1 per second per user.
         let mut last_write = if write { Some(self.last_write.lock().await) } else { None };
         for attempt in 0..2 {
@@ -226,6 +252,7 @@ impl State {
                 **last = Instant::now();
             }
             let status = res.status().as_u16();
+            log_request("trakt", method.as_str(), status, path);
             if status == 429 && attempt == 0 {
                 let wait = res.headers().get("retry-after").and_then(|v| v.to_str().ok()?.parse().ok()).unwrap_or(10u64);
                 tokio::time::sleep(Duration::from_secs(wait.min(60))).await;
@@ -287,31 +314,28 @@ impl State {
         Ok(self.request_counted(Method::GET, "/sync/history?limit=1", None).await?.1)
     }
 
-    /// One page further back. The first run and a restart after closing the app are the same thing: carry on from the oldest play stored.
+    /// One page further back. An import can stamp hundreds of plays with one second, so this goes by page rather than
+    /// by time, and the saved page number is what lets a restart carry on.
     async fn backfill_history(&self, activities: &Value) -> Result<(), String> {
-        let before = self.db.history_bounds().map_err(err)?;
-        let resume = match before.oldest {
-            Some(oldest) => Some((self.db.iso_time(oldest + 1).map_err(err)?, self.db.plays_near(oldest).map_err(err)?)),
-            None => None,
-        };
-        let path = backfill_path(resume.as_ref().map(|(at, near)| (at.as_str(), *near)));
-        let (page, count) = self.request_counted(Method::GET, &path, None).await?;
-        let items = page.as_array().cloned().unwrap_or_default();
+        let page: i64 = self.db.sync_value("history_page").and_then(|p| p.parse().ok()).unwrap_or(1);
+        let (body, count) = self.request_counted(Method::GET, &backfill_path(page), None).await?;
+        let items = body.as_array().cloned().unwrap_or_default();
         let stored = self
             .while_signed_in(|db| {
                 db.store_history(&items)?;
-                if let (None, Some(count)) = (before.oldest, count) {
+                if let Some(count) = count {
                     db.set_sync_value("history_total", &count.to_string())?; // for the progress shown during the first sync
                 }
+                db.set_sync_value("history_page", &(page + 1).to_string())?;
                 Ok(db.history_bounds()?.count)
             })
             .await?;
         let Some(stored) = stored else { return Ok(()) };
-        // A full page with nothing new can't get any further either, so it ends the backfill instead of looping.
-        if items.len() == HISTORY_PAGE && stored > before.count {
+        if items.len() == HISTORY_PAGE {
             return Ok(());
         }
-        // Trakt's count can differ from what it lists. The gap is remembered so only a change in it means removed plays.
+        // Trakt's count differs from what it lists, and even between pages (5,902 on the first, 5,889 on the last, on a
+        // real account). So the gap is measured the same way update_history checks it, and only a change in it means removed plays.
         let total = self.history_total().await?.unwrap_or(stored);
         self.while_signed_in(|db| {
             db.set_sync_value("history_total", &total.to_string())?;
@@ -362,15 +386,8 @@ impl State {
 const RATING_TYPES: [&str; 4] = ["movies", "shows", "seasons", "episodes"];
 const HISTORY_PAGE: usize = 100;
 
-/// `resume` is the time to read back from, and how many stored plays that time will return first. Many plays can
-/// share one second after an import, so those are paged past rather than asked for forever.
-fn backfill_path(resume: Option<(&str, i64)>) -> String {
-    match resume {
-        None => format!("/sync/history?page=1&limit={HISTORY_PAGE}&extended=full"),
-        Some((end_at, near)) => {
-            format!("/sync/history?page={}&limit={HISTORY_PAGE}&extended=full&end_at={end_at}", near / HISTORY_PAGE as i64 + 1)
-        }
-    }
+fn backfill_path(page: i64) -> String {
+    format!("/sync/history?page={page}&limit={HISTORY_PAGE}&extended=full")
 }
 
 fn newer_path(start_at: Option<&str>, page: usize) -> String {
@@ -548,13 +565,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn history_paths_resume_from_the_oldest_and_page_past_ties() {
-        assert_eq!(backfill_path(None), "/sync/history?page=1&limit=100&extended=full");
+    fn history_paths_page_back_and_pick_up_newer_plays() {
         let at = "2026-01-01T00:00:01.000Z";
-        assert_eq!(backfill_path(Some((at, 3))), format!("/sync/history?page=1&limit=100&extended=full&end_at={at}"));
-        assert_eq!(backfill_path(Some((at, 99))), format!("/sync/history?page=1&limit=100&extended=full&end_at={at}"));
-        assert_eq!(backfill_path(Some((at, 100))), format!("/sync/history?page=2&limit=100&extended=full&end_at={at}"));
-        assert_eq!(backfill_path(Some((at, 250))), format!("/sync/history?page=3&limit=100&extended=full&end_at={at}"));
+        assert_eq!(backfill_path(3), "/sync/history?page=3&limit=100&extended=full");
         assert_eq!(newer_path(None, 1), "/sync/history?page=1&limit=100&extended=full");
         assert_eq!(newer_path(Some(at), 2), format!("/sync/history?page=2&limit=100&extended=full&start_at={at}"));
     }

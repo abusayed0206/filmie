@@ -22,7 +22,7 @@ node --test --test-name-pattern=episodeAfter tests/ui.test.js # one UI test
 ```
 
 - A debug build with `FILMIE_DATA_DIR` set keeps its data in that folder, logs each real request to `requests.log` there, and refuses Trakt writes, so a real account can be tested safely. Add `WEBVIEW2_USER_DATA_FOLDER` for an empty profile, and `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=9222` to drive the window.
-- `.env.local` in the repo root is required to compile. `build.rs` bakes `TMDB`, `TRAKT` and `TRAKT_REDIRECT_URI` into the binary, so never print their values.
+- `.env.local` in the repo root is required to compile. `build.rs` bakes `TMDB`, `TRAKT` and `TRAKT_REDIRECT_URI` into the binary, so never print their values. `TMDB` and `TRAKT` are XOR-masked with a per-build pad and read through `keys.rs`, so they don't appear as plain strings in the exe; they still travel in every request, so this only stops casual scraping.
 - `scripts/fetch-ubol.ps1` downloads the pinned uBlock Origin Lite into the git-ignored `src-tauri/extensions/`. Without it the app still runs, with no extension adblocking.
 - The installer needs the Tauri CLI: `cargo install tauri-cli --version "^2" --locked`, then `cargo tauri build --bundles nsis`. Crates.io's newest tauri-cli is a 3.x alpha, so keep the `^2`.
 - `cargo fmt` uses `src-tauri/rustfmt.toml` (140 columns). CI runs `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings`.

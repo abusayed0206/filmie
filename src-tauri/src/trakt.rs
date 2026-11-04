@@ -2,6 +2,7 @@
 //! Docs: github.com/trakt/trakt-api (projects/developer guides, projects/api contracts).
 
 use crate::db::Db;
+use crate::keys::TRAKT as CLIENT_ID;
 use reqwest::{Method, header::CONTENT_TYPE};
 use serde_json::{Value, json};
 use std::{
@@ -10,7 +11,6 @@ use std::{
 };
 use tokio::sync::Mutex;
 
-const CLIENT_ID: &str = env!("TRAKT");
 const API: &str = "https://api.trakt.tv";
 const AUTH: &str = "https://auth.trakt.tv"; // all OAuth calls go here, never to API
 // Refresh requests must send the redirect URI registered on the Trakt app.
@@ -182,7 +182,7 @@ impl State {
                 "/oauth/token",
                 json!({
                     "refresh_token": t.refresh,
-                    "client_id": CLIENT_ID,
+                    "client_id": CLIENT_ID.as_str(),
                     "redirect_uri": REDIRECT_URI,
                     "grant_type": "refresh_token",
                 }),
@@ -239,7 +239,7 @@ impl State {
                 .request(method.clone(), format!("{API}{path}"))
                 .header(CONTENT_TYPE, "application/json")
                 .header("User-Agent", USER_AGENT)
-                .header("trakt-api-key", CLIENT_ID)
+                .header("trakt-api-key", CLIENT_ID.as_str())
                 .header("trakt-api-version", "2");
             if let Some(t) = &token {
                 req = req.bearer_auth(t);
@@ -283,14 +283,20 @@ impl State {
         write(&self.db).map(Some).map_err(err)
     }
 
-    /// Replaces the local ratings when Trakt says any of them changed.
-    async fn sync_ratings(&self, activities: &Value) -> Result<(), String> {
+    /// Replaces the local ratings when Trakt says any of them changed. Movie and show ratings come from the library
+    /// mirror when it was synced against the same activities, since `sync` has just fetched them.
+    async fn sync_ratings(&self, library: &Value, activities: &Value) -> Result<(), String> {
         let stamp = RATING_TYPES.map(|t| activities[t]["rated_at"].as_str().unwrap_or_default()).join(",");
         if self.db.sync_value("activity_rated").as_deref() == Some(&stamp) {
             return Ok(());
         }
+        let mirror_current = library["activities"] == *activities;
         let mut items = Vec::new();
         for t in RATING_TYPES {
+            if let Some(mirrored) = library[format!("ratings_{t}")].as_array().filter(|_| mirror_current) {
+                items.extend(mirrored.iter().cloned());
+                continue;
+            }
             for page in 1.. {
                 let batch = self.request(Method::GET, &format!("/sync/ratings/{t}?page={page}&limit={HISTORY_PAGE}"), None).await?;
                 let batch = batch.as_array().cloned().unwrap_or_default();
@@ -416,7 +422,7 @@ pub async fn trakt(s: tauri::State<'_, State>, method: String, path: String, bod
 
 #[tauri::command]
 pub async fn device_start(s: tauri::State<'_, State>) -> Result<Value, String> {
-    let res = s.auth_post("/oauth/device/code", json!({ "client_id": CLIENT_ID })).await?;
+    let res = s.auth_post("/oauth/device/code", json!({ "client_id": CLIENT_ID.as_str() })).await?;
     if !res.status().is_success() {
         return Err(format!("{} Could not start Trakt sign-in", res.status().as_u16()));
     }
@@ -426,7 +432,7 @@ pub async fn device_start(s: tauri::State<'_, State>) -> Result<Value, String> {
 /// One poll. The page repeats it every `interval` seconds until the code expires.
 #[tauri::command]
 pub async fn device_poll(s: tauri::State<'_, State>, device_code: String) -> Result<&'static str, String> {
-    let res = s.auth_post("/oauth/device/token", json!({ "code": device_code, "client_id": CLIENT_ID })).await?;
+    let res = s.auth_post("/oauth/device/token", json!({ "code": device_code, "client_id": CLIENT_ID.as_str() })).await?;
     match res.status().as_u16() {
         200 => {
             let t = tokens_from(&res.json().await.map_err(err)?).ok_or("Trakt sent an unexpected token response")?;
@@ -481,7 +487,7 @@ pub async fn sign_out(s: tauri::State<'_, State>) -> Result<(), String> {
         }
     }
     if let Some(t) = tokens {
-        let _ = s.auth_post("/oauth/revoke", json!({ "token": t.access, "client_id": CLIENT_ID })).await;
+        let _ = s.auth_post("/oauth/revoke", json!({ "token": t.access, "client_id": CLIENT_ID.as_str() })).await;
     }
     Ok(())
 }
@@ -550,7 +556,7 @@ pub async fn history_sync(s: tauri::State<'_, State>) -> Result<Value, String> {
             Some(activities) => activities.clone(),
             None => s.request(Method::GET, "/sync/last_activities", None).await?,
         };
-        s.sync_ratings(&activities).await?;
+        s.sync_ratings(&library, &activities).await?;
         if s.db.sync_value("history_complete").is_some() {
             s.update_history(&activities).await?;
         } else {

@@ -1,14 +1,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod db;
+mod keys;
 mod trakt;
 
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use tauri::{Manager, Theme, Url, WebviewUrl, WebviewWindowBuilder, webview::NewWindowResponse, window::Color};
 use tauri_plugin_opener::OpenerExt;
-
-const TMDB_KEY: &str = env!("TMDB");
 
 const INJECT_PLAYER: &str = r##"
 (() => {
@@ -230,7 +229,7 @@ async fn tmdb_fetch(s: &trakt::State, path: &str, query: &BTreeMap<String, Strin
     let res = s
         .http
         .get(format!("https://api.themoviedb.org/3{path}"))
-        .query(&[("api_key", TMDB_KEY)])
+        .query(&[("api_key", keys::TMDB.as_str())])
         .query(query)
         .send()
         .await

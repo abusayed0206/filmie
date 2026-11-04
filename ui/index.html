@@ -9,8 +9,12 @@
 <body>
   <svg width="0" height="0" style="position:absolute" aria-hidden="true">
     <symbol id="i-back" viewBox="0 0 24 24"><path d="M15 18l-6-6 6-6"/></symbol>
+    <symbol id="i-forward" viewBox="0 0 24 24"><path d="M9 18l6-6-6-6"/></symbol>
+    <symbol id="i-flame" viewBox="0 0 24 24"><path d="M12 3c.5 3.500 5.500 5.500 5.500 11a5.500 5.500 0 0 1-11 0c0-2 1-3.500 2-4.500.2 1.500 1 2.500 2 2.500 1.200-2.500.5-6 1.500-9z"/></symbol>
     <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.5v15l13-7.5z" fill="currentColor" stroke="none"/></symbol>
-    <symbol id="i-next" viewBox="0 0 24 24"><path d="M6 5l9 7-9 7z M18 5v14"/></symbol>
+    <symbol id="i-next" viewBox="0 0 24 24"><path d="M5 5v14l11-7z" fill="currentColor" stroke="none"/><path d="M19 5v14"/></symbol>
+    <symbol id="i-filter" viewBox="0 0 24 24"><path d="M3 5h18l-7 8.5V20l-4-2v-4.5z"/></symbol>
+    <symbol id="i-media" viewBox="0 0 24 24"><rect x="3" y="3" width="8" height="8" rx="1.5"/><rect x="13" y="3" width="8" height="8" rx="1.5"/><rect x="3" y="13" width="8" height="8" rx="1.5"/><rect x="13" y="13" width="8" height="8" rx="1.5"/></symbol>
     <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7.5"/></symbol>
     <symbol id="i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
     <symbol id="i-expand" viewBox="0 0 24 24"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></symbol>
@@ -20,24 +24,77 @@
     <symbol id="i-logout" viewBox="0 0 24 24"><path d="M15 4h4a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1h-4M10 17l-5-5 5-5M5 12h11"/></symbol>
     <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></symbol>
     <symbol id="i-chevron" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></symbol>
+    <symbol id="i-bookmark" viewBox="0 0 24 24"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4.5L5 21V4a1 1 0 0 1 1-1z"/></symbol>
+    <symbol id="i-heart" viewBox="0 0 24 24"><path d="M12 20.5s-8-4.9-8-11A4.5 4.5 0 0 1 12 6.8a4.5 4.5 0 0 1 8 2.7c0 6.100-8 11-8 11z"/></symbol>
+    <symbol id="i-video" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M10 9.500l5 2.500-5 2.500z" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-more" viewBox="0 0 24 24"><circle cx="12" cy="5" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1.6" fill="currentColor" stroke="none"/><circle cx="12" cy="19" r="1.6" fill="currentColor" stroke="none"/></symbol>
+    <symbol id="i-close" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6L6 18"/></symbol>
+    <symbol id="i-menu" viewBox="0 0 24 24"><path d="M4 7h16M4 12h16M4 17h16"/></symbol>
+    <symbol id="i-home" viewBox="0 0 24 24"><path d="M3 11l9-7 9 7M5 9.5V20h5v-6h4v6h5V9.5"/></symbol>
+    <symbol id="i-tv" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 3l4 4 4-4"/></symbol>
+    <symbol id="i-film" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 4v16M16 4v16M3 9h5M3 15h5M16 9h5M16 15h5"/></symbol>
+    <symbol id="i-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M15.5 8.5l-2 5-5 2 2-5z"/></symbol>
+    <symbol id="i-history" viewBox="0 0 24 24"><path d="M3.5 12a8.5 8.5 0 1 0 2.6-6.1L3.5 8.5M3.5 4v4.5H8M12 7.5V12l3 2"/></symbol>
+    <symbol id="i-library" viewBox="0 0 24 24"><path d="M5 4v16M10 4v16M15 4.5l4.5 15"/></symbol>
+    <symbol id="i-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1"/></symbol>
+    <symbol id="i-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></symbol>
   </svg>
-  <header id="top">
-    <a href="#/" class="logo">Filmie</a>
-    <nav aria-label="Main">
-      <a href="#/" data-nav="">Home</a>
-      <a href="#/shows" data-nav="shows">Shows</a>
-      <a href="#/movies" data-nav="movies">Movies</a>
-      <a href="#/lists" data-nav="lists">Lists</a>
-    </nav>
-    <label class="search"><svg class="i" aria-hidden="true"><use href="#i-search"/></svg>
-      <input id="q" type="search" placeholder="Search movies & shows" aria-label="Search movies and shows" autocomplete="off"></label>
-    <button class="icon-btn ghost fs-btn" title="Fullscreen (F11)" aria-label="Toggle fullscreen">
-      <svg class="i fs-on" aria-hidden="true"><use href="#i-expand"/></svg><svg class="i fs-off" aria-hidden="true"><use href="#i-shrink"/></svg></button>
-    <a href="#/settings" id="account" data-nav="settings">Sign in</a>
-  </header>
-  <main id="app"></main>
+  <nav class="rail" aria-label="Main">
+    <div class="rail-head">
+      <button id="rail-toggle" class="rail-item" aria-expanded="false" aria-label="Expand navigation"><svg class="i" aria-hidden="true"><use href="#i-menu"/></svg></button>
+      <a href="#/" class="logo" aria-label="Filmie"><span class="logo-short">F</span><span class="logo-full">Filmie</span></a>
+    </div>
+    <div class="rail-nav">
+      <a href="#/search" class="rail-item" data-nav="search"><svg class="i" aria-hidden="true"><use href="#i-search"/></svg><span class="nav-label">Search</span><kbd class="rail-hint" aria-hidden="true">Ctrl K</kbd></a>
+      <div class="rail-group" data-group="Home">
+        <div class="rail-parent"><a href="#/" class="rail-item" data-nav=""><svg class="i" aria-hidden="true"><use href="#i-home"/></svg><span class="nav-label">Home</span></a>
+          <button type="button" class="rail-group-toggle" data-auth aria-controls="rail-home"><svg class="i" aria-hidden="true"><use href="#i-chevron"/></svg></button></div>
+        <div class="rail-sub" id="rail-home"><div class="rail-sub-inner"><span class="rail-sub-title">Home</span>
+          <a href="#/progress" class="rail-item nav-sub" data-nav="progress" data-auth><span class="nav-label">Continue Watching</span></a>
+          <a href="#/calendar" class="rail-item nav-sub" data-nav="calendar" data-auth><span class="nav-label">Calendar</span></a>
+          <a href="#/discover/recommended" class="rail-item nav-sub" data-nav="discover/recommended" data-auth><span class="nav-label">Recommended</span></a></div></div>
+      </div>
+      <div class="rail-group" data-group="Discover">
+        <div class="rail-parent"><a href="#/discover" class="rail-item" data-nav="discover"><svg class="i" aria-hidden="true"><use href="#i-compass"/></svg><span class="nav-label">Discover</span></a>
+          <button type="button" class="rail-group-toggle" aria-controls="rail-discover"><svg class="i" aria-hidden="true"><use href="#i-chevron"/></svg></button></div>
+        <div class="rail-sub" id="rail-discover"><div class="rail-sub-inner"><span class="rail-sub-title">Discover</span>
+          <a href="#/discover/trending" class="rail-item nav-sub" data-nav="discover/trending"><span class="nav-label">Trending</span></a>
+          <a href="#/discover/releases" class="rail-item nav-sub" data-nav="discover/releases"><span class="nav-label">Releases</span></a>
+          <a href="#/discover/anticipated" class="rail-item nav-sub" data-nav="discover/anticipated"><span class="nav-label">Anticipated</span></a>
+          <a href="#/discover/popular" class="rail-item nav-sub" data-nav="discover/popular"><span class="nav-label">Popular</span></a></div></div>
+      </div>
+      <div class="rail-group" data-group="Lists" data-auth>
+        <div class="rail-parent"><a href="#/lists" class="rail-item" data-nav="lists"><svg class="i" aria-hidden="true"><use href="#i-list"/></svg><span class="nav-label">Lists</span></a>
+          <button type="button" class="rail-group-toggle" aria-controls="rail-lists"><svg class="i" aria-hidden="true"><use href="#i-chevron"/></svg></button></div>
+        <div class="rail-sub" id="rail-lists"><div class="rail-sub-inner"><span class="rail-sub-title">Lists</span>
+          <a href="#/watchlist" class="rail-item nav-sub" data-nav="watchlist"><span class="nav-label">Watchlist</span></a>
+          <a href="#/lists/personal" class="rail-item nav-sub" data-nav="lists/personal"><span class="nav-label">My Lists</span></a>
+          <a href="#/lists/liked" class="rail-item nav-sub" data-nav="lists/liked"><span class="nav-label">Liked</span></a>
+          <a href="#/lists/shared" class="rail-item nav-sub" data-nav="lists/shared"><span class="nav-label">Shared</span></a></div></div>
+      </div>
+    </div>
+    <div class="rail-bottom" id="rail-bottom">
+      <a href="#/settings" id="account" class="rail-item" data-nav="profile"><svg class="i" aria-hidden="true"><use href="#i-user"/></svg><span class="nav-label">Sign in</span></a>
+      <div class="rail-menu">
+        <a href="#/history" class="rail-item" data-nav="history" data-auth><svg class="i" aria-hidden="true"><use href="#i-history"/></svg><span class="nav-label">History</span></a>
+        <a href="#/library" class="rail-item" data-nav="library" data-auth><svg class="i" aria-hidden="true"><use href="#i-library"/></svg><span class="nav-label">Library</span></a>
+        <a href="#/settings" class="rail-item" data-nav="settings"><svg class="i" aria-hidden="true"><use href="#i-settings"/></svg><span class="nav-label">Settings</span></a>
+        <button class="rail-item fs-btn" aria-label="Toggle fullscreen"><svg class="i fs-on" aria-hidden="true"><use href="#i-expand"/></svg><svg class="i fs-off" aria-hidden="true"><use href="#i-shrink"/></svg><span class="nav-label">Fullscreen</span></button>
+      </div>
+    </div>
+  </nav>
+  <header class="topbar" id="topbar"><div class="topbar-left"></div><div class="topbar-center"></div><div class="topbar-right"><button type="button" id="filter-btn" class="icon-btn ghost filter-btn" aria-label="Filters" disabled><svg class="i" aria-hidden="true"><use href="#i-filter"/></svg><span class="badge" aria-hidden="true"></span></button></div></header>
+  <div class="searchbar"><label class="search"><svg class="i" aria-hidden="true"><use href="#i-search"/></svg>
+    <input id="q" type="search" autocomplete="off"></label></div>
+  <main id="app" tabindex="-1"></main>
   <div id="toast" role="status" aria-live="polite"></div>
   <script src="lib.js"></script>
+  <script src="core.js"></script>
+  <script src="controls.js"></script>
+  <script src="cards.js"></script>
+  <script src="pages-browse.js"></script>
+  <script src="pages-title.js"></script>
+  <script src="pages-me.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

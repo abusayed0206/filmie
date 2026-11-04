@@ -1,6 +1,6 @@
 # Privacy
 
-Last updated: 2 November 2026
+Last updated: 3 November 2026
 
 Filmie has no accounts, servers, analytics or telemetry of its own. The developer receives no data from the app.
 
@@ -13,11 +13,13 @@ Filmie has no accounts, servers, analytics or telemetry of its own. The develope
 | Your video servers and preferences | The app's local storage | Uninstalling with app data removed |
 | Recently played list and progress | A local database (`filmie.sqlite3`) | **Settings > Saved on this PC**, or uninstalling with app data removed |
 | Saved TMDB and Trakt responses | The same local database | Signing out removes your Trakt data. **Clear cache** removes everything |
+| Copy of your Trakt watch history and ratings, used to work out your stats and streak on your PC | The same local database | Signing out, or uninstalling with app data removed |
 
 ## Sent to other services
 
 - **TMDB** receives requests for movie and TV information.
-- **Trakt** receives your requests and any watchlist, rating, list or history changes you make, once you sign in.
+- **Trakt** receives your requests and any watchlist, list or history changes you make, once you sign in.
+- **YouTube** loads in an embedded player when you play a trailer or video, and can see your IP address and whatever else a website normally sees.
 - **Video servers you add** load in an embedded player and can see your IP address and whatever else a website normally sees.
 - **Sites you open from links**, such as IMDb or YouTube, open in your default browser.
 

@@ -120,6 +120,35 @@ The player is a cross-origin iframe, so the app can't read the playback position
 - The native side can: WebView2's `AddScriptToExecuteOnDocumentCreated` applies to "all future top level document and child frame navigations", and Tauri exposes `initialization_script_for_all_frames`. Tauri's docs don't mention cross-origin frames, so test it first. The page's sandbox or CSP can still limit the script. Injected fixes depend on the page's markup and can break when it changes.
 - A server's direct embed URL can be added as a source in Settings, which skips the wrapper page with no code.
 
+### Stats from a local copy of the history (read from trakt-api `090d333`, 2026-11-03; not yet called with a real account)
+- `/users/{id}/stats` is VIP only and returned 204 for a free account, so Filmie copies `/sync/history` and `/sync/ratings/{type}` into SQLite and adds them up there. The API use policy allows caching for features people use, and this copy stays on the PC and is deleted on sign-out.
+- `/sync/history` takes `start_at` and `end_at`. Imports can stamp up to 276 plays with one second (seen on a real account), so the backfill goes by page with a saved page number, and only picking up newer plays uses `start_at`.
+- Trakt's counts disagree with what it lists. On a real account, reading by time and by page both returned exactly 5,889 distinct plays, while `/sync/watched` and `X-Pagination-Item-Count` on `limit=1` said 5,902, and the same header said 5,889 on the last page. So the total always comes from `limit=1`, and the difference is stored as `history_gap`.
+- `/sync/last_activities` has no marker for a removed play, so `activities.all` triggers a check and the counts decide. Whether `all` moves on a removal is unconfirmed: run scenario 32 in `specs/002-trakt-design-parity/quickstart.md`.
+- [Sync contract](https://github.com/trakt/trakt-api/blob/main/projects/api/src/contracts/sync/index.ts).
+
+### Measured with a real account (2026-11-04, 5,889 listed plays, read-only debug build)
+- Ordinary start with data saved: 5 requests, first paint at 172 ms. First start on an empty profile: 40 in the first 8 seconds, plus 67 to copy the history and ratings.
+- Every page, scrolled to the end, on an empty cache: 1,400 requests before the `art` command and the art queue, 1,076 after (85 Trakt, 991 TMDB). A later full walk: 0 Trakt, 19 TMDB.
+- Profile against Trakt: movies 857 of 857, shows 147 of 147, plays 5,889 of 5,902. Trakt counts 13 plays it doesn't list, so that's as close as a copy can get.
+- Not exercised, because they write to the account: Mark watched, ratings, lists, sign-out, and a removal being noticed (quickstart scenarios 20, 24, 32, 33).
+
+### Trailers in an embedded player (checked 2026-11-03)
+- A `target="_blank"` link only reaches `on_new_window`, which hands it to the system browser, so trailers now play in an iframe in a dialog.
+- [YouTube's required minimum functionality](https://developers.google.com/youtube/terms/required-minimum-functionality): embeds must send a `Referer`, with `strict-origin-when-cross-origin` recommended. Nothing may overlay or obscure the player, the player may not be changed, and its viewport must be at least 200 by 200 (480 by 270 recommended for 16:9). In a WebView the `Referer` defaults to empty and the app must supply it. Here the page's origin, `http://tauri.localhost`, supplies it, and a trailer played in the real app on 2026-11-03.
+- [Player parameters](https://developers.google.com/youtube/player_parameters): the format is `https://www.youtube.com/embed/VIDEO_ID`. `rel=0` limits related videos to the same channel. The docs don't cover `youtube-nocookie.com`, so it isn't used.
+- Uploaders can disable embedding, so the dialog always offers Open on YouTube.
+
+### Your own tracking pages (read from trakt-api `090d333` and trakt-web `9ebdbff`, 2026-11-03; not yet called with a real account)
+- **Shared lists:** `GET /users/{id}/lists/collaborations`. Items of a shared list live under the owner's slug, not `/users/me`. The earlier `/users/me/collaborations` returned 405.
+- **Liked lists:** `/users/likes/lists` wraps each one in `{ liked_at, list }`.
+- **Progress tabs:** trakt-web asks `/sync/progress/up_next_nitro` with `intent=continue` or `intent=completed`, then splits Completed and Ended on the show's status, where `ended` and `canceled` count as ended. Dropped is `/users/hidden/dropped`.
+- **Single types differ by route:** list items take `movie` or `show`, and the sync routes Filmie already uses take `movies` or `shows`.
+- **Notes:** `/notes/{id}` takes `PUT` and `DELETE`. `POST /notes` exists, but the contract doesn't say what `item` must hold, and trakt-web uses a private `/v3/users/me/notes` route instead. Filmie shows, edits and deletes notes but can't add one yet.
+- **Dropped activity:** `/sync/last_activities` has `shows.dropped_at` and `shows.hidden_at`.
+- **Search empty states:** `/search/recent_by_id/global/{movies,shows,people}` returns `{ id, count, type, movie | show | person }`, and `/lists/popular` wraps each one in `{ list }`. The contracts have no route behind Trakt's Birthdays This Month, so Filmie shows Top Searches for People too. Only the movies route was probed.
+- **Sources:** [sync contract](https://github.com/trakt/trakt-api/blob/main/projects/api/src/contracts/sync/index.ts), [notes contract](https://github.com/trakt/trakt-api/blob/main/projects/api/src/contracts/notes/index.ts), [user lists contract](https://github.com/trakt/trakt-api/blob/main/projects/api/src/contracts/users/subroutes/userLists.ts).
+
 ## 5. Ratings and links
 | Source | How |
 |---|---|
@@ -167,6 +196,8 @@ Trakt's policy allows combining scores only if the app labels the result as its 
 6. **Ship:** NSIS installer with the WebView2 bootstrapper, an About page (TMDB, JustWatch and Trakt credits, privacy note, uBO licence).
 
 ## 8. Decisions
+
+- **2026-11-03, the owner's call, overruling the Trakt reference:** the media switch shows on every page listing both movies and shows, including the full grids where Trakt hides it in the filter drawer. Title pages have no external ratings and no Where to Watch, so nothing asks for `/ratings` or TMDB's `watch/providers`, and the JustWatch credit is gone with the data it covered. The person's own stars went too, along with the rate button on History cards, so Filmie no longer rates anything. The Ratings page still lists what was rated on Trakt.
 **Chosen for v1 (2026-11-02, recommended defaults):**
 - Plain HTML/JS frontend in `ui/`, no build step.
 - Device-code sign-in.
@@ -203,6 +234,19 @@ Run tests with `cargo test` (in `src-tauri/`) and `node --test tests/ui.test.js`
 - `/sync/watched/shows` no longer includes `seasons`/`episodes`. Up next and the Play target come from `/sync/progress/watched?hide_completed=true`. Episode checkmarks come from `/shows/{trakt_id}/progress/watched`.
 
 **Adblock status (2026-11-02):** adblock-tester.com, loaded inside an iframe in the app, scored 90/100. That covers ad requests made by an embedded page, not only by the app itself. uBO Lite 2026.1026.1812 (Edge build) loads through WebView2. It blocked `googlesyndication` and `doubleclick` requests from iframes (`net::ERR_BLOCKED_BY_CLIENT`), while normal pages loaded. Install it with `scripts/fetch-ubol.ps1`; the version and SHA-256 are pinned there. The `extensions/` folder is git-ignored and bundled as a Tauri resource.
+
+**Trakt-style UI (planned 2026-11-03):** recreate Trakt's desktop layout in `ui/`, keeping Filmie's brand. trakt-web is GPLv3 and SvelteKit, so no code is copied. The API use policy (updated 2026-10-20) makes the Trakt logo optional and requires the "not endorsed or certified" sentence, which Settings has. Measurements, platform checks and links are in `specs/001-trakt-style-ui/research.md`.
+
+**Trakt design parity (specified 2026-11-03):** follow Trakt's desktop design as is, with Filmie's red accent and name. Checked against trakt-web `9ebdbff` and trakt-api `090d333`. Desktop uses the side rail plus `NavbarActions`; `TopNavbar` only renders at 768 px and below. Standard tier is free; Limited Access endpoints may need approval, and VIP Only returns `426`. `/users/:id/stats` is VIP only, so stats come from local data. Limits are 500 GET per 5 minutes and 1 write per second. Measurements are in `specs/002-trakt-design-parity/trakt-design-reference.md`. Per-page endpoints are in `specs/002-trakt-design-parity/contracts/api-usage.md`. Limited Access covers per-title `/watchnow` and `/watchnow/sources`, so where to watch stays on TMDB's JustWatch data. 
+
+**Trakt API probe (2026-11-03), with a real account:**
+- 156 read-only paths, then a follow-up, using the app's client ID. Public paths ran with no token.
+- **Free and working:** `/media/{trending,anticipated,popular,recommendations}`, `/sync/progress/up_next_nitro`, `/sync/history?extended=full` (runtime and genres included, `start_at` works), `extended=colors`, `/{type}/{id}/ratings?extended=all`, `/{type}/{id}/sentiments`, season and episode stats, `/search/recent_by_id/global/{type}`, `/sync/collection/media`, `/sync/favorites/media/rank/asc`, `/users/hidden/dropped`, `/users/me/notes/all`.
+- **Blocked:** `/watchnow/sources` and `/{type}/{id}/watchnow/{country}` return 403. `/users/me/stats` returns 204.
+- **Missing:** `/movies/hot` and `/{movies,shows}/streaming/{period}` return 404. `/shows/hot` works.
+- **Filters:** `statuses` works and `status` is ignored, unlike `filters.md`. Parental filters take numeric ranges such as `0-1`; `none` is ignored. `/recommendations` ignores filters. `/calendars/*` ignores `limit`, and one 30-day response held 1,182 items.
+- **Requests need `Content-Type: application/json`** even on GET, or some return 412.
+- Full table in `specs/002-trakt-design-parity/contracts/api-usage.md`.
 
 **Original options:**
 1. **Video sources:** user-configured templates, nothing bundled. TMDB and Trakt terms both forbid use in apps that promote piracy, and Trakt can revoke the client ID.

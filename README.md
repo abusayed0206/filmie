@@ -12,9 +12,12 @@ Filmie is a lightweight Windows app for browsing movies and TV shows and keeping
 
 ## Features
 
-- **Browse:** trending, popular and most anticipated titles, with search, cast, trailers and where to stream.
-- **Track with Trakt:** up next, continue watching, watchlist, your lists, ratings and recommendations.
-- **Stay in control:** nothing is marked as watched until you press **Mark watched**.
+- **Browse:** trending, releases, anticipated, popular and more charts, switching between Media, Shows and Movies, with filters for genre, decade, runtime, rating and more.
+- **Find anything:** press **Ctrl+K** to jump to a page or title, or search movies, shows, people and lists.
+- **See the details:** seasons and episodes, cast and person pages, comments, videos, related titles and lists.
+- **Track with Trakt:** continue watching, calendar, watchlist, history, library, progress, your lists, ratings, favorites, notes and recommendations.
+- **See your stats:** totals, top genres, ratings, activity and a watching streak, worked out on your PC with no VIP needed. They work offline too.
+- **Stay in control:** nothing is marked as watched until you ask, with no check-ins or scrobbling.
 - **Recently played:** your own list and progress, kept on your PC and separate from Trakt. Progress shows when the player exposes its video.
 - **Fast and offline-friendly:** TMDB and Trakt responses are cached in a local SQLite database.
 - **Move around a show:** switch seasons and jump straight to any episode from the player.
@@ -42,13 +45,17 @@ You can browse without an account. Signing in adds your library, recommendations
 
 ### Add a video server
 
-Open **Settings**, go to **Video servers**, and add one server per line. Only add servers you have the right to use.
+Open **Settings**, go to **Video servers**, and fill in the form. Only add servers you have the right to use.
 
-```text
-Name | movie URL | TV URL | optional note | optional #rrggbb colour
-```
+You need three things:
 
-URLs must use `https://` and contain `{tmdb_id}`. TV URLs can also use `{season}` and `{episode}`:
+- **Server link:** the address, starting with `https://`, such as `https://example.com`.
+- **Movie structure:** the rest of a movie's link, containing `{tmdb_id}`, such as `/movie/{tmdb_id}`.
+- **TV structure:** the rest of an episode's link, containing `{tmdb_id}`, `{season}` and `{episode}`, such as `/tv/{tmdb_id}/{season}/{episode}`.
+
+The form suggests common structures and shows example links before you save. A name, note and accent colour are optional.
+
+To back up your list or add several servers at once, choose **Edit as text**, with one server per line:
 
 ```text
 My server | https://example.com/movie/{tmdb_id} | https://example.com/tv/{tmdb_id}/{season}/{episode} | Home server | #e5484d
@@ -112,4 +119,4 @@ These repository secrets are needed:
 - [Privacy](PRIVACY.md)
 - [Third-party notices](THIRD_PARTY_NOTICES.md)
 
-Filmie uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB. Filmie uses Trakt but is not endorsed or certified by Trakt. Streaming availability data is provided by JustWatch.
+Filmie uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB. Filmie uses Trakt but is not endorsed or certified by Trakt.

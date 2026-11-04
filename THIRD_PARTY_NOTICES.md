@@ -13,6 +13,15 @@ The Windows installer bundles an unmodified copy of uBlock Origin Lite for ad bl
 
 `scripts/fetch-ubol.ps1` downloads this version and checks its SHA-256 hash.
 
+## Roboto
+
+The app bundles the Latin subset of the Roboto variable font for its interface text.
+
+- License: [SIL Open Font License 1.1](https://openfontlicense.org)
+- Copyright 2011 The Roboto Project Authors
+- Version: 5.3.0 of `@fontsource-variable/roboto`, file `ui/fonts/roboto-latin-wght-normal.woff2`
+- Source: <https://github.com/googlefonts/roboto-classic>
+
 ## Rust crates
 
 The app is built with [Tauri](https://tauri.app) and other open-source crates, listed in `src-tauri/Cargo.lock`. Each is distributed under the license stated by its publisher, in most cases MIT or Apache-2.0.
@@ -21,4 +30,3 @@ The app is built with [Tauri](https://tauri.app) and other open-source crates, l
 
 - Movie and TV data: [TMDB](https://www.themoviedb.org). Filmie uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB.
 - Watch tracking: [Trakt](https://trakt.tv). Filmie uses Trakt but is not endorsed or certified by Trakt.
-- Streaming availability: [JustWatch](https://www.justwatch.com).

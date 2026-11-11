@@ -97,6 +97,7 @@ How pages work:
 - `INJECT_PLAYER` reports `{ __filmieMedia: { url, kind, page } }` from resource timing and `<video>.currentSrc`, and `{ drm: true }` on any EME request. `watch_media` in `main.rs` adds WebView2's `WebResourceResponseReceived` as `media-seen` events. `pickCapture` in `lib.js` chooses.
 - Never bypass DRM: EME without a playlist, any HLS key other than METHOD=NONE, and DASH `ContentProtection` mark the item protected and keep nothing. Keep any wording about downloads neutral, as with servers.
 - HLS is saved as segments plus local playlists in `<folder>/<Title (tmdb id)>/<Movie|S01E02>/`, then remuxed to `video.mp4` when `ffmpeg` is on PATH. DASH needs ffmpeg.
+- `#/downloads` uses Library's `summaryCard` grids: a movie opens `#/offline/<id>`, a show opens `#/downloads/tv/<tmdb id>`, its episodes by season like the title page's. Downloads in progress and failures are landscape `progressCard`s (`downloadCard`), whose bar and note `paintDownloads` updates in place.
 - `#/offline/<id>` plays a file through the asset protocol (`convertFileSrc`), whose scope is only each finished download's folder, allowed at runtime. Saved HLS plays through `ui/vendor/hls.min.js` without a worker. `downloadButton`, `downloadBadge` and `paintDownloads` keep every button, badge and the rail item current.
 
 **Window lockdown (`main.rs`)**

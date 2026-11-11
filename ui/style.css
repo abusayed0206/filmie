@@ -716,22 +716,16 @@ body:not(.rail-wide) .rail-dl-count:not(:empty) { position: absolute; top: 2px; 
 .hero-poster { position: relative; }
 .hero-poster .dl-badge { top: 10px; right: 10px; width: 28px; height: 28px; }
 .hero-poster .dl-badge .i { width: 16px; height: 16px; }
-.media-card:has(.card-menu) .art .dl-badge { right: 34px; }
+.media-card:has(.card-menu) .poster .art .dl-badge { right: 34px; }
 
-/* The Downloads page. */
-.downloads .dl-folder { margin: 4px 0 16px; }
-.dl-section { margin-bottom: 28px; }
-.dl-section h2 { font-size: 18px; margin: 0 0 8px; }
-.dl-row { display: flex; align-items: center; gap: 14px; padding: 10px 0; border-top: 1px solid var(--line); }
-.dl-thumb { flex: none; width: 48px; text-decoration: none; }
-.dl-thumb .art { position: relative; aspect-ratio: 2/3; border-radius: 6px; overflow: hidden; background: var(--surface-2) top center/cover; }
-.dl-thumb .cover-title { font-size: 8px; }
-.dl-info { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.dl-info b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dl-info .bar { max-width: 420px; }
+/* The Downloads page: Library's cards, with a second card action for retrying a failure. */
+.downloads .dl-folder { margin: 4px 0 8px; }
+.downloads .grid-day:first-of-type { margin-top: 8px; }
+.downloads .grid + .grid-day { margin-top: 28px; }
+.card-action.second { right: 38px; }
+.dl-failed .ep-card > small { color: #ff8a8a; }
 .bar.busy i { width: 30% !important; animation: dl-slide 1.4s ease-in-out infinite; }
 @keyframes dl-slide { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
-.dl-actions { flex: none; display: flex; gap: 8px; }
 .capture-frame { position: fixed; }
 .offline-player video { object-fit: contain; }
 @media (prefers-reduced-motion: reduce) { .dl-btn .dl-icon::after, .bar.busy i { animation: none; } }

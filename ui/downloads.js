@@ -30,7 +30,7 @@ listen('download', ({ payload: d }) => {
   if (d.status === 'done') toast(`Downloaded ${downloadLabel(d)}`);
   if (d.status === 'failed' || d.status === 'protected') toast(`Couldn't download ${downloadLabel(d)}. ${d.error ?? ''}`);
   if (['done', 'failed', 'protected', 'removed'].includes(d.status)) pumpDownloads();
-  if (location.hash === '#/downloads') route({ soft: true });
+  if (location.hash.startsWith('#/downloads')) route({ soft: true });
 });
 
 // ---------- painting: the rail item, and every download button and progress bar on the page
@@ -70,7 +70,7 @@ function paintDownloads() {
       bar.classList.toggle('busy', pct === null);
       bar.firstElementChild.style.width = `${pct ?? 0}%`;
     }
-    const note = row.querySelector('.dl-note');
+    const note = row.querySelector('.dl-note') ?? row.querySelector('.ep-card > small');
     if (note) note.textContent = downloadNote(d);
   }
 }
@@ -196,48 +196,98 @@ function captureFrom(source, d) {
   });
 }
 
-// ---------- the Downloads page
-pages.downloads = async () => {
+// ---------- the Downloads page, built from the same cards as Library: movies play, shows open their episodes.
+const cardAction = (attr, id, ic, label, second = false) =>
+  `<button type="button" class="card-action${second ? ' second' : ''}" ${attr}="${id}" title="${esc(label)}" aria-label="${esc(label)}">${icon(ic)}</button>`;
+// A download in progress or one that failed: a landscape card with its progress or its reason.
+function downloadCard(d) {
+  const it = { type: d.kind, id: d.tmdb_id, title: d.title };
+  const line = d.kind === 'tv' ? episodeLine({ season: d.season, number: d.episode, title: d.episode_title }) : 'Movie';
+  const failed = d.status === 'failed' || d.status === 'protected';
+  const action = failed
+    ? cardAction('data-dl-retry', d.id, 'sync', `Try again: ${downloadLabel(d)}`, true) + cardAction('data-dl-remove', d.id, 'close', `Remove ${downloadLabel(d)}`)
+    : cardAction('data-dl-remove', d.id, 'close', `${isActiveDownload(d) ? 'Cancel' : 'Delete'} ${downloadLabel(d)}`);
+  const href = d.status === 'done' ? `#/offline/${d.id}` : `#/title/${d.kind}/${d.tmdb_id}${d.kind === 'tv' ? `/${d.season}` : ''}`;
+  const card = progressCard(href, it, line, isActiveDownload(d) ? downloadPct(d) ?? 0 : null, downloadNote(d), { action, play: d.status === 'done' });
+  return card.replace('<div class="media-card', `<div data-dl-row="${d.id}" class="media-card${failed ? ' dl-failed' : ''}`);
+}
+const gridSection = (title, cls, cards) => cards ? `<h2 class="grid-day">${esc(title)}</h2><div class="grid ${cls}">${cards}</div>` : '';
+
+pages.downloads = async (kind, id) => {
   await refreshDownloads();
+  if (kind === 'tv') return downloadedShow(+id);
   const info = await invoke('download_folder');
   const shown = downloads.filter(d => forMode(true, d.kind === 'tv', d.kind === 'movie'));
   const g = groupDownloads(shown);
-  const row = d => `<div class="dl-row" data-dl-row="${d.id}">
-      <a class="dl-thumb" href="#/title/${d.kind}/${d.tmdb_id}" data-type="${d.kind}" data-id="${d.tmdb_id}" aria-label="${esc(d.title)}"><div class="art"><span class="cover-title">${esc(d.title)}</span></div></a>
-      <div class="dl-info"><b>${esc(d.kind === 'tv' ? `S${d.season}E${d.episode}${d.episode_title ? ` · ${d.episode_title}` : ''}` : d.title)}</b>
-        ${d.kind === 'tv' ? `<small class="muted">${esc(d.title)}</small>` : ''}
-        <small class="dl-note${d.status === 'failed' || d.status === 'protected' ? ' error' : ' muted'}">${esc(downloadNote(d))}</small>
-        ${isActiveDownload(d) ? `<div class="bar${downloadPct(d) === null ? ' busy' : ''}"><i style="width:${downloadPct(d) ?? 0}%"></i></div>` : ''}</div>
-      <div class="dl-actions">
-        ${d.status === 'done' ? `<a class="btn primary" href="#/offline/${d.id}">${icon('play')}Play</a>` : ''}
-        ${d.status === 'failed' || d.status === 'protected' ? `<button type="button" class="btn" data-dl-retry="${d.id}">${icon('sync')}Try again</button>` : ''}
-        <button type="button" class="btn" data-dl-remove="${d.id}">${icon('close')}${isActiveDownload(d) ? 'Cancel' : 'Remove'}</button></div></div>`;
-  const section = (title, rows) => rows ? `<section class="dl-section"><h2>${esc(title)}</h2>${rows}</section>` : '';
-  const empty = !shown.length ? `<section class="callout"><h2>Nothing downloaded yet</h2>
-      <p class="muted">Use ${icon('download')} on a movie, an episode or a season to watch it here without a connection.</p></section>` : '';
+  const size = list => bytesText(list.reduce((n, d) => n + d.done_bytes, 0));
+  const movies = g.movies.map(d => summaryCard({ type: 'movie', id: d.tmdb_id, title: d.title }, {
+    href: `#/offline/${d.id}`, line: size([d]), action: cardAction('data-dl-remove', d.id, 'close', `Delete ${d.title}`),
+  })).join('');
+  const shows = g.shows.map(s => summaryCard({ type: 'tv', id: s.id, title: s.title }, {
+    href: `#/downloads/tv/${s.id}`, line: `${s.episodes.length} episode${s.episodes.length === 1 ? '' : 's'} · ${size(s.episodes)}`,
+    action: cardAction('data-dl-remove-show', s.id, 'close', `Delete every downloaded episode of ${s.title}`),
+  })).join('');
   app.innerHTML = `<div class="page downloads"><h1 class="sr-only">Downloads</h1>
     <p class="muted dl-folder">${info.folder ? `Saving to ${esc(info.folder)}` : 'No download folder chosen yet.'} <a href="#/settings/downloads">${info.folder ? 'Change' : 'Choose one'}</a></p>
-    ${empty}${section('Downloading', g.active.map(row).join(''))}${section('Movies', g.movies.map(row).join(''))}
-    ${g.shows.map(s => section(s.title, s.episodes.map(row).join(''))).join('')}
-    ${section("Couldn't download", g.problems.map(row).join(''))}</div>`;
+    ${shown.length ? '' : `<div class="row-empty"><p class="muted">Nothing downloaded yet. Use ${icon('download')} on a movie, an episode or a season to watch it here without a connection.</p></div>`}
+    ${gridSection('Downloading', 'landscape-grid', g.active.map(downloadCard).join(''))}
+    ${gridSection('Movies', 'summary-grid', movies)}${gridSection('Shows', 'summary-grid', shows)}
+    ${gridSection("Couldn't download", 'landscape-grid', g.problems.map(downloadCard).join(''))}</div>`;
   observeArt(app);
-  app.querySelector('.downloads').onclick = ev => {
-    const retry = ev.target.closest('[data-dl-retry]');
-    if (retry) return queueDownloads([downloads.find(d => d.id === +retry.dataset.dlRetry)].filter(Boolean));
-    const remove = ev.target.closest('[data-dl-remove]');
-    if (!remove) return;
-    const d = downloads.find(x => x.id === +remove.dataset.dlRemove);
-    if (!d) return;
-    const drop = () => invoke('download_remove', { id: d.id }).catch(toast);
-    if (isActiveDownload(d)) return drop();
-    modal({
-      title: d.status === 'done' ? 'Delete this download?' : 'Remove this download?',
-      body: `<p class="muted">${esc(downloadLabel(d))}${d.dir ? ` will be deleted from ${esc(d.dir)}` : ' will be removed from the list'}.</p>`,
-      actions: [{ label: 'Cancel' }, { label: d.status === 'done' ? 'Delete' : 'Remove', primary: true, onClick: drop }],
-    });
-  };
+  bindDownloadActions(app.querySelector('.downloads'));
 };
-pages.downloads.bar = () => ({ title: 'Downloads', meta: downloads.length ? `${downloads.filter(d => d.status === 'done').length} saved` : '', mode: 'bar' });
+
+// One downloaded show: its episodes by season, like the title page's, each playing offline. Stills come from
+// TMDB's season data, which is usually cached, and the show's backdrop stands in when it isn't.
+async function downloadedShow(id) {
+  const token = routeToken;
+  const eps = downloads.filter(d => d.kind === 'tv' && d.tmdb_id === id).sort((a, b) => a.season - b.season || a.episode - b.episode);
+  if (!eps.length) { location.replace('#/downloads'); return; }
+  setBarTitle(eps[0].title);
+  const seasons = [...new Set(eps.map(d => d.season))];
+  const data = new Map(await Promise.all(seasons.map(async n => [n, await tmdb(`/tv/${id}/season/${n}`).catch(() => null)])));
+  if (token !== routeToken) return;
+  const tile = d => {
+    if (d.status !== 'done') return downloadCard(d);
+    const e = data.get(d.season)?.episodes?.find(x => x.episode_number === d.episode);
+    const still = e?.still_path;
+    const name = e?.name ?? d.episode_title ?? `Episode ${d.episode}`;
+    return `<div class="media-card landscape-card episode-card" data-dl-row="${d.id}">
+      <a class="ep-card" href="#/offline/${d.id}" title="Play ${esc(name)}"${still ? '' : ` data-type="tv" data-id="${id}" data-art="backdrop"`}>
+        <div class="art${still ? ' has-art' : ''}"${still ? ` style="background-image:url('${IMG}w500${esc(still)}')"` : ''}><span class="cover-title">${esc(name)}</span><span class="play-icon">${icon('play')}</span></div>
+        <b>${d.episode}. ${esc(name)}</b><small class="muted">${esc([e?.runtime && runtimeText(e.runtime), bytesText(d.done_bytes)].filter(Boolean).join(' · '))}</small></a>
+      ${cardAction('data-dl-remove', d.id, 'close', `Delete ${downloadLabel(d)}`)}</div>`;
+  };
+  app.innerHTML = `<div class="page downloads"><h1 class="sr-only">${esc(eps[0].title)}</h1>
+    <div class="page-tools"><a class="btn" href="#/title/tv/${id}">${icon('tv')}View show</a></div>
+    ${seasons.map(n => gridSection(data.get(n)?.name ?? `Season ${n}`, 'landscape-grid', eps.filter(d => d.season === n).map(tile).join(''))).join('')}</div>`;
+  observeArt(app);
+  bindDownloadActions(app.querySelector('.downloads'));
+}
+
+function bindDownloadActions(page) {
+  page.addEventListener('click', ev => {
+    const button = ev.target.closest('[data-dl-retry], [data-dl-remove], [data-dl-remove-show]');
+    if (!button) return;
+    ev.preventDefault();
+    if (button.dataset.dlRetry) return queueDownloads([downloads.find(d => d.id === +button.dataset.dlRetry)].filter(Boolean));
+    const group = button.dataset.dlRemoveShow
+      ? downloads.filter(d => d.kind === 'tv' && d.tmdb_id === +button.dataset.dlRemoveShow)
+      : downloads.filter(d => d.id === +button.dataset.dlRemove);
+    if (!group.length) return;
+    const drop = () => Promise.all(group.map(d => invoke('download_remove', { id: d.id }))).catch(toast);
+    if (group.every(isActiveDownload)) return drop(); // cancelling deletes only partial files
+    const saved = group.some(d => d.status === 'done');
+    modal({
+      title: group.length > 1 ? `Delete ${group.length} episodes?` : saved ? 'Delete this download?' : 'Remove this download?',
+      body: `<p class="muted">${esc(group.length > 1 ? `Every downloaded episode of ${group[0].title}` : downloadLabel(group[0]))} will be deleted from this PC.</p>`,
+      actions: [{ label: 'Cancel' }, { label: saved ? 'Delete' : 'Remove', primary: true, onClick: drop }],
+    });
+  });
+}
+pages.downloads.bar = kind => kind === 'tv'
+  ? { title: 'Downloads', back: true }
+  : { title: 'Downloads', meta: downloads.length ? `${downloads.filter(d => d.status === 'done').length} saved` : '', mode: 'bar' };
 
 // ---------- the offline player. A single file plays as it is; a saved HLS stream plays through the bundled hls.js.
 let hlsScript = null;
@@ -258,7 +308,7 @@ pages.offline = async id => {
   const backHref = d.kind === 'tv' ? `#/title/tv/${d.tmdb_id}/${d.season}` : `#/title/movie/${d.tmdb_id}`;
   app.innerHTML = `<div class="player-page offline-player">
     <div class="player-bar">
-      <a class="icon-btn ghost" href="#/downloads" data-player-back aria-label="Back" title="Back">${icon('back')}</a>
+      <a class="icon-btn ghost" href="${d.kind === 'tv' ? `#/downloads/tv/${d.tmdb_id}` : '#/downloads'}" data-player-back aria-label="Back" title="Back">${icon('back')}</a>
       <a class="icon-btn ghost" href="#/" aria-label="Home" title="Home">${icon('home')}</a>
       <a class="player-title" href="${backHref}" title="Details"><b>${esc(d.title)}</b>
         <span>${d.kind === 'tv' ? `S${d.season} · E${d.episode}${d.episode_title ? ` · ${esc(d.episode_title)}` : ''} · ` : ''}Downloaded</span></a>

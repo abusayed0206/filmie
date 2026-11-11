@@ -345,9 +345,18 @@ fn request(http: &Client, url: &Url, src: &Source) -> reqwest::RequestBuilder {
     http.get(url.as_str()).header(header::REFERER, &src.referer).header(header::ORIGIN, &src.origin).header(header::USER_AGENT, &src.agent)
 }
 
+/// A network error in words, without the address, which can be long and carry a token.
+fn http_error(e: reqwest::Error) -> Stop {
+    Stop::Failed(match e.status() {
+        Some(s) => format!("The video server answered {} {}.", s.as_u16(), s.canonical_reason().unwrap_or("")).replace(" .", "."),
+        None if e.is_timeout() => "The video server stopped answering.".into(),
+        None => "Couldn't reach the video server.".into(),
+    })
+}
+
 async fn text_of(http: &Client, url: &Url, src: &Source) -> Result<String, Stop> {
-    let res = request(http, url, src).send().await?.error_for_status()?;
-    Ok(res.text().await?)
+    let res = request(http, url, src).send().await.and_then(reqwest::Response::error_for_status).map_err(http_error)?;
+    res.text().await.map_err(http_error)
 }
 
 /// Streams one response to `dest` through a .part file, resuming a partial one. Returns its size.
@@ -363,7 +372,7 @@ async fn save(http: &Client, url: &Url, src: &Source, dest: &Path, p: &Progress,
     if have > 0 {
         req = req.header(header::RANGE, format!("bytes={have}-"));
     }
-    let mut res = req.send().await?.error_for_status()?;
+    let mut res = req.send().await.and_then(reqwest::Response::error_for_status).map_err(http_error)?;
     let resumed = have > 0 && res.status() == reqwest::StatusCode::PARTIAL_CONTENT;
     let mut file = std::fs::OpenOptions::new().create(true).append(resumed).write(true).truncate(!resumed).open(&part)?;
     let mut size = if resumed { have as i64 } else { 0 };
@@ -371,7 +380,7 @@ async fn save(http: &Client, url: &Url, src: &Source, dest: &Path, p: &Progress,
         p.total.store(size + res.content_length().unwrap_or(0) as i64, Ordering::Relaxed);
         p.done.store(size, Ordering::Relaxed);
     }
-    while let Some(chunk) = res.chunk().await? {
+    while let Some(chunk) = res.chunk().await.map_err(http_error)? {
         p.check()?;
         file.write_all(&chunk)?;
         size += chunk.len() as i64;
@@ -530,20 +539,20 @@ async fn run(app: &AppHandle, id: i64, url: Url, src: Source, max_height: u32, d
     let p =
         Arc::new(Progress { app: app.clone(), id, done: AtomicI64::new(0), total: AtomicI64::new(0), last: Mutex::new(Instant::now()) });
     // A playlist can come with any content type, so the first bytes decide what this is.
-    let mut res = request(&http, &url, &src).send().await?.error_for_status()?;
+    let mut res = request(&http, &url, &src).send().await.and_then(reqwest::Response::error_for_status).map_err(http_error)?;
     let kind = res.headers().get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or("").to_ascii_lowercase();
-    let first = res.chunk().await?.unwrap_or_default();
+    let first = res.chunk().await.map_err(http_error)?.unwrap_or_default();
     let head = String::from_utf8_lossy(&first[..first.len().min(512)]).trim_start_matches('\u{feff}').trim_start().to_string();
     if head.starts_with("#EXTM3U") {
         let mut body = first.to_vec();
-        while let Some(chunk) = res.chunk().await? {
+        while let Some(chunk) = res.chunk().await.map_err(http_error)? {
             body.extend_from_slice(&chunk);
         }
         return download_hls(&http, &url, String::from_utf8_lossy(&body).into_owned(), &src, max_height, dir, &p).await;
     }
     if head.starts_with("<?xml") || head.contains("<MPD") || kind.contains("dash+xml") {
         let mut body = first.to_vec();
-        while let Some(chunk) = res.chunk().await? {
+        while let Some(chunk) = res.chunk().await.map_err(http_error)? {
             body.extend_from_slice(&chunk);
         }
         if String::from_utf8_lossy(&body).contains("ContentProtection") {

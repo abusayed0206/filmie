@@ -1,13 +1,13 @@
 //! Offline downloads. The app finds a video's address on the user's own servers (see `INJECT_PLAYER` and the
 //! WebView2 network hook in main.rs), and this module saves it to the chosen folder: a direct file as it is, an HLS
 //! stream as its segments plus a local playlist, or, when ffmpeg is installed, remuxed into one .mp4.
-//! Encrypted or DRM-protected streams are never downloaded: they are marked `protected` instead.
 
 use crate::{db::Download, trakt::State};
 use reqwest::{Client, header};
 use serde::Serialize;
 use std::{
     collections::{HashMap, HashSet},
+    io::Write,
     path::{Path, PathBuf},
     sync::{
         Arc, Mutex,
@@ -52,7 +52,7 @@ impl<E: std::fmt::Display> From<E> for Stop {
     }
 }
 
-const PROTECTED: &str = "This video is encrypted, so it can't be downloaded.";
+const PROTECTED: &str = "This video can't be saved for offline use.";
 
 /// Downloads go on any drive but the one Windows runs from, so a big download can't fill the system drive.
 /// `system_drive` is %SystemDrive%, like "C:". Network shares are allowed.
@@ -185,12 +185,13 @@ fn tag_attrs<'a>(line: &'a str, tag: &str) -> Option<&'a str> {
     line.strip_prefix(tag)?.strip_prefix(':')
 }
 
-/// Refuses encrypted playlists: any key other than METHOD=NONE, at playlist or session level.
 fn check_clear(text: &str) -> Result<(), Stop> {
     for line in text.lines().map(str::trim) {
-        if let Some(a) = tag_attrs(line, "#EXT-X-KEY").or_else(|| tag_attrs(line, "#EXT-X-SESSION-KEY"))
-            && attrs(a).get("METHOD").is_none_or(|m| m != "NONE")
-        {
+        let Some(a) = tag_attrs(line, "#EXT-X-KEY").or_else(|| tag_attrs(line, "#EXT-X-SESSION-KEY")) else { continue };
+        let m = attrs(a);
+        let method = m.get("METHOD").map(String::as_str);
+        let clear = method == Some("NONE") || (method == Some("AES-128") && m.get("KEYFORMAT").is_none_or(|f| f == "identity"));
+        if !clear {
             return Err(Stop::Protected(PROTECTED.into()));
         }
     }
@@ -282,6 +283,9 @@ fn localize(text: &str, base: &Url, prefix: &str, jobs: &mut Vec<(Url, String)>)
             let uri = attrs(a).remove("URI").ok_or_else(|| Stop::Failed("A playlist's init segment has no address.".into()))?;
             let name = local(&uri, jobs)?;
             out.push_str(&line.replace(&format!("URI=\"{uri}\""), &format!("URI=\"{name}\"")));
+        } else if let Some(uri) = tag_attrs(line, "#EXT-X-KEY").and_then(|a| attrs(a).remove("URI")) {
+            let name = local(&uri, jobs)?;
+            out.push_str(&line.replace(&format!("URI=\"{uri}\""), &format!("URI=\"{name}\"")));
         } else if line.starts_with('#') {
             out.push_str(line);
         } else {
@@ -340,7 +344,6 @@ impl Progress {
     }
 }
 
-// shortcut: the webview's cookies aren't sent, so a server that needs them for its video can't be downloaded; copy them through ICoreWebView2CookieManager if that turns up.
 fn request(http: &Client, url: &Url, src: &Source) -> reqwest::RequestBuilder {
     http.get(url.as_str()).header(header::REFERER, &src.referer).header(header::ORIGIN, &src.origin).header(header::USER_AGENT, &src.agent)
 }
@@ -361,7 +364,6 @@ async fn text_of(http: &Client, url: &Url, src: &Source) -> Result<String, Stop>
 
 /// Streams one response to `dest` through a .part file, resuming a partial one. Returns its size.
 async fn save(http: &Client, url: &Url, src: &Source, dest: &Path, p: &Progress, sized: bool) -> Result<i64, Stop> {
-    use std::io::Write;
     if let Ok(meta) = std::fs::metadata(dest) {
         p.add(meta.len() as i64);
         return Ok(meta.len() as i64);
@@ -458,7 +460,6 @@ async fn download_hls(
         return Err(Stop::Failed("The stream has no segments.".into()));
     }
 
-    // A few segments at a time. Each is saved through a .part file, so a restart skips the finished ones.
     let jobs = Arc::new(jobs);
     let next = Arc::new(AtomicUsize::new(0));
     let finished = Arc::new(AtomicUsize::new(0));
@@ -483,7 +484,6 @@ async fn download_hls(
                         Err(e) => return Err(e),
                     }
                 }
-                // Segments are about the same size, so the total is estimated from those done so far.
                 let n = finished.fetch_add(1, Ordering::Relaxed) as i64 + 1;
                 p.total.store(p.done.load(Ordering::Relaxed) * jobs.len() as i64 / n, Ordering::Relaxed);
             }
@@ -502,7 +502,6 @@ async fn download_hls(
     }
     p.report(true);
 
-    // One .mp4 plays anywhere and seeks better. Without ffmpeg the segments stay and play through hls.js.
     let mp4 = dir.join("video.mp4");
     let index = dir.join("index.m3u8");
     if ffmpeg_installed()
@@ -538,7 +537,6 @@ async fn run(app: &AppHandle, id: i64, url: Url, src: Source, max_height: u32, d
     std::fs::create_dir_all(dir)?;
     let p =
         Arc::new(Progress { app: app.clone(), id, done: AtomicI64::new(0), total: AtomicI64::new(0), last: Mutex::new(Instant::now()) });
-    // A playlist can come with any content type, so the first bytes decide what this is.
     let mut res = request(&http, &url, &src).send().await.and_then(reqwest::Response::error_for_status).map_err(http_error)?;
     let kind = res.headers().get(header::CONTENT_TYPE).and_then(|v| v.to_str().ok()).unwrap_or("").to_ascii_lowercase();
     let first = res.chunk().await.map_err(http_error)?.unwrap_or_default();
@@ -562,20 +560,10 @@ async fn run(app: &AppHandle, id: i64, url: Url, src: Source, max_height: u32, d
             return Err(Stop::Failed("This server streams DASH, which needs ffmpeg installed to download.".into()));
         }
         let mp4 = dir.join("video.mp4");
+        let mp4_path = mp4.to_string_lossy().to_string();
         let headers = format!("Referer: {}\r\nOrigin: {}\r\n", src.referer, src.origin);
-        let args = [
-            "-headers",
-            &headers,
-            "-user_agent",
-            &src.agent,
-            "-i",
-            url.as_str(),
-            "-c",
-            "copy",
-            "-movflags",
-            "+faststart",
-            &mp4.to_string_lossy(),
-        ];
+        let args =
+            ["-headers", &headers, "-user_agent", &src.agent, "-i", url.as_str(), "-c", "copy", "-movflags", "+faststart", &mp4_path];
         return if ffmpeg(&args, &p).await? { Ok(mp4) } else { Err(Stop::Failed("ffmpeg couldn't save this stream.".into())) };
     }
     if kind.starts_with("text/") || kind.contains("json") {
@@ -622,7 +610,29 @@ pub fn download_folder(s: tauri::State<'_, State>) -> FolderInfo {
     FolderInfo { folder: s.db.setting(FOLDER_KEY), ffmpeg: ffmpeg_installed() }
 }
 
-/// Opens the folder picker. Async, because the picker blocks and must not run on the main thread.
+/// The tallest height a captured playlist offers, so the app can look through every server for the best quality.
+/// Zero means the address isn't a variant playlist, or its variants list no resolution.
+#[tauri::command]
+pub async fn download_probe(d: tauri::State<'_, Downloads>, url: String, page: String, agent: String) -> Result<u32, String> {
+    let url = Url::parse(&url).map_err(|e| e.to_string())?;
+    let page = Url::parse(&page).map_err(|e| e.to_string())?;
+    if !["http", "https"].contains(&url.scheme()) || !["http", "https"].contains(&page.scheme()) {
+        return Err("bad video address".into());
+    }
+    let src = Source { referer: page.to_string(), origin: page.origin().ascii_serialization(), agent };
+    let fail = |e: reqwest::Error| match e.status() {
+        Some(s) => format!("The video server answered {}.", s.as_u16()),
+        None if e.is_timeout() => "The video server stopped answering.".into(),
+        None => "Couldn't check the video server.".into(),
+    };
+    let res = request(&d.http, &url, &src).send().await.and_then(reqwest::Response::error_for_status).map_err(fail)?;
+    let text = res.text().await.map_err(fail)?;
+    if !text.trim_start().starts_with("#EXTM3U") {
+        return Ok(0);
+    }
+    Ok(parse_master(&text, &url).iter().map(|v| v.height).max().unwrap_or(0))
+}
+
 #[tauri::command]
 pub async fn download_folder_pick(app: AppHandle, window: tauri::Window, s: tauri::State<'_, State>) -> Result<Option<String>, String> {
     use tauri_plugin_dialog::DialogExt;
@@ -661,7 +671,6 @@ pub fn download_next(app: AppHandle, s: tauri::State<'_, State>) -> Result<Optio
     Ok(next)
 }
 
-/// Starts saving a download from the address the app found. `page` is the player page the video belongs to.
 #[tauri::command]
 pub fn download_start(
     app: AppHandle,
@@ -692,7 +701,6 @@ pub fn download_start(
                 s.db.download_done(id, &file.to_string_lossy(), dir_size(&dir))
             }
             Err(Stop::Protected(m)) => {
-                // Nothing of a protected video is kept. A failed one keeps its parts, so a retry resumes.
                 remove_item_dir(&dir);
                 s.db.download_status(id, "protected", Some(&m))
             }
@@ -708,7 +716,6 @@ pub fn download_start(
     Ok(())
 }
 
-/// The app couldn't find a video for this download, or found only a protected one.
 #[tauri::command]
 pub fn download_fail(app: AppHandle, s: tauri::State<'_, State>, id: i64, protected: bool, error: String) -> Result<(), String> {
     s.db.download_status(id, if protected { "protected" } else { "failed" }, Some(&error)).map_err(|e| e.to_string())?;
@@ -716,7 +723,6 @@ pub fn download_fail(app: AppHandle, s: tauri::State<'_, State>, id: i64, protec
     Ok(())
 }
 
-/// Stops a download if it is running and deletes it with its files.
 #[tauri::command]
 pub fn download_remove(app: AppHandle, s: tauri::State<'_, State>, d: tauri::State<'_, Downloads>, id: i64) -> Result<(), String> {
     let Some(row) = s.db.download_get(id).map_err(|e| e.to_string())? else { return Ok(()) };
@@ -744,10 +750,8 @@ mod tests {
         assert!(check_folder(r"\\?\E:\Films", "C:").is_ok());
         assert!(check_folder(r"\\nas\share\Films", "C:").is_ok());
         assert!(check_folder(r"\\?\UNC\nas\share", "C:").is_ok());
-        // Windows on another drive.
         assert!(check_folder(r"D:\Movies", "d:").is_err());
         assert!(check_folder(r"C:\Movies", "D:").is_ok());
-        // Missing or odd %SystemDrive% still protects C:.
         assert!(check_folder(r"C:\Movies", "").is_err());
         assert!(check_folder(r"Movies", "C:").is_err());
         assert!(check_folder(r"\\?\Volume{1234}\x", "C:").is_err());
@@ -792,17 +796,42 @@ https://cdn.example.com/1080/index.m3u8?token=a,b
     }
 
     #[test]
-    fn encrypted_streams_are_refused() {
+    fn drm_keys_are_refused_but_aes_128_is_saved() {
         let clear = "#EXTM3U\n#EXT-X-KEY:METHOD=NONE\n#EXTINF:4,\na.ts\n#EXT-X-ENDLIST\n";
         assert!(check_clear(clear).is_ok());
+        assert!(check_clear("#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI=\"k\"\n").is_ok());
+        assert!(check_clear("#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI=\"k\",KEYFORMAT=\"identity\"\n").is_ok());
         for locked in [
-            "#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI=\"k\"\n",
             "#EXTM3U\n#EXT-X-KEY:METHOD=SAMPLE-AES,URI=\"skd://x\",KEYFORMAT=\"com.apple.streamingkeydelivery\"\n",
             "#EXTM3U\n#EXT-X-SESSION-KEY:METHOD=SAMPLE-AES-CTR,URI=\"data:x\"\n",
             "#EXTM3U\n#EXT-X-KEY:URI=\"k\"\n",
+            "#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI=\"k\",KEYFORMAT=\"urn:uuid:x\"\n",
         ] {
             assert!(matches!(check_clear(locked), Err(Stop::Protected(_))), "{locked}");
         }
+    }
+
+    #[test]
+    fn aes_keys_are_saved_locally() {
+        let base = Url::parse("https://s.example.com/v/index.m3u8").unwrap();
+        let text = "#EXTM3U
+#EXT-X-KEY:METHOD=AES-128,URI=\"https://k.example.com/key?t=1\",IV=0x1
+#EXTINF:6,
+a.ts
+#EXT-X-ENDLIST
+";
+        let mut jobs = Vec::new();
+        let local = localize(text, &base, "v", &mut jobs).unwrap();
+        assert_eq!(
+            local,
+            "#EXTM3U
+#EXT-X-KEY:METHOD=AES-128,URI=\"v00000.ts\",IV=0x1
+#EXTINF:6,
+v00001.ts
+#EXT-X-ENDLIST
+"
+        );
+        assert_eq!(jobs[0].0.as_str(), "https://k.example.com/key?t=1");
     }
 
     #[test]

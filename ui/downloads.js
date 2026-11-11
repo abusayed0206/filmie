@@ -36,7 +36,7 @@ listen('download', ({ payload: d }) => {
 // ---------- painting: the rail item, and every download button and progress bar on the page
 const DOWNLOAD_TITLES = {
   queued: 'Waiting to download', finding: 'Finding the video', downloading: 'Downloading',
-  done: 'Downloaded. Play offline', failed: "Couldn't download. Try again", protected: 'Protected, so it can\'t be downloaded. Try again',
+  done: 'Downloaded. Play offline', failed: "Couldn't download. Try again", protected: 'Not available offline. Try again',
 };
 function downloadTitle(d) {
   if (!d) return 'Download for offline viewing';
@@ -126,7 +126,7 @@ async function pumpDownloads() {
           await invoke('download_start', { id: d.id, url: found.url, page: found.page, agent: navigator.userAgent, quality: getDownloadQuality() });
           return; // the next one starts when this one ends
         }
-        await invoke('download_fail', { id: d.id, protected: !!found.protected, error: found.protected ? "This video is protected, so it can't be downloaded." : found.error });
+        await invoke('download_fail', { id: d.id, protected: !!found.protected, error: found.protected ? "This video can't be saved for offline use." : found.error });
       } catch (e) { console.warn('download', d.id, e); } // removed while it was being found
     }
   } catch (e) { console.warn(e); }
@@ -136,16 +136,38 @@ async function pumpDownloads() {
 // ---------- finding the video. Each server loads in a hidden, muted frame like the Auto race's, and the injected
 // script reports the playlists and video files it loads. WebView2's own network events are the fallback.
 const CAPTURE_WAIT = 25e3;
+const CAPTURE_RANK = { hls: 0, dash: 1, file: 2 };
+
+// How tall a captured playlist's variants go. Zero when the address isn't a variant playlist.
+async function captureHeight(found) {
+  if (found.kind !== 'hls') return 0;
+  try { return Number(await invoke('download_probe', { url: found.url, page: found.page, agent: navigator.userAgent })) || 0; }
+  catch { return 0; }
+}
+
+// The first server at or above the download quality wins. If none reaches it, every server is still checked so the
+// best available height is kept. `auto` checks them all and keeps the tallest.
 async function captureMedia(d) {
   const sources = getSources();
   if (!sources.length) return { error: 'Add a video server in Settings to download.' };
   const first = getServer(sources.length);
+  const quality = getDownloadQuality();
+  const want = quality === 'auto' ? Infinity : parseInt(quality, 10) || 1080;
+  let best = null;
   let sawProtected = false;
   for (const i of [first, ...sources.keys()].filter((x, n, all) => all.indexOf(x) === n)) {
     const found = await captureFrom(sources[i], d);
-    if (found?.url) return found;
-    if (found?.protected) sawProtected = true;
+    if (found?.url) {
+      const height = await captureHeight(found);
+      const better = !best || CAPTURE_RANK[found.kind] < CAPTURE_RANK[best.kind]
+        || (CAPTURE_RANK[found.kind] === CAPTURE_RANK[best.kind] && height > best.height);
+      if (better) best = { ...found, height };
+      if (CAPTURE_RANK[found.kind] === 0 && height >= want && height > 0) return found;
+    } else if (found?.protected) {
+      sawProtected = true;
+    }
   }
+  if (best) return best;
   return sawProtected ? { protected: true } : { error: "None of your servers showed a video Filmie could download." };
 }
 

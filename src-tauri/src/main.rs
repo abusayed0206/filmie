@@ -69,7 +69,7 @@ const INJECT_PLAYER: &str = r##"
       }
     }).observe({ type: 'resource', buffered: true });
   } catch {}
-  // A request for a DRM key system means protected media, which Filmie never downloads. The call itself is unchanged.
+  // A key-system (EME) request means media that can't be saved offline. The call itself is unchanged.
   try {
     const keys = navigator.requestMediaKeySystemAccess;
     if (keys) navigator.requestMediaKeySystemAccess = function (...a) { reportMedia({ drm: true }); return keys.apply(this, a); };
@@ -477,6 +477,7 @@ fn main() {
             db::stats,
             downloads::download_folder,
             downloads::download_folder_pick,
+            downloads::download_probe,
             downloads::download_list,
             downloads::download_add,
             downloads::download_next,

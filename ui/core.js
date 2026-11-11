@@ -93,6 +93,11 @@ function setActiveFilters(filters) {
 }
 const withFilters = path => addQuery(path, filterQuery(activeFilters()));
 const setServer = i => { try { localStorage.setItem('server', i); } catch {} };
+// Auto races the servers each time the player opens. It is on until a server is picked by hand in the player.
+function getAutoServer() {
+  try { return localStorage.getItem('server-auto') !== 'off'; } catch { return true; }
+}
+const setAutoServer = on => { try { localStorage.setItem('server-auto', on ? 'on' : 'off'); } catch {} };
 const setSources = list => localStorage.setItem('sources', JSON.stringify(list));
 function getQuality() {
   try { return qualityOf(localStorage.getItem('quality')); } catch { return '1080p'; }

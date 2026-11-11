@@ -86,13 +86,15 @@ How pages work:
 - `INJECT_PLAYER` in `main.rs` runs in every frame through `initialization_script_for_all_frames` and does nothing in the top frame or on YouTube. It removes ad nodes, retries autoplay and applies the preferred quality.
 - Trailers and videos play in `playVideo` in `controls.js`, an embedded YouTube player in a dialog. YouTube's terms require the `Referer` it gets from `strict-origin-when-cross-origin`, and forbid covering or changing the player.
 - `app.js` sends the quality as a `{ __filmieQuality }` `postMessage`, which the script relays to nested frames.
+- Auto server (`server-auto` in `localStorage`, on until a server is picked by hand) loads every other server in hidden `.player-probe` frames. They get `{ __filmieProbe }`, which keeps them muted and silent about progress, and every frame posts `{ __filmieVideo: { h } }` with its tallest video. After 8 seconds `betterServer` in `lib.js` decides whether to switch.
+- Changing episode or server inside the player replaces history instead of adding to it, and Back uses `navigation.back()`, which skips the entries the iframe adds.
 
 **Window lockdown (`main.rs`)**
 - `on_navigation` keeps the top frame on app pages, and `on_new_window` denies every pop-up.
 - Links only open, in the system browser, if their host is in `EXTERNAL_HOSTS`. A new `target="_blank"` destination must be added there.
 - `capabilities/default.json` grants IPC to local pages only. Any new Tauri JS API needs its permission added.
 
-**Server list and preferences** live in `localStorage` (`sources`, `server`, `quality`). `DEFAULT_SOURCES` is empty: Filmie ships with no video servers and users add their own. The README, `TERMS.md` and the website all state this, so keep them in step with the code. A saved `sources` value replaces the defaults entirely. `renderServers` in `app.js` is the Settings form: `buildServer` in `lib.js` joins the server link and structures into the saved `{ name, movie, tv, note, accent }` shape, and `MOVIE_STRUCTURES` and `TV_STRUCTURES` are host-free suggestions only.
+**Server list and preferences** live in `localStorage` (`sources`, `server`, `server-auto`, `quality`). `DEFAULT_SOURCES` is empty: Filmie ships with no video servers and users add their own. The README, `TERMS.md` and the website all state this, so keep them in step with the code. A saved `sources` value replaces the defaults entirely. `renderServers` in `app.js` is the Settings form: `buildServer` in `lib.js` joins the server link and structures into the saved `{ name, movie, tv, note, accent }` shape, and `MOVIE_STRUCTURES` and `TV_STRUCTURES` are host-free suggestions only.
 
 ## Docs
 

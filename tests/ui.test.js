@@ -1,7 +1,7 @@
 // Run: node --test tests/ui.test.js
 const test = require('node:test');
 const assert = require('node:assert');
-const { validProgress, playedNote, historyBody, safeColor, youtubeKey, pickTrailer, newestCredits, isoDate, shortDate, fullDate, addDays, weekStart, sortValue, hasEnded, sortLists, exactFirst, streakFrom, weekHeatmap, durationText, recentMonths, mergeContinue, startWatching, runtimeText, statusTag, navFor, modeOf, FILTERS, decadeOptions, cleanFilters, filterQuery, filterCount, addQuery, fitsSimple, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm } = require('../ui/lib.js');
+const { validProgress, playedNote, historyBody, safeColor, youtubeKey, pickTrailer, newestCredits, isoDate, shortDate, fullDate, addDays, weekStart, sortValue, hasEnded, sortLists, exactFirst, streakFrom, weekHeatmap, durationText, recentMonths, mergeContinue, startWatching, runtimeText, statusTag, navFor, modeOf, FILTERS, decadeOptions, cleanFilters, filterQuery, filterCount, addQuery, fitsSimple, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, betterServer, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm } = require('../ui/lib.js');
 
 test('norm', () => {
   const ids = { trakt: 1, tmdb: 272 };
@@ -380,4 +380,12 @@ test('every script parses, loads from index.html, and its icons are in the sprit
     assert.ok(html.includes(`src="${file}"`), `${file} is not loaded`);
     for (const [, name] of js.matchAll(/icon\('([\w-]+)'\)/g)) assert.ok(html.includes(`id="i-${name}"`), `missing icon ${name} in ${file}`);
   }
+});
+
+test('betterServer switches only to a taller video', () => {
+  assert.equal(betterServer([720, 1080, 0], 0), 1);
+  assert.equal(betterServer([1080, 1080, 720], 1), null); // a tie keeps the current one
+  assert.equal(betterServer([0, 720, 720], 0), 1); // the current one never showed a video
+  assert.equal(betterServer([0, 0, 0], 2), null);
+  assert.equal(betterServer([1080, undefined], 0), null);
 });

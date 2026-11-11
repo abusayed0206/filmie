@@ -46,11 +46,18 @@ Object.assign(pages, {
         <span class="server-option-text"><b>${esc(x.name)}</b>${x.note ? `<small>${esc(x.note)}</small>` : ''}</span>
         ${icon('check')}
       </button>`).join('');
+    const auto = sources.length > 1 && getAutoServer();
+    const autoOption = sources.length > 1 ? `<button type="button" class="server-option" data-server="auto" aria-pressed="${auto}" style="--dot:var(--muted)">
+        <span class="server-dot"></span>
+        <span class="server-option-text"><b>Auto</b><small>Tries every server and plays the sharpest</small></span>
+        ${icon('check')}
+      </button>` : '';
     // The bar sits above the iframe, never over it, so the player's own controls stay clickable.
     // The server list opens over the video only while choosing, so it costs the player no space.
     app.innerHTML = `<div class="player-page" style="--server-accent:${accentOf(sources[server]) ?? 'var(--line)'}">
       <div class="player-bar">
-        <a class="icon-btn ghost" href="${backHref}" aria-label="Back to details" title="Back">${icon('back')}</a>
+        <a class="icon-btn ghost" href="${backHref}" data-player-back aria-label="Back" title="Back">${icon('back')}</a>
+        <a class="icon-btn ghost" href="#/" aria-label="Home" title="Home">${icon('home')}</a>
         <a class="player-title" href="${backHref}" title="Show details"><b>${esc(d.title ?? d.name)}</b>
           <span>${type === 'tv' ? `S${s} · E${e}${epName ? ` · ${esc(epName)}` : ''}` : esc(yearOf(d))}</span></a>
         ${episodeMenuHtml}
@@ -60,7 +67,7 @@ Object.assign(pages, {
             <span class="server-btn-name">${esc(sources[server].name)}</span>${icon('chevron')}
           </button>
           <div class="server-menu" id="server-menu" role="group" aria-label="Video servers" hidden>
-            <div class="server-menu-head">Servers</div>${serverOptions}
+            <div class="server-menu-head">Servers</div>${autoOption}${serverOptions}
             <a class="server-menu-edit" href="#/settings">Edit servers</a>
           </div>
         </div>
@@ -79,6 +86,14 @@ Object.assign(pages, {
     const serverMenu = document.getElementById('server-menu');
     const playerPage = app.querySelector('.player-page');
     const playerFrame = app.querySelector('.player');
+    // Changing episode replaces the player's history entry, so Back leaves the player instead of replaying earlier episodes.
+    // navigation.back() also steps over the entries the video iframe adds, which history.back() would walk through.
+    playerPage.addEventListener('click', ev => {
+      const a = ev.target.closest('a[href]');
+      if (!a) return;
+      if (a.hasAttribute('data-player-back') && window.navigation?.canGoBack) { ev.preventDefault(); navigation.back(); }
+      else if (a.getAttribute('href').startsWith('#/play/')) { ev.preventDefault(); location.replace(a.getAttribute('href')); }
+    });
     const sendQuality = () => {
       try { playerFrame.contentWindow.postMessage({ __filmieQuality: getQuality() }, '*'); } catch {}
     };
@@ -94,18 +109,80 @@ Object.assign(pages, {
       serverMenu.hidden = !serverMenu.hidden;
       serverBtn.setAttribute('aria-expanded', String(!serverMenu.hidden));
     };
-    serverMenu.onclick = ev => {
-      const option = ev.target.closest('[data-server]');
-      if (!option) return;
-      const i = +option.dataset.server;
-      setServer(i);
-      playerFrame.src = fillTemplate(sources[i][type === 'movie' ? 'movie' : 'tv'], { tmdb_id: id, season: s, episode: e });
+    const srcFor = i => fillTemplate(sources[i][type === 'movie' ? 'movie' : 'tv'], { tmdb_id: id, season: s, episode: e });
+    let current = server;
+    const switchTo = i => {
+      current = i;
+      // replace() adds no history entry, where setting src would add one that Back then walks through.
+      try { playerFrame.contentWindow.location.replace(srcFor(i)); } catch { playerFrame.src = srcFor(i); }
       syncQuality();
       serverBtn.querySelector('.server-btn-name').textContent = sources[i].name;
       serverBtn.querySelector('.server-dot').style.setProperty('--dot', dot(sources[i]));
       playerPage.style.setProperty('--server-accent', accentOf(sources[i]) ?? 'var(--line)');
-      serverMenu.querySelectorAll('[data-server]').forEach(o => o.setAttribute('aria-pressed', String(o === option)));
+      serverMenu.querySelectorAll('[data-server]').forEach(o => o.setAttribute('aria-pressed', String(o.dataset.server === String(i) || (o.dataset.server === 'auto' && getAutoServer()))));
+    };
+    // The race: every other server loads in a hidden, muted frame, each frame's injected script reports its video height,
+    // and after a few seconds the player moves to the tallest if it beats the current one, or to any that played if it didn't.
+    // shortcut: players that hide their <video> never report, so they lose the race; pin one from the menu to keep it.
+    let stopRace = () => {};
+    const race = () => {
+      stopRace();
+      const frames = sources.map((_, i) => {
+        if (i === current) return playerFrame;
+        const f = document.createElement('iframe');
+        f.className = 'player-probe';
+        f.tabIndex = -1;
+        f.setAttribute('aria-hidden', 'true');
+        f.allow = 'encrypted-media'; // no autoplay, so a probe can't play sound before it hears it is one
+        f.referrerPolicy = 'origin';
+        f.src = srcFor(i);
+        f.addEventListener('load', () => { try { f.contentWindow.postMessage({ __filmieProbe: 1 }, '*'); } catch {} });
+        playerPage.append(f);
+        return f;
+      });
+      const heights = sources.map(() => 0);
+      const onMessage = ev => {
+        const h = ev.data?.__filmieVideo?.h;
+        if (!Number.isFinite(h) || h <= 0 || h > 10000) return;
+        // The report comes from whichever nested frame holds the video, so climb to the frame this page made.
+        for (let w = ev.source; w; w = w.parent) {
+          const i = frames.findIndex(f => f.contentWindow === w);
+          if (i >= 0) { heights[i] = Math.max(heights[i], h); return; }
+          if (w === w.parent) return;
+        }
+      };
+      addEventListener('message', onMessage);
+      const timer = setTimeout(() => {
+        const at = current;
+        stopRace();
+        if (!playerFrame.isConnected || frames[at] !== playerFrame) return;
+        const best = betterServer(heights, at);
+        if (best === null) return;
+        switchTo(best);
+        toast(`Switched to ${sources[best].name}, ${heights[best]}p`);
+      }, 8000);
+      stopRace = () => {
+        clearTimeout(timer);
+        removeEventListener('message', onMessage);
+        frames.forEach(f => { if (f !== playerFrame) f.remove(); });
+        stopRace = () => {};
+      };
+    };
+    if (auto) race();
+    serverMenu.onclick = ev => {
+      const option = ev.target.closest('[data-server]');
+      if (!option) return;
       closeMenu();
+      if (option.dataset.server === 'auto') {
+        setAutoServer(true);
+        option.setAttribute('aria-pressed', 'true');
+        race();
+        return;
+      }
+      stopRace();
+      setAutoServer(false); // a server picked by hand stays until Auto is picked again
+      setServer(+option.dataset.server);
+      switchTo(+option.dataset.server);
     };
     const episodePicker = app.querySelector('.episode-picker');
     if (episodePicker) {
@@ -222,7 +299,8 @@ function setBar(next = {}) {
 }
 busy(filterButton, openFilterDrawer);
 const setBarTitle = title => { topbar.querySelector('.topbar-title b').textContent = title; };
-topbar.addEventListener('click', ev => { if (ev.target.closest('[data-back]')) history.back(); });
+// navigation.back() skips the entries a video iframe left behind, which history.back() would step through one by one.
+topbar.addEventListener('click', ev => { if (ev.target.closest('[data-back]')) window.navigation?.canGoBack ? navigation.back() : history.back(); });
 addEventListener('scroll', () => document.body.classList.toggle('scrolled', scrollY > 0), { passive: true });
 
 // soft: refresh this page in place, for changes the user didn't navigate to. It renders into a hidden copy,

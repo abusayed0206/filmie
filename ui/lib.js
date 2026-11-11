@@ -88,6 +88,13 @@ function splitServer(s) {
 
 // The default server is saved as an index, so it has to follow the list when one is removed.
 const serverAfterRemove = (current, removed) => current === removed ? 0 : current > removed ? current - 1 : current;
+// The server race: heights[i] is the tallest video server i reported, 0 if none. Returns the server to switch to,
+// or null to stay. A tie keeps the current server, then the earlier one in the list.
+function betterServer(heights, current) {
+  let best = current;
+  heights.forEach((h, i) => { if ((h || 0) > (heights[best] || 0)) best = i; });
+  return best === current ? null : best;
+}
 
 // Episode after s/e using TMDB's season list, or null at the end of the show.
 function episodeAfter(show, s, e) {
@@ -343,4 +350,4 @@ function playedNote(p, now = Date.now() / 1000) {
   return `Opened ${Math.floor(mins / 1440)} d ago`;
 }
 
-if (typeof module !== 'undefined') module.exports = { validProgress, playedNote, historyBody, safeColor, youtubeKey, pickTrailer, newestCredits, isoDate, shortDate, fullDate, addDays, weekStart, sortValue, hasEnded, sortLists, exactFirst, streakFrom, weekHeatmap, durationText, recentMonths, mergeContinue, startWatching, runtimeText, statusTag, navFor, modeOf, FILTERS, decadeOptions, cleanFilters, filterQuery, filterCount, addQuery, fitsSimple, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm };
+if (typeof module !== 'undefined') module.exports = { validProgress, playedNote, historyBody, safeColor, youtubeKey, pickTrailer, newestCredits, isoDate, shortDate, fullDate, addDays, weekStart, sortValue, hasEnded, sortLists, exactFirst, streakFrom, weekHeatmap, durationText, recentMonths, mergeContinue, startWatching, runtimeText, statusTag, navFor, modeOf, FILTERS, decadeOptions, cleanFilters, filterQuery, filterCount, addQuery, fitsSimple, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, betterServer, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm };

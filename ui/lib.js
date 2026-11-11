@@ -361,12 +361,12 @@ const downloadPct = d => d.status === 'done' ? 100 : d.total_bytes > 0 ? Math.mi
 const bytesText = n => n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : `${Math.max(1, Math.round(n / 1e6))} MB`;
 
 // What a hidden capture frame found, best first: a playlist (the first one seen, usually the master), then DASH,
-// then a whole file. DRM with no playlist means a protected video. Null when nothing was found.
+// then a whole file. An EME request with no playlist means a protected video. Null when nothing was found.
 function pickCapture(reports) {
   const rank = { hls: 0, dash: 1, file: 2 };
   const best = reports.filter(r => typeof r.url === 'string' && /^https?:\/\//i.test(r.url) && Object.hasOwn(rank, r.kind))
     .sort((a, b) => rank[a.kind] - rank[b.kind])[0] ?? null;
-  // A whole file played through DRM is encrypted. A playlist says so itself, and Rust checks it.
+  // A whole file played through EME can't be saved. A playlist says so itself, and Rust checks it.
   if (reports.some(r => r.drm) && (!best || best.kind === 'file')) return { protected: true };
   return best;
 }

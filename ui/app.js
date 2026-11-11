@@ -16,7 +16,7 @@ Object.assign(pages, {
           <p>Filmie doesn't come with any video servers. Add one and it will play here, with your place in a show kept for you.</p>
           <ol><li>Open Settings, where the form is ready to fill in.</li><li>Enter the server's link and how its movie and TV addresses are built.</li><li>Press Back to return here and start watching.</li></ol>
           <div class="no-server-actions"><a class="btn primary" href="#/settings/servers">${icon('plus')}Add a server</a><a class="btn" href="#/title/${type === 'tv' ? 'tv' : 'movie'}/${id}">View details</a></div>
-          <p class="muted">Only add servers you have the right to use.</p></div></section></div>`;
+          </div></section></div>`;
       return;
     }
     const server = getServer(sources.length);

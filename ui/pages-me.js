@@ -257,7 +257,7 @@ Object.assign(pages, {
         ${field('Fullscreen', 'Fill the whole screen. Shortcut: <kbd>F11</kbd>, and <kbd>Esc</kbd> to leave.', `<button class="btn fs-btn">${icon('expand')}Toggle fullscreen</button>`)}
       </section>
       <section class="card" id="downloads-box">
-        <div class="card-head"><h2>Downloads</h2><p class="muted">Save movies and episodes to watch without a connection. Only download what you have the right to keep. Encrypted or DRM-protected videos are never downloaded.</p></div>
+        <div class="card-head"><h2>Downloads</h2><p class="muted">Save movies and episodes to watch without a connection. Some videos can't be saved for offline use.</p></div>
         ${field('Download folder', '<span id="dl-folder">Checking…</span> It cannot be on the Windows drive.', '<button id="dl-pick" class="btn">Choose folder</button>')}
         ${field('Download quality', 'Each download is saved at this quality, or the nearest lower one the server has. Default: 1080p.',
           `<select id="dl-quality" aria-label="Download quality">${QUALITIES.map(q => `<option value="${q}" ${q === getDownloadQuality() ? 'selected' : ''}>${q === 'auto' ? 'Best available' : q}</option>`).join('')}</select>`)}
@@ -580,7 +580,7 @@ function renderServers(card, editing = null) {
   const input = (id, label, hint, value, attrs = '') => `<label class="form-field" for="${id}"><b>${label}</b>
       <input id="${id}" value="${esc(value ?? '')}" spellcheck="false" autocomplete="off" ${attrs}><small class="muted">${hint}</small></label>`;
   card.innerHTML = `<div class="card-head"><h2>Video servers</h2>
-      <p class="muted">Filmie includes no servers. Only add ones you have the right to use.</p></div>
+      <p class="muted">Filmie includes no servers. Add your own below.</p></div>
     ${rows ? `<ul class="server-list">${rows}</ul>` : ''}
     ${editing === null ? `<div class="card-actions"><button type="button" id="server-add" class="btn primary">${icon('plus')}Add server</button></div>` : `<form id="server-form" novalidate>
       <h3>${saved ? `Edit ${esc(saved.name)}` : 'Add a server'}</h3>

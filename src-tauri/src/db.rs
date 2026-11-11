@@ -99,7 +99,7 @@ pub struct Played {
 }
 
 /// One offline download. A movie has season and episode 0. `status` is queued, finding (the app is looking for the
-/// video on the user's servers), downloading, done, failed or protected (encrypted, so it is never downloaded).
+/// video on the user's servers), downloading, done, failed or protected (it can't be saved, so nothing is kept).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Download {
     #[serde(default)]

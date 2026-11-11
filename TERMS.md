@@ -12,11 +12,8 @@ Filmie doesn't host, store, supply or recommend any video. It includes no video 
 
 ## Your responsibilities
 
-- Only add and use video servers that you have the right to use.
-- Only download videos that you have the right to keep. Filmie never downloads encrypted or DRM-protected video.
-- Follow copyright law and the laws of your country.
+- Follow the laws of your country.
 - Follow the terms of each service you connect to, including [TMDB](https://www.themoviedb.org/api-terms-of-use) and [Trakt](https://trakt.tv/terms).
-- Don't use Filmie to access, copy or share content without permission from its rights holder.
 
 You alone are responsible for the servers you add and for what you do with them. The developer doesn't control or review those servers.
 
@@ -40,4 +37,4 @@ These terms may be updated. The current version is always in the [project reposi
 
 ## Contact
 
-Questions and copyright concerns about this project can be raised through [GitHub Issues](https://github.com/abusayed0206/filmie/issues).
+Questions about this project can be raised through [GitHub Issues](https://github.com/abusayed0206/filmie/issues).

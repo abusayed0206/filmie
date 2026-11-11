@@ -55,6 +55,27 @@ const SCHEMA: &str = "
         key TEXT PRIMARY KEY,
         value TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS downloads (
+        id INTEGER PRIMARY KEY,
+        kind TEXT NOT NULL,
+        tmdb_id INTEGER NOT NULL,
+        season INTEGER NOT NULL DEFAULT 0,
+        episode INTEGER NOT NULL DEFAULT 0,
+        title TEXT NOT NULL,
+        episode_title TEXT,
+        status TEXT NOT NULL,
+        done_bytes INTEGER NOT NULL DEFAULT 0,
+        total_bytes INTEGER NOT NULL DEFAULT 0,
+        dir TEXT,
+        file TEXT,
+        error TEXT,
+        created_at INTEGER NOT NULL,
+        UNIQUE (kind, tmdb_id, season, episode)
+    );
 ";
 // Expired rows stay a while as an offline fallback.
 const KEEP_EXPIRED_SECS: i64 = 30 * 86_400;
@@ -75,6 +96,59 @@ pub struct Played {
     pub duration: f64,
     #[serde(default)]
     pub updated_at: i64,
+}
+
+/// One offline download. A movie has season and episode 0. `status` is queued, finding (the app is looking for the
+/// video on the user's servers), downloading, done, failed or protected (encrypted, so it is never downloaded).
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Download {
+    #[serde(default)]
+    pub id: i64,
+    pub kind: String,
+    pub tmdb_id: i64,
+    #[serde(default)]
+    pub season: i64,
+    #[serde(default)]
+    pub episode: i64,
+    pub title: String,
+    #[serde(default)]
+    pub episode_title: Option<String>,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub done_bytes: i64,
+    #[serde(default)]
+    pub total_bytes: i64,
+    #[serde(default)]
+    pub dir: Option<String>,
+    #[serde(default)]
+    pub file: Option<String>,
+    #[serde(default)]
+    pub error: Option<String>,
+    #[serde(default)]
+    pub created_at: i64,
+}
+
+const DOWNLOAD_COLUMNS: &str =
+    "id, kind, tmdb_id, season, episode, title, episode_title, status, done_bytes, total_bytes, dir, file, error, created_at";
+
+fn download_row(r: &rusqlite::Row) -> rusqlite::Result<Download> {
+    Ok(Download {
+        id: r.get(0)?,
+        kind: r.get(1)?,
+        tmdb_id: r.get(2)?,
+        season: r.get(3)?,
+        episode: r.get(4)?,
+        title: r.get(5)?,
+        episode_title: r.get(6)?,
+        status: r.get(7)?,
+        done_bytes: r.get(8)?,
+        total_bytes: r.get(9)?,
+        dir: r.get(10)?,
+        file: r.get(11)?,
+        error: r.get(12)?,
+        created_at: r.get(13)?,
+    })
 }
 
 /// How much of the Trakt history is stored locally.
@@ -147,7 +221,93 @@ impl Db {
             Connection::open_in_memory().and_then(open).expect("SQLite can always open in memory")
         });
         let _ = conn.execute("DELETE FROM cache WHERE expires_at < ?1", [now() - KEEP_EXPIRED_SECS]);
+        // Work that was cut off by closing the app starts again from the queue, where downloads resume.
+        let _ = conn.execute("UPDATE downloads SET status = 'queued' WHERE status IN ('finding', 'downloading')", []);
         Self(Mutex::new(conn))
+    }
+
+    pub fn setting(&self, key: &str) -> Option<String> {
+        self.conn().query_row("SELECT value FROM settings WHERE key = ?1", [key], |r| r.get(0)).optional().ok().flatten()
+    }
+
+    pub fn set_setting(&self, key: &str, value: &str) -> rusqlite::Result<()> {
+        self.conn().execute("INSERT OR REPLACE INTO settings (key, value) VALUES (?1, ?2)", [key, value]).map(|_| ())
+    }
+
+    /// Queues downloads. One already queued or done stays as it is; one that failed is tried again.
+    pub fn download_add(&self, items: &[Download]) -> rusqlite::Result<()> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        for d in items {
+            tx.execute(
+                "INSERT INTO downloads (kind, tmdb_id, season, episode, title, episode_title, status, created_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, 'queued', ?7)
+                 ON CONFLICT (kind, tmdb_id, season, episode) DO UPDATE SET status = 'queued', error = NULL, done_bytes = 0, total_bytes = 0
+                 WHERE status IN ('failed', 'protected')",
+                params![d.kind, d.tmdb_id, d.season, d.episode, d.title, d.episode_title, now()],
+            )?;
+        }
+        tx.commit()
+    }
+
+    pub fn download_list(&self) -> rusqlite::Result<Vec<Download>> {
+        let conn = self.conn();
+        let mut query = conn.prepare(&format!("SELECT {DOWNLOAD_COLUMNS} FROM downloads ORDER BY created_at, id"))?;
+        query.query_map([], download_row)?.collect()
+    }
+
+    pub fn download_get(&self, id: i64) -> rusqlite::Result<Option<Download>> {
+        self.conn().query_row(&format!("SELECT {DOWNLOAD_COLUMNS} FROM downloads WHERE id = ?1"), [id], download_row).optional()
+    }
+
+    /// The next queued download, now marked as finding, unless one is already being found or downloaded:
+    /// video links often expire within minutes, so each is found just before it downloads.
+    pub fn download_next(&self) -> rusqlite::Result<Option<Download>> {
+        let mut conn = self.conn();
+        let tx = conn.transaction()?;
+        let busy: i64 = tx.query_row("SELECT COUNT(*) FROM downloads WHERE status IN ('finding', 'downloading')", [], |r| r.get(0))?;
+        let next = if busy > 0 {
+            None
+        } else {
+            tx.query_row(
+                &format!("SELECT {DOWNLOAD_COLUMNS} FROM downloads WHERE status = 'queued' ORDER BY created_at, id LIMIT 1"),
+                [],
+                download_row,
+            )
+            .optional()?
+        };
+        if let Some(d) = &next {
+            tx.execute("UPDATE downloads SET status = 'finding' WHERE id = ?1", [d.id])?;
+        }
+        tx.commit()?;
+        Ok(next.map(|d| Download { status: "finding".into(), ..d }))
+    }
+
+    pub fn download_status(&self, id: i64, status: &str, error: Option<&str>) -> rusqlite::Result<()> {
+        self.conn().execute("UPDATE downloads SET status = ?2, error = ?3 WHERE id = ?1", params![id, status, error]).map(|_| ())
+    }
+
+    pub fn download_started(&self, id: i64, dir: &str) -> rusqlite::Result<()> {
+        self.conn()
+            .execute("UPDATE downloads SET status = 'downloading', dir = ?2, error = NULL WHERE id = ?1", params![id, dir])
+            .map(|_| ())
+    }
+
+    pub fn download_progress(&self, id: i64, done: i64, total: i64) -> rusqlite::Result<()> {
+        self.conn().execute("UPDATE downloads SET done_bytes = ?2, total_bytes = ?3 WHERE id = ?1", params![id, done, total]).map(|_| ())
+    }
+
+    pub fn download_done(&self, id: i64, file: &str, bytes: i64) -> rusqlite::Result<()> {
+        self.conn()
+            .execute(
+                "UPDATE downloads SET status = 'done', file = ?2, done_bytes = ?3, total_bytes = ?3, error = NULL WHERE id = ?1",
+                params![id, file, bytes],
+            )
+            .map(|_| ())
+    }
+
+    pub fn download_delete(&self, id: i64) -> rusqlite::Result<()> {
+        self.conn().execute("DELETE FROM downloads WHERE id = ?1", [id]).map(|_| ())
     }
 
     fn conn(&self) -> MutexGuard<'_, Connection> {
@@ -600,6 +760,71 @@ mod tests {
         let stats = db.stats(None).unwrap();
         assert_eq!((&stats["synced"], &stats["complete"], &stats["ratings"]), (&json!(0), &json!(false), &json!([])));
         assert_eq!(db.list_played(10).unwrap().len(), 1, "Recently played stays");
+    }
+
+    fn download(kind: &str, season: i64, episode: i64) -> Download {
+        Download {
+            id: 0,
+            kind: kind.into(),
+            tmdb_id: 7,
+            season,
+            episode,
+            title: "T".into(),
+            episode_title: None,
+            status: String::new(),
+            done_bytes: 0,
+            total_bytes: 0,
+            dir: None,
+            file: None,
+            error: None,
+            created_at: 0,
+        }
+    }
+
+    #[test]
+    fn download_queue_runs_one_at_a_time_and_survives_a_restart() {
+        let dir = std::env::temp_dir().join(format!("filmie-queue-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("q.sqlite3");
+        let _ = std::fs::remove_file(&path);
+        let db = Db::open(&path);
+        db.download_add(&[download("tv", 1, 1), download("tv", 1, 2), download("tv", 1, 1)]).unwrap();
+        assert_eq!(db.download_list().unwrap().len(), 2, "the same episode is queued once");
+
+        let first = db.download_next().unwrap().unwrap();
+        assert_eq!((first.episode, first.status.as_str()), (1, "finding"));
+        assert_eq!(db.download_next().unwrap(), None, "nothing else starts while one is being found");
+        db.download_started(first.id, "D:\\x").unwrap();
+        assert_eq!(db.download_next().unwrap(), None, "or downloaded");
+
+        // Closing the app mid-download puts it back in the queue.
+        drop(db);
+        let db = Db::open(&path);
+        assert_eq!(db.download_get(first.id).unwrap().unwrap().status, "queued");
+        let again = db.download_next().unwrap().unwrap();
+        assert_eq!(again.id, first.id, "the oldest goes first");
+        db.download_done(again.id, "D:\\x\\a.mp4", 10).unwrap();
+        let second = db.download_next().unwrap().unwrap();
+        db.download_status(second.id, "protected", Some("encrypted")).unwrap();
+        assert_eq!(db.download_next().unwrap(), None);
+
+        // Adding again retries a failure but leaves a finished one alone.
+        db.download_add(&[download("tv", 1, 1), download("tv", 1, 2)]).unwrap();
+        let list = db.download_list().unwrap();
+        assert_eq!((list[0].status.as_str(), list[1].status.as_str()), ("done", "queued"));
+        assert_eq!(list[1].error, None);
+        db.download_delete(list[0].id).unwrap();
+        assert_eq!(db.download_list().unwrap().len(), 1);
+        drop(db);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn settings_outlive_sign_out() {
+        let db = db();
+        db.set_setting("download_folder", "D:\\Movies").unwrap();
+        db.clear_trakt_data().unwrap();
+        assert_eq!(db.setting("download_folder").as_deref(), Some("D:\\Movies"));
     }
 
     // A budget far above normal so slow CI machines pass, while a broken index or query still fails.

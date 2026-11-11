@@ -253,6 +253,7 @@ function validProgress(p, runtimeMinutes) {
 const RAIL_ITEMS = {
   '': [''], search: ['search'], progress: ['progress', ''], calendar: ['calendar', ''], discover: ['discover'],
   lists: ['lists'], list: ['lists'], watchlist: ['watchlist', 'lists'], history: ['history'], library: ['library'], settings: ['settings'], hidden: ['settings'], profile: ['profile'],
+  downloads: ['downloads'],
 };
 function navFor(page, sub) {
   if (page === 'discover' && sub) return sub === 'recommended' ? ['discover/recommended', ''] : [`discover/${sub}`, 'discover'];
@@ -350,4 +351,53 @@ function playedNote(p, now = Date.now() / 1000) {
   return `Opened ${Math.floor(mins / 1440)} d ago`;
 }
 
-if (typeof module !== 'undefined') module.exports = { validProgress, playedNote, historyBody, safeColor, youtubeKey, pickTrailer, newestCredits, isoDate, shortDate, fullDate, addDays, weekStart, sortValue, hasEnded, sortLists, exactFirst, streakFrom, weekHeatmap, durationText, recentMonths, mergeContinue, startWatching, runtimeText, statusTag, navFor, modeOf, FILTERS, decadeOptions, cleanFilters, filterQuery, filterCount, addQuery, fitsSimple, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, betterServer, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm };
+// ---------- offline downloads. A row is the Rust `Download`: { id, kind, tmdb_id, season, episode, status, done_bytes, total_bytes, ... }.
+const DOWNLOAD_ACTIVE = ['queued', 'finding', 'downloading'];
+const isActiveDownload = d => DOWNLOAD_ACTIVE.includes(d.status);
+const sameDownload = (d, kind, id, s = 0, e = 0) => d.kind === kind && d.tmdb_id === id && d.season === s && d.episode === e;
+// A show counts as downloaded once any of its episodes is.
+const isDownloaded = (list, kind, id) => list.some(d => d.status === 'done' && d.kind === kind && d.tmdb_id === id);
+const downloadPct = d => d.status === 'done' ? 100 : d.total_bytes > 0 ? Math.min(100, 100 * d.done_bytes / d.total_bytes) : null;
+const bytesText = n => n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : `${Math.max(1, Math.round(n / 1e6))} MB`;
+
+// What a hidden capture frame found, best first: a playlist (the first one seen, usually the master), then DASH,
+// then a whole file. DRM with no playlist means a protected video. Null when nothing was found.
+function pickCapture(reports) {
+  const rank = { hls: 0, dash: 1, file: 2 };
+  const best = reports.filter(r => typeof r.url === 'string' && /^https?:\/\//i.test(r.url) && Object.hasOwn(rank, r.kind))
+    .sort((a, b) => rank[a.kind] - rank[b.kind])[0] ?? null;
+  // A whole file played through DRM is encrypted. A playlist says so itself, and Rust checks it.
+  if (reports.some(r => r.drm) && (!best || best.kind === 'file')) return { protected: true };
+  return best;
+}
+
+// The rail's summary of the downloads in progress: how many, and how far along they are together.
+function downloadSummary(list) {
+  const active = list.filter(isActiveDownload);
+  const sized = active.filter(d => d.total_bytes > 0);
+  const total = sized.reduce((n, d) => n + d.total_bytes, 0);
+  return { count: active.length, pct: total ? Math.round(100 * sized.reduce((n, d) => n + d.done_bytes, 0) / total) : 0 };
+}
+
+// The Downloads page: what is in progress, finished movies, finished shows with their episodes in order, and failures.
+function groupDownloads(list) {
+  const order = (a, b) => a.season - b.season || a.episode - b.episode;
+  const done = list.filter(d => d.status === 'done');
+  const shows = new Map();
+  for (const d of done.filter(d => d.kind === 'tv')) {
+    if (!shows.has(d.tmdb_id)) shows.set(d.tmdb_id, { id: d.tmdb_id, title: d.title, episodes: [] });
+    shows.get(d.tmdb_id).episodes.push(d);
+  }
+  return {
+    active: list.filter(isActiveDownload),
+    movies: done.filter(d => d.kind === 'movie').sort((a, b) => a.title.localeCompare(b.title)),
+    shows: [...shows.values()].map(s => ({ ...s, episodes: s.episodes.sort(order) })).sort((a, b) => a.title.localeCompare(b.title)),
+    problems: list.filter(d => d.status === 'failed' || d.status === 'protected'),
+  };
+}
+
+// The next downloaded episode of a show after S{s}E{e}, for the offline player's Next.
+const nextDownloaded = (list, id, s, e) => list.filter(d => d.status === 'done' && d.kind === 'tv' && d.tmdb_id === id && (d.season > s || (d.season === s && d.episode > e)))
+  .sort((a, b) => a.season - b.season || a.episode - b.episode)[0] ?? null;
+
+if (typeof module !== 'undefined') module.exports = { isActiveDownload, sameDownload, isDownloaded, downloadPct, bytesText, pickCapture, downloadSummary, groupDownloads, nextDownloaded, validProgress, playedNote, historyBody, safeColor, youtubeKey, pickTrailer, newestCredits, isoDate, shortDate, fullDate, addDays, weekStart, sortValue, hasEnded, sortLists, exactFirst, streakFrom, weekHeatmap, durationText, recentMonths, mergeContinue, startWatching, runtimeText, statusTag, navFor, modeOf, FILTERS, decadeOptions, cleanFilters, filterQuery, filterCount, addQuery, fitsSimple, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, betterServer, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm };

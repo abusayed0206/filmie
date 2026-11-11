@@ -20,7 +20,7 @@ function posterCard(it, { label, titled, action } = {}) {
   const tags = (label ? [label] : [it.year, it.type === 'tv' ? it.episodes && `${it.episodes} eps` : runtimeText(it.runtime)]).filter(Boolean);
   return `<div class="media-card${watched ? ' is-watched' : ''}">
     <a class="poster" href="#/title/${it.type}/${it.id}" data-type="${it.type}" data-id="${it.id}" title="${esc(it.title)}" aria-label="${esc([it.title, it.year].filter(Boolean).join(', '))}">
-      <div class="art"><span class="cover-title">${esc(it.title)}</span><div class="tags">${typeTag}</div>${status ? `<i class="status-tag">${esc(status)}</i>` : ''}</div>
+      <div class="art"><span class="cover-title">${esc(it.title)}</span><div class="tags">${typeTag}</div>${downloadBadge(it.type, it.id)}${status ? `<i class="status-tag">${esc(status)}</i>` : ''}</div>
       <div class="card-footer${titled ? ' titled' : ''}">${titled ? `<b>${esc(it.title)}</b>` : ''}${tags.map(t => `<span class="meta-tag">${esc(t)}</span>`).join('')}</div></a>
     ${cardMenuButton(it)}${action ?? ''}</div>`;
 }
@@ -29,7 +29,7 @@ const traktPosters = (path, type, label) => async () => posters(await traktGet(p
 
 function progressCard(href, it, line, pct, note, { action, play = true } = {}) {
   return `<div class="media-card landscape-card"><a class="ep-card" href="${href}" data-type="${it.type}" data-id="${it.id}" data-art="backdrop" title="${esc(it.title)}">
-    <div class="art"><span class="cover-title">${esc(it.title)}</span>${play ? `<span class="play-icon">${icon('play')}</span>` : ''}</div>
+    <div class="art"><span class="cover-title">${esc(it.title)}</span>${downloadBadge(it.type, it.id)}${play ? `<span class="play-icon">${icon('play')}</span>` : ''}</div>
     <b>${esc(it.title)}</b><span>${esc(line)}</span>
     ${pct === null ? '' : `<div class="bar"><i style="width:${Math.min(100, Math.round(pct))}%"></i></div>`}<small>${esc(note)}</small></a>${action ?? ''}</div>`;
 }
@@ -117,7 +117,7 @@ function summaryCard(it, { sortValue, label, line, href, action } = {}) {
   return `<div class="media-card summary-card">
     <a class="summary-link" href="${href ?? `#/title/${it.type}/${it.id}`}" data-type="${it.type}" data-id="${it.id}" data-art="summary" title="${esc(it.title)}">
       <div class="summary-back"></div>
-      <div class="art summary-thumb"><span class="cover-title">${esc(it.title)}</span></div>
+      <div class="art summary-thumb"><span class="cover-title">${esc(it.title)}</span>${downloadBadge(it.type, it.id)}</div>
       <div class="summary-body"><b>${esc(it.title)}</b>${line ? `<small>${esc(line)}</small>` : ''}${genres ? `<small class="muted">${esc(genres)}</small>` : ''}
         <div class="summary-tags">${tags.map(t => `<span class="meta-tag">${esc(t)}</span>`).join('')}</div>
         ${score ? `<span class="summary-score">${esc(score)}</span>` : ''}</div></a>
@@ -178,7 +178,7 @@ function skeleton(kind) {
   }[kind];
   return body ? `<div aria-hidden="true">${body}</div>` : '';
 }
-const SKELETONS = { home: 'rows', discover: 'rows', progress: 'grid', title: 'title', person: 'title', lists: 'rows', watchlist: 'grid', list: 'grid', search: 'grid', history: 'grid', library: 'grid', calendar: 'grid', hidden: 'grid' };
+const SKELETONS = { home: 'rows', discover: 'rows', progress: 'grid', title: 'title', person: 'title', lists: 'rows', watchlist: 'grid', list: 'grid', search: 'grid', history: 'grid', library: 'grid', calendar: 'grid', hidden: 'grid', downloads: 'grid' };
 
 // ---------- rows
 function collapsedRows() {

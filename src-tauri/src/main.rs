@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod db;
+mod downloads;
 mod keys;
 mod trakt;
 
@@ -49,6 +50,30 @@ const INJECT_PLAYER: &str = r##"
 
   let quality = '1080p';
   let probe = false; // a hidden frame in the app's server race: kept muted, and only reports its video height
+  let capture = false; // a hidden frame finding a video to download: also reports the video's address
+
+  // Download capture. Addresses seen before the app asks are kept, since the playlist often loads first.
+  const seenMedia = [];
+  const seenUrls = new Set();
+  const reportMedia = m => {
+    if (m.url) { if (seenUrls.has(m.url)) return; seenUrls.add(m.url); }
+    m.page = location.href;
+    if (capture) { try { window.top.postMessage({ __filmieMedia: m }, '*'); } catch {} }
+    else if (seenMedia.length < 50) seenMedia.push(m);
+  };
+  try {
+    new PerformanceObserver(list => {
+      for (const e of list.getEntries()) {
+        const kind = /\.m3u8(?:[?#]|$)/i.test(e.name) ? 'hls' : /\.mpd(?:[?#]|$)/i.test(e.name) ? 'dash' : null;
+        if (kind && /^https?:/.test(e.name) && !adSrc.test(e.name)) reportMedia({ url: e.name, kind });
+      }
+    }).observe({ type: 'resource', buffered: true });
+  } catch {}
+  // A request for a DRM key system means protected media, which Filmie never downloads. The call itself is unchanged.
+  try {
+    const keys = navigator.requestMediaKeySystemAccess;
+    if (keys) navigator.requestMediaKeySystemAccess = function (...a) { reportMedia({ drm: true }); return keys.apply(this, a); };
+  } catch {}
   let applied = null;
   let timer = null;
   let tickN = 0;
@@ -169,6 +194,7 @@ const INJECT_PLAYER: &str = r##"
       document.querySelectorAll('iframe').forEach(f => {
         try { f.contentWindow.postMessage({ __filmieQuality: q }, '*'); } catch {}
         if (probe) try { f.contentWindow.postMessage({ __filmieProbe: 1 }, '*'); } catch {}
+        if (capture) try { f.contentWindow.postMessage({ __filmieCapture: 1 }, '*'); } catch {}
       });
     } catch {}
   };
@@ -215,6 +241,8 @@ const INJECT_PLAYER: &str = r##"
       if (probe) videos.forEach(x => { x.muted = true; });
       const v = videos.filter(x => Number.isFinite(x.duration) && x.duration >= 60).sort((a, b) => b.duration - a.duration)[0];
       if (!v) return;
+      // A plain file plays straight from its address; a blob: address is a stream, found by its playlist instead.
+      if (capture && /^https?:/.test(v.currentSrc || '')) reportMedia({ url: v.currentSrc, kind: 'file' });
       const p = jw();
       const h = Math.max(v.videoHeight || 0, ...(p ? levels(p).map(l => l.h) : []));
       if (h <= tallest) return;
@@ -226,6 +254,12 @@ const INJECT_PLAYER: &str = r##"
   window.addEventListener('message', e => {
     const d = e.data;
     if (d && typeof d === 'object' && d.__filmieProbe && !probe) { probe = true; relay(quality); return; }
+    if (d && typeof d === 'object' && d.__filmieCapture && !capture) {
+      probe = capture = true;
+      relay(quality);
+      seenMedia.splice(0).forEach(m => { try { window.top.postMessage({ __filmieMedia: m }, '*'); } catch {} });
+      return;
+    }
     if (!d || typeof d !== 'object' || !('__filmieQuality' in d)) return;
     const q = norm(d.__filmieQuality);
     if (q !== quality) { quality = q; applied = null; tickN = 0; uiN = 0; stop(); }
@@ -247,6 +281,69 @@ fn is_external_allowed(url: &Url) -> bool {
 
 fn is_app_page(url: &Url) -> bool {
     url.host_str() == Some("tauri.localhost")
+}
+
+/// What a response seen by WebView2 could be downloaded as: a playlist, or a whole video file big enough not to be
+/// an ad or one segment of a stream. Filmie's own pages are left out.
+fn media_kind(url: &str, content_type: &str, size: u64) -> Option<&'static str> {
+    let parsed = Url::parse(url).ok()?;
+    if !["http", "https"].contains(&parsed.scheme()) || parsed.host_str().is_some_and(|h| h.ends_with(".localhost")) {
+        return None;
+    }
+    let path = parsed.path().to_ascii_lowercase();
+    let ct = content_type.to_ascii_lowercase();
+    if ct.contains("mpegurl") || path.ends_with(".m3u8") {
+        Some("hls")
+    } else if ct.contains("dash+xml") || path.ends_with(".mpd") {
+        Some("dash")
+    } else if (ct.starts_with("video/mp4") || ct.starts_with("video/webm") || ct.starts_with("video/x-matroska")) && size >= 50 << 20 {
+        Some("file")
+    } else {
+        None
+    }
+}
+
+/// Reports every playlist or video file any frame loads, as a `media-seen` event. The injected script sees most of
+/// them first; this also catches requests it can't, like those made from a worker.
+#[cfg(windows)]
+fn watch_media(window: &tauri::WebviewWindow) {
+    use tauri::Emitter;
+    let app = window.app_handle().clone();
+    let _ = window.with_webview(move |wv| unsafe {
+        use webview2_com::{Microsoft::Web::WebView2::Win32::*, WebResourceResponseReceivedEventHandler, take_pwstr};
+        use windows::core::{Interface, PWSTR, w};
+        let Some(core) = wv.controller().CoreWebView2().ok().and_then(|c| c.cast::<ICoreWebView2_2>().ok()) else { return };
+        let handler = WebResourceResponseReceivedEventHandler::create(Box::new(move |_, args| {
+            let Some(args) = args else { return Ok(()) };
+            let request = args.Request()?;
+            let mut uri = PWSTR::null();
+            request.Uri(&mut uri)?;
+            let url = take_pwstr(uri);
+            let headers = args.Response()?.Headers()?;
+            let header = |name| {
+                let mut value = PWSTR::null();
+                headers.GetHeader(name, &mut value).ok().map(|_| take_pwstr(value)).unwrap_or_default()
+            };
+            let content_type = header(w!("content-type"));
+            // A range response states the whole file's size after the slash.
+            let size = header(w!("content-range"))
+                .rsplit('/')
+                .next()
+                .and_then(|n| n.parse().ok())
+                .or_else(|| header(w!("content-length")).parse().ok());
+            if let Some(kind) = media_kind(&url, &content_type, size.unwrap_or(0)) {
+                let mut referer = PWSTR::null();
+                let referer =
+                    request.Headers()?.GetHeader(w!("referer"), &mut referer).ok().map(|_| take_pwstr(referer)).unwrap_or_default();
+                let _ = app.emit("media-seen", json!({ "url": url, "referer": referer, "kind": kind }));
+            }
+            Ok(())
+        }));
+        let mut token = 0i64;
+        if let Err(e) = core.add_WebResourceResponseReceived(&handler, &mut token) {
+            eprintln!("no WebView2 network events: {e}");
+        }
+    });
 }
 
 async fn tmdb_fetch(s: &trakt::State, path: &str, query: &BTreeMap<String, String>) -> Result<Value, String> {
@@ -316,6 +413,7 @@ async fn art(s: tauri::State<'_, trakt::State>, kind: String, id: u64) -> Result
 fn main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
         .setup(|app| {
             keyring_core::set_default_store(windows_native_keyring_store::Store::new()?);
             let data_dir = match trakt::test_dir() {
@@ -324,6 +422,8 @@ fn main() {
             };
             std::fs::create_dir_all(&data_dir)?;
             app.manage(trakt::State::new(data_dir.join("library.json"), db::Db::open(data_dir.join("filmie.sqlite3"))));
+            app.manage(downloads::Downloads::default());
+            downloads::allow_finished(app.handle());
 
             let handle = app.handle().clone();
             let mut window = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
@@ -350,7 +450,11 @@ fn main() {
             if let Some(extensions) = extensions {
                 window = window.browser_extensions_enabled(true).extensions_path(extensions);
             }
-            window.build()?;
+            let window = window.build()?;
+            #[cfg(windows)]
+            watch_media(&window);
+            #[cfg(not(windows))]
+            let _ = window;
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -370,7 +474,15 @@ fn main() {
             db::history_clear,
             db::cache_info,
             db::cache_clear,
-            db::stats
+            db::stats,
+            downloads::download_folder,
+            downloads::download_folder_pick,
+            downloads::download_list,
+            downloads::download_add,
+            downloads::download_next,
+            downloads::download_start,
+            downloads::download_fail,
+            downloads::download_remove
         ])
         .run(tauri::generate_context!())
         .expect("error while running Filmie");
@@ -401,6 +513,19 @@ mod tests {
         assert!(!ok("https://evilimdb.com/")); // suffix must be a real subdomain
         assert!(!ok("https://imdb.com.evil.io/"));
         assert!(!ok("https://ads.example.com/pop"));
+    }
+
+    #[test]
+    fn media_responses_worth_downloading() {
+        assert_eq!(media_kind("https://cdn.example.com/v/master.m3u8?t=1", "", 0), Some("hls"));
+        assert_eq!(media_kind("https://cdn.example.com/v/x", "application/vnd.apple.mpegurl", 0), Some("hls"));
+        assert_eq!(media_kind("https://cdn.example.com/v/x", "application/dash+xml", 0), Some("dash"));
+        assert_eq!(media_kind("https://cdn.example.com/film.mp4", "video/mp4", 900 << 20), Some("file"));
+        assert_eq!(media_kind("https://ads.example.com/ad.mp4", "video/mp4", 2 << 20), None, "too small to be the film");
+        assert_eq!(media_kind("https://cdn.example.com/seg1.ts", "video/mp2t", 0), None, "a segment");
+        assert_eq!(media_kind("http://tauri.localhost/index.html", "text/html", 0), None);
+        assert_eq!(media_kind("http://asset.localhost/D%3A/a/index.m3u8", "", 0), None, "Filmie's own downloads");
+        assert_eq!(media_kind("blob:https://x/1", "", 0), None);
     }
 
     #[test]

@@ -40,6 +40,7 @@ The player shows a trailer because Filmie ships with no video servers.
 - **Fast and offline-friendly:** TMDB and Trakt responses are cached in a local SQLite database.
 - **Move around a show:** switch seasons and jump straight to any episode from the player.
 - **Use your own servers:** add as many as you like and switch between them while watching.
+- **Download for offline viewing:** save a movie, an episode or a whole season from your servers to a folder you choose, and watch it in the app without a connection. Only download what you have the right to keep. Encrypted or DRM-protected videos are never downloaded, and installing [ffmpeg](https://ffmpeg.org) saves streams as single MP4 files.
 - **Find more info:** links to IMDb, Letterboxd, TMDB, Rotten Tomatoes, Metacritic and Trakt.
 - **Watch distraction-free:** fullscreen mode, and pop-ups from embedded pages are blocked.
 

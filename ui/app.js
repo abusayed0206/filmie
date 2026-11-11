@@ -256,7 +256,7 @@ Object.assign(pages, {
 });
 
 // With no server to play, this is an ordinary page and keeps the rail and top bar.
-const showsPlayer = page => page === 'play' && getSources().length > 0;
+const showsPlayer = page => (page === 'play' && getSources().length > 0) || page === 'offline';
 pages.play.bar = () => showsPlayer('play') ? {} : { title: 'Play', back: true };
 
 // ---------- router
@@ -353,6 +353,7 @@ async function route({ soft = false } = {}) {
   catch (e) { if (token === routeToken) app.innerHTML = `<div class="page"><p class="error">${esc(e)}</p></div>`; }
   if (token !== routeToken) return;
   main.removeAttribute('aria-busy'); // a soft refresh can overtake a page that was still loading
+  paintDownloads();
   if (soft) {
     // The swap replaces whatever had keyboard focus, so it moves to the same control in the new copy.
     const focused = main.contains(document.activeElement) ? document.activeElement : null;
@@ -449,4 +450,5 @@ window.addEventListener('hashchange', () => {
 // Only text fields and selected text get a menu; the rest of the app shouldn't offer "Reload" or "Save as".
 document.addEventListener('contextmenu', ev => { if (!ev.target.closest('input, textarea') && !String(getSelection())) ev.preventDefault(); });
 setInterval(() => syncInBackground().catch(console.warn), 15 * 60e3);
-refreshUser().catch(toast).finally(() => { route(); syncInBackground().catch(console.warn); });
+// Downloads come first so cards show their badges; the queue then carries on from where the app last closed.
+Promise.all([refreshUser().catch(toast), refreshDownloads().catch(console.warn)]).finally(() => { route(); syncInBackground().catch(console.warn); pumpDownloads(); });

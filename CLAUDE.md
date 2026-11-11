@@ -37,7 +37,7 @@ node --test --test-name-pattern=episodeAfter tests/ui.test.js # one UI test
 
 ## Architecture
 
-**The webview does no networking of its own.** The CSP limits `connect-src` to Tauri IPC, so TMDB and Trakt calls go through Rust commands (`tmdb` and `trakt`, both generic path proxies). `img-src` allows only `image.tmdb.org`, `data:` and `blob:`, which is why the Trakt avatar is fetched by the `avatar` command and shown as a `blob:` URL. `script-src 'self'` rules out inline scripts and `on*` attributes.
+**The webview does no networking of its own.** The CSP limits `connect-src` to Tauri IPC (plus the asset protocol, for saved HLS), so TMDB and Trakt calls go through Rust commands (`tmdb` and `trakt`, both generic path proxies). `img-src` allows only `image.tmdb.org`, `data:` and `blob:`, which is why the Trakt avatar is fetched by the `avatar` command and shown as a `blob:` URL. `script-src 'self'` rules out inline scripts and `on*` attributes.
 
 **Frontend (`ui/`)** is classic scripts sharing globals, with no modules or framework. They load in this order from `index.html`:
 - `lib.js`: pure helpers, `FILTERS` and `DEFAULT_SOURCES`. It is the only file the tests import, so testable logic goes there.
@@ -45,6 +45,7 @@ node --test --test-name-pattern=episodeAfter tests/ui.test.js # one UI test
 - `controls.js`: `drawer`, `modal`, `menu`, `segmented`, the filter drawer and the Ctrl+K palette. Drawers and dialogs are native `<dialog>`.
 - `cards.js`: every card, `renderRows`, `renderGrid`, skeletons and the card actions.
 - `pages-browse.js` (Home, Discover, Search), `pages-title.js` (title and person), `pages-me.js` (the signed-in pages and Settings).
+- `downloads.js`: the download queue and capture, the Downloads page and the offline player. `vendor/hls.min.js` is loaded only by the offline player.
 - `app.js`: the player, the top bar, the hash router and start-up. `route()` dispatches to the `pages` object, so `#/play/tv/1396/5/14` calls `pages.play('tv', '1396', '5', '14')`.
 
 How pages work:
@@ -88,6 +89,15 @@ How pages work:
 - `app.js` sends the quality as a `{ __filmieQuality }` `postMessage`, which the script relays to nested frames.
 - Auto server (`server-auto` in `localStorage`, on until a server is picked by hand) loads every other server in hidden `.player-probe` frames. They get `{ __filmieProbe }`, which keeps them muted and silent about progress, and every frame posts `{ __filmieVideo: { h } }` with its tallest video. After 8 seconds `betterServer` in `lib.js` decides whether to switch.
 - Changing episode or server inside the player replaces history instead of adding to it, and Back uses `navigation.back()`, which skips the entries the iframe adds.
+
+**Offline downloads (`downloads.rs`, `ui/downloads.js`)**
+- The queue is the `downloads` table in `db.rs`, one row per movie or episode (a movie has season and episode 0), with `status` queued, finding, downloading, done, failed or protected. Opening the database puts finding and downloading back to queued, so downloads resume after a restart. The folder is the `download_folder` row in `settings`, which sign-out leaves alone.
+- `check_folder` refuses the `%SystemDrive%` drive in Rust, after `canonicalize` resolves junctions. The folder is picked through `tauri-plugin-dialog`'s Rust API in `download_folder_pick`, so no dialog permission is granted to JS.
+- One item runs at a time, because video addresses expire: `pumpDownloads` takes `download_next` (marks it finding), `captureMedia` loads each server in a hidden `.capture-frame` sent `{ __filmieCapture }`, and `download_start` hands the address to Rust, which emits a `download` event per progress step and status change. The next item starts when one ends.
+- `INJECT_PLAYER` reports `{ __filmieMedia: { url, kind, page } }` from resource timing and `<video>.currentSrc`, and `{ drm: true }` on any EME request. `watch_media` in `main.rs` adds WebView2's `WebResourceResponseReceived` as `media-seen` events. `pickCapture` in `lib.js` chooses.
+- Never bypass DRM: EME without a playlist, any HLS key other than METHOD=NONE, and DASH `ContentProtection` mark the item protected and keep nothing. Keep any wording about downloads neutral, as with servers.
+- HLS is saved as segments plus local playlists in `<folder>/<Title (tmdb id)>/<Movie|S01E02>/`, then remuxed to `video.mp4` when `ffmpeg` is on PATH. DASH needs ffmpeg.
+- `#/offline/<id>` plays a file through the asset protocol (`convertFileSrc`), whose scope is only each finished download's folder, allowed at runtime. Saved HLS plays through `ui/vendor/hls.min.js` without a worker. `downloadButton`, `downloadBadge` and `paintDownloads` keep every button, badge and the rail item current.
 
 **Window lockdown (`main.rs`)**
 - `on_navigation` keeps the top frame on app pages, and `on_new_window` denies every pop-up.

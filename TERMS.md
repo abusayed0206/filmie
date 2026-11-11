@@ -13,6 +13,7 @@ Filmie doesn't host, store, supply or recommend any video. It includes no video 
 ## Your responsibilities
 
 - Only add and use video servers that you have the right to use.
+- Only download videos that you have the right to keep. Filmie never downloads encrypted or DRM-protected video.
 - Follow copyright law and the laws of your country.
 - Follow the terms of each service you connect to, including [TMDB](https://www.themoviedb.org/api-terms-of-use) and [Trakt](https://trakt.tv/terms).
 - Don't use Filmie to access, copy or share content without permission from its rights holder.

@@ -48,6 +48,7 @@ const INJECT_PLAYER: &str = r##"
   document.addEventListener('DOMContentLoaded', () => drop(document), { once: true });
 
   let quality = '1080p';
+  let probe = false; // a hidden frame in the app's server race: kept muted, and only reports its video height
   let applied = null;
   let timer = null;
   let tickN = 0;
@@ -80,6 +81,7 @@ const INJECT_PLAYER: &str = r##"
       const v = [...document.querySelectorAll('video')].find(x => x.readyState > 0);
       if (v) {
         if (!v.paused) { autoDone = true; return; }
+        if (probe) v.muted = true; // probes have no autoplay permission, so only a muted video may start
         const p = v.play();
         if (p && p.then) p.then(() => { autoDone = true; }).catch(() => {});
         else autoDone = true;
@@ -166,6 +168,7 @@ const INJECT_PLAYER: &str = r##"
     try {
       document.querySelectorAll('iframe').forEach(f => {
         try { f.contentWindow.postMessage({ __filmieQuality: q }, '*'); } catch {}
+        if (probe) try { f.contentWindow.postMessage({ __filmieProbe: 1 }, '*'); } catch {}
       });
     } catch {}
   };
@@ -194,14 +197,35 @@ const INJECT_PLAYER: &str = r##"
       const list = document.querySelectorAll('video');
       const videos = list.length ? [...list] : deep(document, 'video');
       const v = videos.filter(x => Number.isFinite(x.duration) && x.duration >= 60).sort((a, b) => b.duration - a.duration)[0];
-      if (!v || v.currentTime < 1 || v.currentTime === reported) return;
+      if (probe || !v || v.currentTime < 1 || v.currentTime === reported) return;
       reported = v.currentTime;
       window.top.postMessage({ __filmieProgress: { t: v.currentTime, d: v.duration } }, '*');
     } catch {}
   }, 5000);
 
+  // Reports the tallest main video to the app, which races its servers on it.
+  let tallest = 0;
+  let heightTicks = 0;
+  setInterval(() => {
+    // Every second through the race, then every 5 so idle frames don't walk their DOM forever.
+    if (++heightTicks > 30 && heightTicks % 5) return;
+    try {
+      const list = document.querySelectorAll('video');
+      const videos = list.length ? [...list] : deep(document, 'video');
+      if (probe) videos.forEach(x => { x.muted = true; });
+      const v = videos.filter(x => Number.isFinite(x.duration) && x.duration >= 60).sort((a, b) => b.duration - a.duration)[0];
+      if (!v) return;
+      const p = jw();
+      const h = Math.max(v.videoHeight || 0, ...(p ? levels(p).map(l => l.h) : []));
+      if (h <= tallest) return;
+      tallest = h;
+      window.top.postMessage({ __filmieVideo: { h } }, '*');
+    } catch {}
+  }, 1000);
+
   window.addEventListener('message', e => {
     const d = e.data;
+    if (d && typeof d === 'object' && d.__filmieProbe && !probe) { probe = true; relay(quality); return; }
     if (!d || typeof d !== 'object' || !('__filmieQuality' in d)) return;
     const q = norm(d.__filmieQuality);
     if (q !== quality) { quality = q; applied = null; tickN = 0; uiN = 0; stop(); }

@@ -172,7 +172,7 @@ async function showTitle(type, id, season = null) {
     <div class="summary-inner">
       <div class="hero-poster">${trailerLink ? `<a ${trailerLink} aria-label="Watch the trailer">` : '<div>'}
         ${d.poster_path ? `<img class="summary-poster" src="${IMG}w500${esc(d.poster_path)}" alt="">` : `<div class="summary-poster no-poster">${esc(name)}</div>`}${trailerLink ? '</a>' : '</div>'}
-        ${status ? `<i class="status-tag">${esc(status)}</i>` : ''}</div>
+        ${downloadBadge(type, id)}${status ? `<i class="status-tag">${esc(status)}</i>` : ''}</div>
       <div class="summary-info">
         <h1>${esc(name)}</h1>
         ${people.length ? `<p class="credit-line">${esc(credits[0])} ${people.map(p => `<a href="#/person/${+p.id}">${esc(p.name)}</a>`).join(', ')}</p>` : ''}
@@ -182,6 +182,7 @@ async function showTitle(type, id, season = null) {
         <p class="overview" id="overview">${esc(t?.overview ?? d.overview)}</p>
         <div class="action-bar">
           <a class="action-play" href="${canPlay}">${icon('play')}<span>${next ? `S${next[0]}E${next[1]}` : 'Play'}</span></a>
+          ${type === 'movie' ? downloadButton(movieDownload(id, name)) : ''}
           ${user ? `<button type="button" class="action-btn track-btn${watched ? ' on' : ''}" id="track" title="Mark as watched" aria-label="Mark as watched">${icon('check')}</button>
             <button type="button" class="action-btn${listed ? ' on' : ''}" id="watchlist" title="${listed ? 'On your watchlist' : 'Add to watchlist'}" aria-label="${listed ? 'Remove from watchlist' : 'Add to watchlist'}" aria-pressed="${!!listed}">${icon('bookmark')}</button>` : ''}
           ${trailerLink ? `<a class="action-btn" ${trailerLink} title="Trailer" aria-label="Watch the trailer">${icon('video')}</a>` : ''}
@@ -264,6 +265,7 @@ async function seasonRail({ d, id, t, into, season, next }) {
   if (token !== routeToken) return;
   into.insertAdjacentHTML('beforeend', `<section class="row" id="season-row"><div class="row-head"><div class="row-heading"><h2>Seasons</h2></div>
       <div class="row-tools season-tools"><select id="season" aria-label="Season">${list.map(s => `<option value="${s.season_number}">${esc(s.name)} (${s.episode_count})</option>`).join('')}</select>
+      <button type="button" class="btn" id="download-season" title="Download every aired episode of this season">${icon('download')}Download season</button>
       <button type="button" class="btn" id="view-seasons">View All</button></div></div>
     <div class="row-body"><div class="track kind-landscape" id="episodes">${skeletonCards(6, 'landscape')}</div></div></section>`);
   const select = document.getElementById('season');
@@ -281,10 +283,17 @@ async function seasonRail({ d, id, t, into, season, next }) {
     const eps = progress?.seasons?.find(x => x.number === n)?.episodes ?? [];
     const isWatched = e => eps.some(x => x.number === e && x.completed);
     const track = document.getElementById('episodes');
+    const show = d.name ?? d.title;
+    const aired = (data.episodes ?? []).filter(e => e.air_date && e.air_date <= isoDate());
     track.innerHTML = (data.episodes ?? []).map(e => `<div class="media-card landscape-card episode-card${isWatched(e.episode_number) ? ' is-watched' : ''}">
       <button type="button" class="episode-open" data-episode="${e.episode_number}" aria-label="Episode ${e.episode_number}: ${esc(e.name)}">
-        <div class="art${e.still_path ? ' has-art' : ''}"${e.still_path ? ` style="background-image:url('${IMG}w500${esc(e.still_path)}')"` : ''}><span class="cover-title">${esc(e.name)}</span>${isWatched(e.episode_number) ? '<i class="status-tag">Watched</i>' : ''}</div>
-        <b>${e.episode_number}. ${esc(e.name)}</b><small class="muted">${esc(shortDate(e.air_date) || 'TBA')}${e.runtime ? ` · ${runtimeText(e.runtime)}` : ''}</small></button></div>`).join('');
+        <div class="art${e.still_path ? ' has-art' : ''}"${e.still_path ? ` style="background-image:url('${IMG}w500${esc(e.still_path)}')"` : ''}><span class="cover-title">${esc(e.name)}</span>${downloadFor('tv', id, n, e.episode_number)?.status === 'done' ? `<i class="dl-badge" title="Downloaded">${icon('downloaded')}</i>` : ''}${isWatched(e.episode_number) ? '<i class="status-tag">Watched</i>' : ''}</div>
+        <b>${e.episode_number}. ${esc(e.name)}</b><small class="muted">${esc(shortDate(e.air_date) || 'TBA')}${e.runtime ? ` · ${runtimeText(e.runtime)}` : ''}</small></button>
+      ${aired.includes(e) ? downloadButton(episodeDownload(id, show, n, e.episode_number, e.name), { cls: 'card-action' }) : ''}</div>`).join('');
+    const seasonButton = document.getElementById('download-season');
+    seasonButton.disabled = !aired.length;
+    seasonButton.onclick = () => queueDownloads(aired.map(e => episodeDownload(id, show, n, e.episode_number, e.name)));
+    paintDownloads();
     track.onclick = ev => {
       const open = ev.target.closest('[data-episode]');
       if (!open) return;
@@ -314,10 +323,12 @@ function episodeDrawer({ id, season, e, watched, name, onChange }) {
     body: `${e.still_path ? `<img class="episode-still" src="${IMG}w780${esc(e.still_path)}" alt="">` : ''}
       <p class="muted">${esc(name)} · S${season}E${e.episode_number}${e.air_date ? ` · ${esc(shortDate(e.air_date))}` : ''}${e.runtime ? ` · ${runtimeText(e.runtime)}` : ''}</p>
       <div class="episode-actions"><a class="btn primary" href="#/play/tv/${id}/${season}/${e.episode_number}" data-close>${icon('play')}Play</a>
-        ${user ? `<button type="button" class="btn${watched ? ' on' : ''}" id="episode-watch">${icon('check')}${watched ? 'Watched' : 'Mark watched'}</button>` : ''}</div>
+        ${user ? `<button type="button" class="btn${watched ? ' on' : ''}" id="episode-watch">${icon('check')}${watched ? 'Watched' : 'Mark watched'}</button>` : ''}
+        ${e.air_date && e.air_date <= isoDate() ? downloadButton(episodeDownload(id, name, season, e.episode_number, e.name), { cls: 'btn', label: true }) : ''}</div>
       <p class="overview">${esc(e.overview)}</p>`,
   });
   d.querySelector('a[data-close]').addEventListener('click', () => d.close());
+  paintDownloads();
   if (!user) return;
   busy(d.querySelector('#episode-watch'), async () => {
     await write(watched ? '/sync/history/remove' : '/sync/history', episodeBody(id, season, e.episode_number));

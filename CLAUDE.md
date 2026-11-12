@@ -37,7 +37,7 @@ node --test --test-name-pattern=episodeAfter tests/ui.test.js # one UI test
 
 ## Architecture
 
-**The webview does no networking of its own.** The CSP limits `connect-src` to Tauri IPC, so TMDB and Trakt calls go through Rust commands (`tmdb` and `trakt`, both generic path proxies). `img-src` allows only `image.tmdb.org`, `data:` and `blob:`, which is why the Trakt avatar is fetched by the `avatar` command and shown as a `blob:` URL. `script-src 'self'` rules out inline scripts and `on*` attributes.
+**The webview does no networking of its own.** The CSP limits `connect-src` to Tauri IPC (plus the asset protocol, for saved HLS), so TMDB and Trakt calls go through Rust commands (`tmdb` and `trakt`, both generic path proxies). `img-src` allows only `image.tmdb.org`, `data:` and `blob:`, which is why the Trakt avatar is fetched by the `avatar` command and shown as a `blob:` URL. `script-src 'self'` rules out inline scripts and `on*` attributes.
 
 **Frontend (`ui/`)** is classic scripts sharing globals, with no modules or framework. They load in this order from `index.html`:
 - `lib.js`: pure helpers, `FILTERS` and `DEFAULT_SOURCES`. It is the only file the tests import, so testable logic goes there.
@@ -45,6 +45,7 @@ node --test --test-name-pattern=episodeAfter tests/ui.test.js # one UI test
 - `controls.js`: `drawer`, `modal`, `menu`, `segmented`, the filter drawer and the Ctrl+K palette. Drawers and dialogs are native `<dialog>`.
 - `cards.js`: every card, `renderRows`, `renderGrid`, skeletons and the card actions.
 - `pages-browse.js` (Home, Discover, Search), `pages-title.js` (title and person), `pages-me.js` (the signed-in pages and Settings).
+- `downloads.js`: the download queue and capture, the Downloads page and the offline player. `vendor/hls.min.js` is loaded only by the offline player.
 - `app.js`: the player, the top bar, the hash router and start-up. `route()` dispatches to the `pages` object, so `#/play/tv/1396/5/14` calls `pages.play('tv', '1396', '5', '14')`.
 
 How pages work:
@@ -89,6 +90,17 @@ How pages work:
 - Auto server (`server-auto` in `localStorage`, on until a server is picked by hand) loads every other server in hidden `.player-probe` frames. They get `{ __filmieProbe }`, which keeps them muted and silent about progress, and every frame posts `{ __filmieVideo: { h } }` with its tallest video. After 8 seconds `betterServer` in `lib.js` decides whether to switch.
 - Changing episode or server inside the player replaces history instead of adding to it, and Back uses `navigation.back()`, which skips the entries the iframe adds.
 
+**Offline downloads (`downloads.rs`, `ui/downloads.js`)**
+- The queue is the `downloads` table in `db.rs`, one row per movie or episode (a movie has season and episode 0), with `status` queued, finding, downloading, done, failed or protected. Opening the database puts finding and downloading back to queued, so downloads resume after a restart. The folder is the `download_folder` row in `settings`, which sign-out leaves alone.
+- `check_folder` refuses the `%SystemDrive%` drive in Rust, after `canonicalize` resolves junctions. The folder is picked through `tauri-plugin-dialog`'s Rust API in `download_folder_pick`, so no dialog permission is granted to JS.
+- One item runs at a time, because video addresses expire: `pumpDownloads` takes `download_next` (marks it finding), `captureMedia` loads each server in a hidden `.capture-frame` sent `{ __filmieCapture }`, and `download_start` hands the address to Rust, which emits a `download` event per progress step and status change. The next item starts when one ends.
+- Before starting, `captureMedia` asks `download_probe` for each captured HLS master's tallest height. It checks the selected server first, then every other server, and stops at the first at or above the download quality; if none reaches it, the best height seen is kept. `auto` checks them all. Only HLS variants can be probed.
+- `INJECT_PLAYER` reports `{ __filmieMedia: { url, kind, page } }` from resource timing and `<video>.currentSrc`, and `{ drm: true }` on any EME key-system request. `watch_media` in `main.rs` adds WebView2's `WebResourceResponseReceived` as `media-seen` events. `pickCapture` in `lib.js` chooses.
+- Only plain streams are saved: an EME request without a playlist, `SAMPLE-AES`/`SAMPLE-AES-CTR`, a missing key method, a non-identity `KEYFORMAT`, and DASH `ContentProtection` mark the item protected and keep nothing. AES-128 with an identity key is saved with its key. Don't change the DRM refusals. Keep any wording about downloads neutral, as with servers.
+- HLS is saved as segments plus local playlists in `<folder>/<Title (tmdb id)>/<Movie|S01E02>/`, then remuxed to `video.mp4` when `ffmpeg` is on PATH. DASH needs ffmpeg.
+- `#/downloads` uses Library's `summaryCard` grids: a movie opens `#/offline/<id>`, a show opens `#/downloads/tv/<tmdb id>`, its episodes by season like the title page's. Downloads in progress and failures are landscape `progressCard`s (`downloadCard`), whose bar and note `paintDownloads` updates in place.
+- `#/offline/<id>` plays a file through the asset protocol (`convertFileSrc`), whose scope is only each finished download's folder, allowed at runtime. Saved HLS plays through `ui/vendor/hls.min.js` without a worker. `downloadButton`, `downloadBadge` and `paintDownloads` keep every button, badge and the rail item current.
+
 **Window lockdown (`main.rs`)**
 - `on_navigation` keeps the top frame on app pages, and `on_new_window` denies every pop-up.
 - Links only open, in the system browser, if their host is in `EXTERNAL_HOSTS`. A new `target="_blank"` destination must be added there.
@@ -100,7 +112,7 @@ How pages work:
 
 - `docs/PLAN.md` is the running record of API facts, decisions and sources. Before changing a Trakt, TMDB, Tauri or WebView2 integration, re-check the official docs, since Trakt changed a lot in 2026 and older sources are often wrong. Record what you find there with links. For Trakt, the source is the guides and contracts in github.com/trakt/trakt-api.
 - `specs/002-trakt-design-parity/` holds the spec, contracts and task list for the Trakt redesign, and `contracts/api-usage.md` lists which endpoint each page uses.
-- Parts of the plan describe the original design, not the code. `tmdb.rs`, `ratings.rs`, `links.rs` and a `src/` frontend don't exist. Trust the code. The plan also records that TMDB and Trakt terms forbid use in apps that promote piracy, and that Trakt can revoke the client ID.
+- Parts of the plan describe the original design, not the code. `tmdb.rs`, `ratings.rs`, `links.rs` and a `src/` frontend don't exist. Trust the code. The plan also records that TMDB and Trakt terms limit how their data may be used, and that Trakt can revoke the client ID.
 - Known limits are marked in code with `shortcut:` comments.
 
 ## CI and releases

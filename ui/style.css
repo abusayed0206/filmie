@@ -686,3 +686,46 @@ textarea { width: 100%; min-height: 110px; font: 13px/1.6 Consolas, monospace; r
   .stats, .row-actions { margin-left: 0; }
   .player-bar #addlist, .player-bar .divider { display: none; }
 }
+
+/* ---------- offline downloads */
+/* The rail item: a ring fills around the icon while anything downloads, with a count beside it. */
+.rail-dl-icon { position: relative; flex: none; display: inline-grid; place-items: center; width: 20px; height: 20px; }
+#rail-downloads.dl-active .rail-dl-icon::after { content: ""; position: absolute; inset: -5px; border-radius: 50%;
+  background: conic-gradient(var(--accent) var(--p, 0%), color-mix(in srgb, var(--text) 14%, transparent) 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px)); mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px)); }
+.rail-dl-count:not(:empty) { margin-left: auto; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent); color: #fff; font-size: 11px; line-height: 18px; text-align: center; }
+body:not(.rail-wide) .rail-dl-count:not(:empty) { position: absolute; top: 2px; right: 6px; margin: 0; min-width: 15px; height: 15px; font-size: 10px; line-height: 15px; padding: 0 4px; }
+
+/* Download buttons: the arrow, a progress ring while it runs, and the filled icon once saved. */
+.dl-btn { position: relative; }
+.dl-icon { position: relative; display: inline-grid; place-items: center; }
+.dl-btn[data-state="queued"] .dl-icon, .dl-btn[data-state="finding"] .dl-icon, .dl-btn[data-state="downloading"] .dl-icon { color: var(--accent-text); }
+.dl-btn[data-state="queued"] .dl-icon::after, .dl-btn[data-state="finding"] .dl-icon::after, .dl-btn[data-state="downloading"] .dl-icon::after {
+  content: ""; position: absolute; inset: -6px; border-radius: 50%; background: conic-gradient(var(--accent) var(--p, 0%), var(--line-2) 0);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px)); mask: radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 calc(100% - 2px)); }
+.dl-btn[data-state="finding"] .dl-icon::after, .dl-btn[data-state="queued"] .dl-icon::after { animation: dl-spin 1.2s linear infinite; background: conic-gradient(var(--accent) 25%, var(--line-2) 0); }
+.dl-btn[data-state="done"] { color: var(--accent-text); }
+.dl-btn[data-state="failed"] .dl-icon, .dl-btn[data-state="protected"] .dl-icon { color: #ff8a8a; }
+@keyframes dl-spin { to { transform: rotate(1turn); } }
+.btn.dl-btn .dl-icon .i { margin: 0; }
+.episode-card .card-action { bottom: 44px; right: 6px; }
+
+/* The badge on cards and title pages for anything downloaded. */
+.dl-badge { position: absolute; top: 6px; right: 6px; z-index: 1; display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 50%; background: var(--accent); color: #fff; box-shadow: var(--shadow); }
+.dl-badge .i { width: 13px; height: 13px; }
+.hero-poster { position: relative; }
+.hero-poster .dl-badge { top: 10px; right: 10px; width: 28px; height: 28px; }
+.hero-poster .dl-badge .i { width: 16px; height: 16px; }
+.media-card:has(.card-menu) .poster .art .dl-badge { right: 34px; }
+
+/* The Downloads page: Library's cards, with a second card action for retrying a failure. */
+.downloads .dl-folder { margin: 4px 0 8px; }
+.downloads .grid-day:first-of-type { margin-top: 8px; }
+.downloads .grid + .grid-day { margin-top: 28px; }
+.card-action.second { right: 38px; }
+.dl-failed .ep-card > small { color: #ff8a8a; }
+.bar.busy i { width: 30% !important; animation: dl-slide 1.4s ease-in-out infinite; }
+@keyframes dl-slide { from { transform: translateX(-100%); } to { transform: translateX(340%); } }
+.capture-frame { position: fixed; }
+.offline-player video { object-fit: contain; }
+@media (prefers-reduced-motion: reduce) { .dl-btn .dl-icon::after, .bar.busy i { animation: none; } }

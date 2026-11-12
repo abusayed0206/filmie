@@ -1,7 +1,7 @@
 // Run: node --test tests/ui.test.js
 const test = require('node:test');
 const assert = require('node:assert');
-const { validProgress, playedNote, historyBody, safeColor, youtubeKey, pickTrailer, newestCredits, isoDate, shortDate, fullDate, addDays, weekStart, sortValue, hasEnded, sortLists, exactFirst, streakFrom, weekHeatmap, durationText, recentMonths, mergeContinue, startWatching, runtimeText, statusTag, navFor, modeOf, FILTERS, decadeOptions, cleanFilters, filterQuery, filterCount, addQuery, fitsSimple, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, betterServer, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm } = require('../ui/lib.js');
+const { isActiveDownload, sameDownload, isDownloaded, downloadPct, bytesText, pickCapture, downloadSummary, groupDownloads, nextDownloaded, validProgress, playedNote, historyBody, safeColor, youtubeKey, pickTrailer, newestCredits, isoDate, shortDate, fullDate, addDays, weekStart, sortValue, hasEnded, sortLists, exactFirst, streakFrom, weekHeatmap, durationText, recentMonths, mergeContinue, startWatching, runtimeText, statusTag, navFor, modeOf, FILTERS, decadeOptions, cleanFilters, filterQuery, filterCount, addQuery, fitsSimple, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, betterServer, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm } = require('../ui/lib.js');
 
 test('norm', () => {
   const ids = { trakt: 1, tmdb: 272 };
@@ -388,4 +388,57 @@ test('betterServer switches only to a taller video', () => {
   assert.equal(betterServer([0, 720, 720], 0), 1); // the current one never showed a video
   assert.equal(betterServer([0, 0, 0], 2), null);
   assert.equal(betterServer([1080, undefined], 0), null);
+});
+
+const dl = (over) => ({ id: 1, kind: 'movie', tmdb_id: 7, season: 0, episode: 0, title: 'M', status: 'done', done_bytes: 0, total_bytes: 0, ...over });
+
+test('pickCapture prefers a playlist and never a protected file', () => {
+  const master = { url: 'https://c.example/master.m3u8', kind: 'hls' };
+  const variant = { url: 'https://c.example/720.m3u8', kind: 'hls' };
+  const file = { url: 'https://c.example/film.mp4', kind: 'file' };
+  assert.deepEqual(pickCapture([file, master, variant]), master); // the first playlist seen, which is the master
+  assert.deepEqual(pickCapture([{ url: 'https://c.example/a.mpd', kind: 'dash' }, file]).kind, 'dash');
+  assert.deepEqual(pickCapture([file]), file);
+  assert.deepEqual(pickCapture([file, { drm: true }]), { protected: true });
+  assert.deepEqual(pickCapture([{ drm: true }]), { protected: true });
+  assert.deepEqual(pickCapture([master, { drm: true }]), master, 'Rust checks a playlist for encryption itself');
+  assert.equal(pickCapture([]), null);
+  assert.equal(pickCapture([{ url: 'blob:https://c.example/1', kind: 'file' }, { url: 'javascript:x', kind: 'hls' }, { url: 'https://c.example/x', kind: 'other' }]), null);
+});
+
+test('download state for cards, the rail and the Downloads page', () => {
+  const list = [
+    dl({ id: 1 }),
+    dl({ id: 2, kind: 'tv', tmdb_id: 9, title: 'S', season: 1, episode: 2 }),
+    dl({ id: 3, kind: 'tv', tmdb_id: 9, title: 'S', season: 1, episode: 1 }),
+    dl({ id: 4, kind: 'tv', tmdb_id: 9, title: 'S', season: 2, episode: 1, status: 'downloading', done_bytes: 25, total_bytes: 100 }),
+    dl({ id: 5, tmdb_id: 8, title: 'A', status: 'queued' }),
+    dl({ id: 6, tmdb_id: 6, title: 'P', status: 'protected', error: 'encrypted' }),
+  ];
+  assert.ok(isDownloaded(list, 'movie', 7));
+  assert.ok(isDownloaded(list, 'tv', 9), 'a show with any episode saved');
+  assert.ok(!isDownloaded(list, 'movie', 8), 'still queued');
+  assert.ok(!isDownloaded(list, 'tv', 7), 'a movie id is not a show id');
+  assert.ok(sameDownload(list[1], 'tv', 9, 1, 2) && !sameDownload(list[1], 'tv', 9, 1, 3));
+  assert.ok(isActiveDownload(list[3]) && isActiveDownload(list[4]) && !isActiveDownload(list[5]));
+  assert.deepEqual(downloadSummary(list), { count: 2, pct: 25 });
+  assert.deepEqual(downloadSummary([]), { count: 0, pct: 0 });
+  assert.equal(downloadPct(list[3]), 25);
+  assert.equal(downloadPct(list[4]), null, 'size not known yet');
+  assert.equal(downloadPct(list[0]), 100);
+  const g = groupDownloads(list);
+  assert.deepEqual(g.active.map(d => d.id), [4, 5]);
+  assert.deepEqual(g.movies.map(d => d.id), [1]);
+  assert.deepEqual(g.shows.map(s => [s.title, s.episodes.map(d => d.id)]), [['S', [3, 2]]], 'episodes in order');
+  assert.deepEqual(g.problems.map(d => d.id), [6]);
+  assert.equal(nextDownloaded(list, 9, 1, 1).id, 2);
+  assert.equal(nextDownloaded(list, 9, 1, 2), null, 'S2E1 is not finished');
+  assert.equal(bytesText(1.5e9), '1.5 GB');
+  assert.equal(bytesText(250e6), '250 MB');
+  assert.equal(bytesText(1), '1 MB');
+});
+
+test('Downloads has its rail item', () => {
+  assert.deepEqual(navFor('downloads'), ['downloads']);
+  assert.deepEqual(navFor('offline', '3'), []);
 });

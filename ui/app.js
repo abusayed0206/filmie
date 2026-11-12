@@ -16,7 +16,7 @@ Object.assign(pages, {
           <p>Filmie doesn't come with any video servers. Add one and it will play here, with your place in a show kept for you.</p>
           <ol><li>Open Settings, where the form is ready to fill in.</li><li>Enter the server's link and how its movie and TV addresses are built.</li><li>Press Back to return here and start watching.</li></ol>
           <div class="no-server-actions"><a class="btn primary" href="#/settings/servers">${icon('plus')}Add a server</a><a class="btn" href="#/title/${type === 'tv' ? 'tv' : 'movie'}/${id}">View details</a></div>
-          <p class="muted">Only add servers you have the right to use.</p></div></section></div>`;
+          </div></section></div>`;
       return;
     }
     const server = getServer(sources.length);
@@ -76,7 +76,7 @@ Object.assign(pages, {
         ${next ? `<a class="btn primary" href="#/play/tv/${id}/${next[0]}/${next[1]}" title="Next episode: S${next[0]} · E${next[1]}"><span class="label">Next</span>${icon('next')}</a>` : ''}
         ${fsButton}
       </div>
-      <iframe class="player" src="${esc(src)}" title="Video player" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="origin"></iframe></div>`;
+      <iframe class="player" src="${esc(src)}" title="Video player" allow="autoplay *; fullscreen *; encrypted-media *; picture-in-picture *" allowfullscreen referrerpolicy="origin"></iframe></div>`;
     nowPlaying = {
       entry: { kind: type, id, title: d.title ?? d.name, season: type === 'tv' ? s : null, episode: type === 'tv' ? e : null, position: 0, duration: 0 },
       runtime: type === 'movie' ? d.runtime : episode?.runtime,
@@ -114,6 +114,7 @@ Object.assign(pages, {
     const switchTo = i => {
       current = i;
       // replace() adds no history entry, where setting src would add one that Back then walks through.
+      // src keeps the first server, which is why the player's allow list uses * and not the default of src's origin.
       try { playerFrame.contentWindow.location.replace(srcFor(i)); } catch { playerFrame.src = srcFor(i); }
       syncQuality();
       serverBtn.querySelector('.server-btn-name').textContent = sources[i].name;
@@ -256,7 +257,7 @@ Object.assign(pages, {
 });
 
 // With no server to play, this is an ordinary page and keeps the rail and top bar.
-const showsPlayer = page => page === 'play' && getSources().length > 0;
+const showsPlayer = page => (page === 'play' && getSources().length > 0) || page === 'offline';
 pages.play.bar = () => showsPlayer('play') ? {} : { title: 'Play', back: true };
 
 // ---------- router
@@ -353,6 +354,7 @@ async function route({ soft = false } = {}) {
   catch (e) { if (token === routeToken) app.innerHTML = `<div class="page"><p class="error">${esc(e)}</p></div>`; }
   if (token !== routeToken) return;
   main.removeAttribute('aria-busy'); // a soft refresh can overtake a page that was still loading
+  paintDownloads();
   if (soft) {
     // The swap replaces whatever had keyboard focus, so it moves to the same control in the new copy.
     const focused = main.contains(document.activeElement) ? document.activeElement : null;
@@ -449,4 +451,5 @@ window.addEventListener('hashchange', () => {
 // Only text fields and selected text get a menu; the rest of the app shouldn't offer "Reload" or "Save as".
 document.addEventListener('contextmenu', ev => { if (!ev.target.closest('input, textarea') && !String(getSelection())) ev.preventDefault(); });
 setInterval(() => syncInBackground().catch(console.warn), 15 * 60e3);
-refreshUser().catch(toast).finally(() => { route(); syncInBackground().catch(console.warn); });
+// Downloads come first so cards show their badges; the queue then carries on from where the app last closed.
+Promise.all([refreshUser().catch(toast), refreshDownloads().catch(console.warn)]).finally(() => { route(); syncInBackground().catch(console.warn); pumpDownloads(); });

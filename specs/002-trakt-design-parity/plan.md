@@ -129,7 +129,7 @@ Each step leaves a working app and ends with a review, as feature 001 did:
 | An endpoint fails with a free account despite no tag | Probe first, and each contract row has a fallback or can be left out |
 | The classifier mislabelled a nested route | Probe covers the flagged rows |
 | A closer look-alike is mistaken for official, and Trakt can revoke the client ID | Red accent, Filmie's name, no logo, Settings sentence kept |
-| Trakt's policy forbids its data in apps that promote piracy, and Filmie plays video | Existing project risk, recorded in `docs/PLAN.md`. The bundled servers are removed on this branch, though not yet merged or released |
+| Trakt's terms limit how its data may be used, and Filmie plays video | Existing project risk, recorded in `docs/PLAN.md`. The bundled servers are removed on this branch, though not yet merged or released |
 | Rate limit during a long history backfill | One page per second at most, row loading is lazy, 429 retry stays |
 | `appearance: base-select` misbehaves in WebView2 | Test early in step 1; the current styled native select is the fallback |
 | Rewriting most of `ui/` regresses player or sign-in | Player markup stays, and each step re-runs the affected checks. `lib.js` tests stay |

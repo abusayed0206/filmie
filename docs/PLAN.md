@@ -68,7 +68,7 @@ The Trakt client ID is public by design (it appears in every sign-in URL), so em
 - **Images:** hotlinking Trakt images is blocked and they must be cached. We use TMDB images instead.
 - **Up Next** has limited access for Standard apps, so next-episode logic is computed locally.
 - **App terms:**
-  - Trakt data can't be used in apps that promote piracy.
+  - Trakt's terms limit how its data may be used.
   - Watch the `trakt/trakt-api` GitHub discussions.
   - Add "Filmie uses Trakt but is not endorsed or certified by Trakt" to the About page.
   - Write a privacy note.
@@ -170,6 +170,19 @@ Trakt's policy allows combining scores only if the app labels the result as its 
   - `on_navigation` keeps the main window on app pages.
   - Remote content never gets IPC capabilities.
 
+### Offline downloads (checked 2026-11-11)
+- **Where the video's address comes from:** the server page is cross-origin, so the app can't read it. Two sources, both tried in a hidden, muted frame like the Auto race's probes:
+  - `INJECT_PLAYER` runs in every frame. Once told `{ __filmieCapture }`, it reports `.m3u8`/`.mpd` addresses from a `PerformanceObserver` on resource timing (no fetch or XHR patching), a `<video>`'s non-`blob:` `currentSrc`, and any `navigator.requestMediaKeySystemAccess` call (EME). Addresses seen before the message are kept and sent with it.
+  - WebView2's `WebResourceResponseReceived` is raised for every response the WebView receives, including fetches: https://learn.microsoft.com/dotnet/api/microsoft.web.webview2.core.corewebview2.webresourceresponsereceived. Frame-level request interception needs `AddWebResourceRequestedFilterWithRequestSourceKinds` (1.0.2365.46+): https://learn.microsoft.com/microsoft-edge/webview2/concepts/frames. Filmie only reads responses, through `webview2-com` 0.39 (the version wry 0.57 uses). Playlists by type or extension, and video files of 50 MB or more, become a `media-seen` event. It can't tell which frame asked, so it only counts while no other player is open.
+  - A `blob:` `currentSrc` is Media Source Extensions fed by a player like hls.js, so the playlist is the downloadable thing, not the video element.
+- **Plain streams only:** an EME request with no playlist, `SAMPLE-AES`/`SAMPLE-AES-CTR`, a missing `METHOD`, a non-identity `KEYFORMAT`, and any DASH `ContentProtection` mark the item `protected`, and nothing of it is kept. AES-128 with an identity key is clear-key HLS and is saved with its key. HLS spec: https://datatracker.ietf.org/doc/html/rfc8216
+- **Choosing a server:** `download_probe` fetches each captured HLS master with the player headers and returns its tallest `RESOLUTION`. `captureMedia` checks the selected server first, then every other server, stops at the first at or above the download quality, and otherwise keeps the best height seen. `auto` examines all servers and keeps the tallest. This was added so a 720p server doesn't hide a later 1080p one; verified with Rakan (720p), Xayah (800p) and Ekko (1080p).
+- **Formats:** a direct file is streamed to disk through a `.part` file, resumed with a Range request. HLS saves the variant at or below the download quality, its separate audio rendition, init segment and segments (4 at a time, 3 retries, renamed to a real extension because some servers disguise segments as images), and writes local playlists. Byte-range playlists keep working since every distinct remote file is saved once. Live playlists (no `#EXT-X-ENDLIST`) are refused. If `ffmpeg` is on PATH, HLS is remuxed into one `video.mp4` (`-c copy`, `-allowed_extensions ALL`); a complete AES-128 episode was verified this way. DASH is handed to ffmpeg but the tested DASH servers (Bard, Ryze) still fail to open their manifests, so DASH downloads are not usable.
+- **Headers:** Rust sends the player page as `Referer` and `Origin` and the webview's user agent. Cookies aren't copied, so a server that needs its cookies for the video can't be downloaded yet. Copying them through `ICoreWebView2CookieManager` would fix that.
+- **Folder:** picked with `tauri-plugin-dialog`'s Rust API `blocking_pick_folder()` from an async command (blocking on the main thread would hang): https://v2.tauri.app/plugin/dialog/. No `dialog:*` JS permission is granted. `std::fs::canonicalize` resolves junctions and symlinks before the `%SystemDrive%` check. The folder lives in the `settings` table, which signing out leaves alone.
+- **Playback:** the `protocol-asset` feature plus `app.security.assetProtocol.enable`, with an empty scope; each finished download's folder is allowed at runtime through `asset_protocol_scope().allow_directory`, again at start-up: https://v2.tauri.app/security/asset-protocol/. Tauri 2.12's asset handler answers Range requests (206), so seeking works. CSP adds `media-src 'self' http://asset.localhost blob:` and `http://asset.localhost` to `connect-src`: https://v2.tauri.app/security/csp/. Saved HLS plays through hls.js 1.7.3 (Apache-2.0, `ui/vendor/`) with `enableWorker: false`, so no `worker-src`. `convertFileSrc` puts the whole path in one URL segment, so relative playlist names are mapped back to the folder in `xhrSetup`.
+- **Measured (2026-11-11, debug build):** Big Buck Bunny's public HLS test stream through the hls.js demo page as a "server": found in about 3 s, 480p saved in about 25 s (67 MB), remuxed by ffmpeg 9.0.2; resumed after the app was killed; the saved HLS copy plays and seeks with ffmpeg hidden from PATH.
+
 ### Distribution (checked 2026-11-02)
 - **Servers:** release builds include no video servers (`DEFAULT_SOURCES` is empty), which keeps §8's "nothing bundled" decision. Users add their own in Settings.
 - **Installer:** `cargo tauri build --bundles nsis` with the default WebView2 `downloadBootstrapper` mode, which adds about 0 MB but needs internet: https://tauri.app/distribute/windows-installer/. Crates.io's newest `tauri-cli` is a 3.x alpha, so the workflow pins `^2`.
@@ -179,7 +192,7 @@ Trakt's policy allows combining scores only if the app labels the result as its 
 ### Local database and performance (checked 2026-11-02)
 - **SQLite:** `filmie.sqlite3` caches TMDB and Trakt GET responses and holds Recently played. Lifetimes are in `cache_policy` (`trakt.rs`) and the `tmdb` command (`main.rs`): movies 7 days, TV 1 day, public Trakt lists 1 hour, search and related 1 day, user data 1 day but cleared by any write or activity change.
 - **Trakt sync:** `/sync/last_activities` has a timestamp per area (`movies.watched_at`, `movies.rated_at`, `movies.watchlisted_at`, `movies.paused_at`, `episodes.watched_at`, `episodes.paused_at`, `shows.rated_at`, `shows.watchlisted_at`), so only changed sections refetch: https://github.com/trakt/trakt-api/blob/main/projects/api/src/contracts/sync/schema/response/lastActivitiesResponseSchema.ts
-- **Local progress:** the player is cross-origin, so `app.js` can't read it. WebView2 runs `INJECT_PLAYER` in every frame, and that script reports the longest `<video>` over 60 seconds. Nothing is reported for players that hide their video, such as those using closed shadow DOM or DRM-only pages.
+- **Local progress:** the player is cross-origin, so `app.js` can't read it. WebView2 runs `INJECT_PLAYER` in every frame, and that script reports the longest `<video>` over 60 seconds. Nothing is reported for players that hide their video, such as those using closed shadow DOM or EME-only pages.
 - **Measured:** 1,000 cache lookups of 20 KB took about 10 ms in a release test. Time to first page in a browser test with 300 ms of simulated network delay fell from about 1,350 ms to about 290 ms, with no network call blocking the first page once the cache is warm. Lighthouse on the website scored 100 in all four categories on mobile and desktop (7 KB total, LCP 1.0 s on mobile).
 - **CI:** compiling the Tauri CLI took 20 of the first release run's 31 minutes, so the workflow now installs Tauri's prebuilt binary.
 
@@ -249,7 +262,7 @@ Run tests with `cargo test` (in `src-tauri/`) and `node --test tests/ui.test.js`
 - Full table in `specs/002-trakt-design-parity/contracts/api-usage.md`.
 
 **Original options:**
-1. **Video sources:** user-configured templates, nothing bundled. TMDB and Trakt terms both forbid use in apps that promote piracy, and Trakt can revoke the client ID.
+1. **Video sources:** user-configured templates, nothing bundled. TMDB and Trakt terms both limit how their data may be used, and Trakt can revoke the client ID.
 2. **Frontend:** Svelte + TypeScript (recommended) or Leptos (all Rust).
 3. **Watch tracking:** manual "Mark watched" (chosen), estimated scrobble B, or real scrobble C later.
 4. **Adblock:** A, falling back to B if the test fails.
@@ -261,3 +274,6 @@ Run tests with `cargo test` (in `src-tauri/`) and `node --test tests/ui.test.js`
 - Trakt API use policy: guide `api-use-policy.md` (updated 2026-10-20)
 - Tauri 2 `WebviewWindowBuilder`: https://docs.rs/tauri/latest/tauri/webview/struct.WebviewWindowBuilder.html
 - TMDB API terms: https://www.themoviedb.org/api-terms-of-use
+- Tauri 2 asset protocol and CSP: https://v2.tauri.app/security/asset-protocol/, https://v2.tauri.app/security/csp/; dialog plugin: https://v2.tauri.app/plugin/dialog/
+- WebView2 frames and network events: https://learn.microsoft.com/microsoft-edge/webview2/concepts/frames, https://learn.microsoft.com/dotnet/api/microsoft.web.webview2.core.corewebview2.webresourceresponsereceived
+- hls.js: https://github.com/video-dev/hls.js (1.7.3, Apache-2.0)

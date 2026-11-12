@@ -40,6 +40,7 @@ The player shows a trailer because Filmie ships with no video servers.
 - **Fast and offline-friendly:** TMDB and Trakt responses are cached in a local SQLite database.
 - **Move around a show:** switch seasons and jump straight to any episode from the player.
 - **Use your own servers:** add as many as you like and switch between them while watching.
+- **Download for offline viewing:** save a movie, an episode or a whole season from your servers to a folder you choose, and watch it in the app without a connection. Some videos can't be saved for offline use. Installing [ffmpeg](https://ffmpeg.org) saves streams as single MP4 files.
 - **Find more info:** links to IMDb, Letterboxd, TMDB, Rotten Tomatoes, Metacritic and Trakt.
 - **Watch distraction-free:** fullscreen mode, and pop-ups from embedded pages are blocked.
 
@@ -63,7 +64,7 @@ You can browse without an account. Signing in adds your library, recommendations
 
 ### Add a video server
 
-Open **Settings**, go to **Video servers**, and fill in the form. Only add servers you have the right to use.
+Open **Settings**, go to **Video servers**, and fill in the form.
 
 You need three things:
 

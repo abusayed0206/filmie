@@ -10,7 +10,8 @@
     "withGlobalTauri": true,
     "windows": [],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' https://image.tmdb.org data: blob:; frame-src https:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src ipc: http://ipc.localhost"
+      "csp": "default-src 'self'; img-src 'self' https://image.tmdb.org data: blob:; media-src 'self' http://asset.localhost blob:; frame-src https:; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src ipc: http://ipc.localhost http://asset.localhost",
+      "assetProtocol": { "enable": true, "scope": [] }
     }
   },
   "bundle": {

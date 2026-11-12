@@ -76,7 +76,7 @@ Object.assign(pages, {
         ${next ? `<a class="btn primary" href="#/play/tv/${id}/${next[0]}/${next[1]}" title="Next episode: S${next[0]} · E${next[1]}"><span class="label">Next</span>${icon('next')}</a>` : ''}
         ${fsButton}
       </div>
-      <iframe class="player" src="${esc(src)}" title="Video player" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" allowfullscreen referrerpolicy="origin"></iframe></div>`;
+      <iframe class="player" src="${esc(src)}" title="Video player" allow="autoplay *; fullscreen *; encrypted-media *; picture-in-picture *" allowfullscreen referrerpolicy="origin"></iframe></div>`;
     nowPlaying = {
       entry: { kind: type, id, title: d.title ?? d.name, season: type === 'tv' ? s : null, episode: type === 'tv' ? e : null, position: 0, duration: 0 },
       runtime: type === 'movie' ? d.runtime : episode?.runtime,
@@ -114,6 +114,7 @@ Object.assign(pages, {
     const switchTo = i => {
       current = i;
       // replace() adds no history entry, where setting src would add one that Back then walks through.
+      // src keeps the first server, which is why the player's allow list uses * and not the default of src's origin.
       try { playerFrame.contentWindow.location.replace(srcFor(i)); } catch { playerFrame.src = srcFor(i); }
       syncQuality();
       serverBtn.querySelector('.server-btn-name').textContent = sources[i].name;

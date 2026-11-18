@@ -10,7 +10,6 @@
   <meta name="theme-color" content="#16141a">
   <meta name="color-scheme" content="dark">
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="preload" href="/fonts/bebas-neue-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/fonts/roboto-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="preload" href="/shots/home-1440.webp" as="image" imagesrcset="/shots/home-960.webp 960w, /shots/home-1440.webp 1440w" imagesizes="(max-width: 1180px) 100vw, 1120px">
   <link rel="stylesheet" href="/styles.css">
@@ -36,6 +35,7 @@
     "applicationCategory": "MultimediaApplication",
     "operatingSystem": "Windows 10, Windows 11",
     "processorRequirements": "x64",
+    "softwareVersion": "0.4.0",
     "downloadUrl": "https://github.com/abusayed0206/filmie/releases/latest/download/Filmie-Setup-x64.exe",
     "screenshot": "https://filmie.sayed.app/shots/home-1440.webp",
     "license": "https://github.com/abusayed0206/filmie/blob/main/LICENSE",
@@ -53,40 +53,36 @@
     <symbol id="i-compass" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M15.500 8.500l-2 5-5 2 2-5z"/></symbol>
     <symbol id="i-sync" viewBox="0 0 24 24"><path d="M21 12a9 9 0 0 1-15.500 6.200M3 12a9 9 0 0 1 15.500-6.200M21 4v5h-5M3 20v-5h5"/></symbol>
     <symbol id="i-check" viewBox="0 0 24 24"><path d="M5 12.500l4.500 4.500L19 7.500"/></symbol>
-    <symbol id="i-list" viewBox="0 0 24 24"><path d="M8 6h13M8 12h13M8 18h13M3.500 6h.010M3.500 12h.010M3.500 18h.010"/></symbol>
-    <symbol id="i-chart" viewBox="0 0 24 24"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></symbol>
     <symbol id="i-server" viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="7" rx="2"/><rect x="3" y="13" width="18" height="7" rx="2"/><path d="M7 7.500h.010M7 16.500h.010"/></symbol>
     <symbol id="i-shield" viewBox="0 0 24 24"><path d="M12 3l8 3v6c0 4.500-3.400 8.200-8 9-4.600-.800-8-4.500-8-9V6z"/><path d="M9 12l2 2 4-4"/></symbol>
     <symbol id="i-keyboard" viewBox="0 0 24 24"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M6 10h.010M10 10h.010M14 10h.010M18 10h.010M7 14h10"/></symbol>
     <symbol id="i-filter" viewBox="0 0 24 24"><path d="M3 5h18l-7 8.500V20l-4-2v-4.500z"/></symbol>
     <symbol id="i-offline" viewBox="0 0 24 24"><ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v6c0 1.700 3.600 3 8 3s8-1.300 8-3V6M4 12v6c0 1.700 3.600 3 8 3s8-1.300 8-3v-6"/></symbol>
-    <symbol id="i-play" viewBox="0 0 24 24"><path d="M7 4.500v15l12-7.500z"/></symbol>
   </svg>
 
   <header class="top">
     <div class="wrap top-inner">
-      <a class="logo" href="/" aria-label="Filmie home"><img src="/favicon.svg" width="28" height="28" alt="">Filmie</a>
+      <a class="logo" href="/" aria-label="Filmie home"><img src="/favicon.svg" width="24" height="24" alt="">Filmie</a>
       <nav aria-label="Main">
         <a href="#tour">Tour</a>
         <a href="#features">Features</a>
         <a href="#faq">FAQ</a>
         <a href="https://github.com/abusayed0206/filmie" aria-label="Filmie on GitHub"><svg class="i" aria-hidden="true"><use href="#i-github"/></svg><span class="nav-text">GitHub</span></a>
       </nav>
-      <a class="btn primary small top-cta" href="https://github.com/abusayed0206/filmie/releases/latest/download/Filmie-Setup-x64.exe">Download</a>
+      <a class="btn primary small" href="https://github.com/abusayed0206/filmie/releases/latest/download/Filmie-Setup-x64.exe">Download</a>
     </div>
   </header>
 
   <main id="main">
     <section class="hero">
       <div class="wrap hero-copy">
-        <p class="eyebrow"><span class="pill">Now showing</span> Version 0.2 · offline stats and Ctrl+K search</p>
-        <h1>Every movie and show you love. <span class="hl">Tracked on your terms.</span></h1>
-        <p class="lede">Filmie is a small Windows app for browsing what's on, keeping your Trakt history in step and playing from servers you add yourself. Nothing is marked as watched until you say so.</p>
+        <h1>A movie and TV tracker for Windows, with Trakt sync</h1>
+        <p class="lede">Browse what's on, keep your Trakt history in step and play from servers you add yourself. Nothing is marked as watched until you say so.</p>
         <div class="cta">
           <a class="btn primary" href="https://github.com/abusayed0206/filmie/releases/latest/download/Filmie-Setup-x64.exe"><svg class="i" aria-hidden="true"><use href="#i-download"/></svg>Download for Windows</a>
-          <a class="btn" href="#tour"><svg class="i" aria-hidden="true"><use href="#i-play"/></svg>Take the tour</a>
+          <a class="btn" href="#tour">See the tour</a>
         </div>
-        <p class="fine">Free and open source · Windows 10 or 11, 64-bit · <a href="https://github.com/abusayed0206/filmie/releases">All releases</a></p>
+        <p class="fine">Version 0.4 · Free and open source · Windows 10 or 11, 64-bit · <a href="https://github.com/abusayed0206/filmie/releases">All releases</a></p>
       </div>
       <div class="wrap">
         <figure class="screen">
@@ -94,35 +90,23 @@
               width="1440" height="900" fetchpriority="high" alt="Filmie's Home page: the side rail, a Media, Shows and Movies switch, Continue Watching with The Terminal List, Elementary and Fargo, and a row of Start Watching posters.">
         </figure>
       </div>
-      <ul class="wrap facts" aria-label="At a glance">
-        <li><b>Free</b><span>MIT licensed</span></li>
-        <li><b>Trakt</b><span>sync built in</span></li>
-        <li><b>Zero</b><span>telemetry or ads</span></li>
-        <li><b>Offline</b><span>stats and cache</span></li>
-      </ul>
     </section>
 
-    <div class="reel" aria-hidden="true">
-      <ul class="strip"><li><img src="/shots/discover-960.webp" width="960" height="600" loading="lazy" decoding="async" alt=""></li><li><img src="/shots/title-960.webp" width="960" height="600" loading="lazy" decoding="async" alt=""></li><li><img src="/shots/player-960.webp" width="960" height="600" loading="lazy" decoding="async" alt=""></li><li><img src="/shots/profile-960.webp" width="960" height="600" loading="lazy" decoding="async" alt=""></li><li><img src="/shots/palette-960.webp" width="960" height="600" loading="lazy" decoding="async" alt=""></li><li><img src="/shots/filters-960.webp" width="960" height="600" loading="lazy" decoding="async" alt=""></li><li><img src="/shots/home-960.webp" width="960" height="600" loading="lazy" decoding="async" alt=""></li><li><img src="/shots/discover-960.webp" width="960" height="600" loading="lazy" decoding="async" alt=""></li><li><img src="/shots/title-960.webp" width="960" height="600" loading="lazy" decoding="async" alt=""></li><li><img src="/shots/player-960.webp" width="960" height="600" loading="lazy" decoding="async" alt=""></li><li><img src="/shots/profile-960.webp" width="960" height="600" loading="lazy" decoding="async" alt=""></li><li><img src="/shots/palette-960.webp" width="960" height="600" loading="lazy" decoding="async" alt=""></li><li><img src="/shots/filters-960.webp" width="960" height="600" loading="lazy" decoding="async" alt=""></li><li><img src="/shots/home-960.webp" width="960" height="600" loading="lazy" decoding="async" alt=""></li></ul>
-    </div>
-
-    <section id="tour" class="section tour" aria-labelledby="tour-title">
+    <section id="tour" class="section" aria-labelledby="tour-title">
       <div class="wrap">
         <header class="section-head">
-          <p class="kicker">Take the tour</p>
-          <h2 id="tour-title">Built for the way you watch</h2>
-          <p class="sub">A side rail, rows you can collapse, and a switch for movies, shows or both on every list. Every screenshot here is the real app on a real Trakt account.</p>
+          <h2 id="tour-title">Tour</h2>
+          <p class="sub">A side rail, rows you can collapse, and a switch for movies, shows or both on every list. Every screenshot is the real app on a real Trakt account.</p>
         </header>
 
         <article class="feature">
           <div class="feature-text">
-            <span class="scene">Scene 01 · Title pages</span>
-            <h3>Everything about a title, then straight to the next episode</h3>
-            <p>Seasons and episodes, cast, comments, videos and related titles in one place. The play button already knows where you are, so the next episode is one click away.</p>
+            <h3>Title pages</h3>
+            <p>Seasons and episodes, cast, comments, videos and related titles in one place. The play button knows where you are, so the next episode is one click away.</p>
             <ul class="ticks">
-              <li>Mark watched now, on release day or on any date</li>
-              <li>Watchlist, favourites and your own Trakt lists</li>
-              <li>Trailers play inside the app</li>
+              <li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Mark watched now, on release day or on any date</li>
+              <li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Watchlist, favourites and your own Trakt lists</li>
+              <li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Trailers play inside the app</li>
             </ul>
           </div>
           <figure class="window">
@@ -133,13 +117,12 @@
 
         <article class="feature flip">
           <div class="feature-text">
-            <span class="scene">Scene 02 · Player</span>
-            <h3>Jump to any episode without leaving the video</h3>
+            <h3>Player</h3>
             <p>The player bar sits above the video, never over it. Pick a season, skip to an episode, switch servers or press Next. Pop-ups and in-player ads are blocked.</p>
             <ul class="ticks">
-              <li>Opening a video sends nothing to Trakt</li>
-              <li>Preferred quality applied when the server allows</li>
-              <li>Recently played keeps your place on this PC</li>
+              <li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Auto picks the server with the sharpest video</li>
+              <li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Loads up to 3 minutes ahead on servers that allow it, so seeking doesn't wait</li>
+              <li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Opening a video sends nothing to Trakt</li>
             </ul>
           </div>
           <figure class="window">
@@ -150,13 +133,12 @@
 
         <article class="feature">
           <div class="feature-text">
-            <span class="scene">Scene 03 · Stats</span>
-            <h3>Your stats and streak, no VIP needed</h3>
-            <p>Filmie keeps a copy of your Trakt history on your PC and works out your totals, top genres, ratings and monthly activity from it. It's instant, and it works offline.</p>
+            <h3>Stats</h3>
+            <p>Filmie keeps a copy of your Trakt history on your PC and works out your totals, top genres, ratings and monthly activity from it. No VIP needed, and it works offline.</p>
             <ul class="ticks">
-              <li>Movies, shows, episodes and time watched</li>
-              <li>A daily streak on Home</li>
-              <li>Deleted when you sign out</li>
+              <li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Movies, shows, episodes and time watched</li>
+              <li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>A daily streak on Home</li>
+              <li><svg class="i" aria-hidden="true"><use href="#i-check"/></svg>Deleted when you sign out</li>
             </ul>
           </div>
           <figure class="window">
@@ -171,14 +153,14 @@
               <img src="/shots/palette-1440.webp" srcset="/shots/palette-960.webp 960w, /shots/palette-1440.webp 1440w" sizes="(max-width: 900px) 100vw, 548px"
               width="1440" height="900" loading="lazy" decoding="async" alt="The Ctrl+K palette over Home, listing movies and shows that match the word 'breaking'.">
             </div>
-            <figcaption><svg class="i" aria-hidden="true"><use href="#i-keyboard"/></svg><span><b>Go anywhere with Ctrl+K.</b> Search titles and pages from the keyboard.</span></figcaption>
+            <figcaption><svg class="i" aria-hidden="true"><use href="#i-keyboard"/></svg><span><b>Ctrl+K.</b> Search titles and pages from the keyboard.</span></figcaption>
           </figure>
           <figure class="duo-item">
             <div class="window">
               <img src="/shots/filters-1440.webp" srcset="/shots/filters-960.webp 960w, /shots/filters-1440.webp 1440w" sizes="(max-width: 900px) 100vw, 548px"
               width="1440" height="900" loading="lazy" decoding="async" alt="The filter drawer with genre, availability, decade, runtime, Trakt rating, certification, region and status filters.">
             </div>
-            <figcaption><svg class="i" aria-hidden="true"><use href="#i-filter"/></svg><span><b>Filter every chart.</b> Genre, decade, runtime, rating and more, saved as your default.</span></figcaption>
+            <figcaption><svg class="i" aria-hidden="true"><use href="#i-filter"/></svg><span><b>Filters.</b> Genre, decade, runtime, rating and more on every chart, saved as your default.</span></figcaption>
           </figure>
         </div>
       </div>
@@ -187,16 +169,15 @@
     <section id="features" class="section alt" aria-labelledby="features-title">
       <div class="wrap">
         <header class="section-head">
-          <p class="kicker">Features</p>
-          <h2 id="features-title">Everything in one small app</h2>
+          <h2 id="features-title">Features</h2>
         </header>
         <div class="grid">
-          <article><svg class="i big" aria-hidden="true"><use href="#i-compass"/></svg><h3>Browse what's on</h3><p>Trending, popular, anticipated, box office and the weekly charts, plus a calendar of what's coming out.</p></article>
-          <article><svg class="i big" aria-hidden="true"><use href="#i-sync"/></svg><h3>Sync with Trakt</h3><p>Up next, continue watching, watchlist, lists, history and recommendations, kept in step in the background.</p></article>
-          <article><svg class="i big" aria-hidden="true"><use href="#i-check"/></svg><h3>Marked only when you say</h3><p>No check-ins and no scrobbling. Your history changes only when you press Mark watched.</p></article>
-          <article><svg class="i big" aria-hidden="true"><use href="#i-server"/></svg><h3>Bring your own servers</h3><p>Filmie ships with none. Add the servers you have the right to use, then switch between them while you watch.</p></article>
-          <article><svg class="i big" aria-hidden="true"><use href="#i-offline"/></svg><h3>Fast and offline-ready</h3><p>Pages come from a local cache first, so they open instantly and still work when the network doesn't.</p></article>
-          <article><svg class="i big" aria-hidden="true"><use href="#i-shield"/></svg><h3>Private by default</h3><p>No accounts, analytics or telemetry of its own. Your data stays on your PC and with services you choose.</p></article>
+          <article><svg class="i" aria-hidden="true"><use href="#i-compass"/></svg><h3>Browse what's on</h3><p>Trending, popular, anticipated, box office and the weekly charts, plus a calendar of what's coming out.</p></article>
+          <article><svg class="i" aria-hidden="true"><use href="#i-sync"/></svg><h3>Sync with Trakt</h3><p>Up next, continue watching, watchlist, lists, history and recommendations, kept in step in the background.</p></article>
+          <article><svg class="i" aria-hidden="true"><use href="#i-check"/></svg><h3>Marked only when you say</h3><p>No check-ins and no scrobbling. Your history changes only when you press Mark watched.</p></article>
+          <article><svg class="i" aria-hidden="true"><use href="#i-server"/></svg><h3>Bring your own servers</h3><p>Filmie ships with none. Add the servers you have the right to use, then switch between them while you watch.</p></article>
+          <article><svg class="i" aria-hidden="true"><use href="#i-offline"/></svg><h3>Fast and offline-ready</h3><p>Pages come from a local cache first, so they open instantly and still work when the network doesn't.</p></article>
+          <article><svg class="i" aria-hidden="true"><use href="#i-shield"/></svg><h3>Private by default</h3><p>No accounts, analytics or telemetry of its own. Your data stays on your PC and with services you choose.</p></article>
         </div>
       </div>
     </section>
@@ -204,8 +185,7 @@
     <section id="how" class="section" aria-labelledby="how-title">
       <div class="wrap">
         <header class="section-head">
-          <p class="kicker">Get started</p>
-          <h2 id="how-title">Up and running in minutes</h2>
+          <h2 id="how-title">Get started</h2>
         </header>
         <ol class="steps">
           <li><h3>Install</h3><p>Download the installer and run it. It adds Microsoft's WebView2 runtime if your PC needs it.</p></li>
@@ -218,8 +198,7 @@
     <section id="faq" class="section alt" aria-labelledby="faq-title">
       <div class="wrap narrow">
         <header class="section-head">
-          <p class="kicker">FAQ</p>
-          <h2 id="faq-title">Questions</h2>
+          <h2 id="faq-title">FAQ</h2>
         </header>
         <details><summary>Does Filmie include movies or TV shows?</summary><p>No. Filmie doesn't host or supply video and includes no video servers. It shows information from TMDB and Trakt and can open servers you add yourself. You're responsible for making sure you have the right to use them.</p></details>
         <details><summary>Is it free?</summary><p>Yes. Filmie is free and open source under the MIT License.</p></details>
@@ -231,10 +210,11 @@
     </section>
 
     <section class="section closing">
-      <div class="wrap closing-card">
-        <p class="kicker">Roll credits</p>
-        <h2>Try Filmie on your PC</h2>
-        <p>Free, open source and about a minute to install.</p>
+      <div class="wrap closing-inner">
+        <div>
+          <h2>Download Filmie</h2>
+          <p>Version 0.4 for Windows 10 and 11. Free, open source, about a minute to install.</p>
+        </div>
         <a class="btn primary" href="https://github.com/abusayed0206/filmie/releases/latest/download/Filmie-Setup-x64.exe"><svg class="i" aria-hidden="true"><use href="#i-download"/></svg>Download for Windows</a>
       </div>
     </section>

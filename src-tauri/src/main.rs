@@ -49,6 +49,30 @@ const INJECT_PLAYER: &str = r##"
 
   let quality = '1080p';
   let probe = false; // a hidden frame in the app's server race: kept muted, and only reports its video height
+  // Buffers 3 minutes ahead in players built on a global hls.js, so seeking within that needs no network.
+  // shortcut: players that bundle hls.js privately (or play DASH) keep their own buffer; reach them only if one exposes a config.
+  const AHEAD = 180;
+  const tuneConfig = c => {
+    if (!c || typeof c !== 'object') return c;
+    const out = { ...c };
+    if (!(out.maxBufferLength >= AHEAD)) out.maxBufferLength = AHEAD;
+    if (!(out.maxMaxBufferLength >= AHEAD * 2)) out.maxMaxBufferLength = AHEAD * 2;
+    if (!(out.maxBufferSize >= 300e6)) out.maxBufferSize = 300e6;
+    // Played-out video counts against the same memory, so keep only a minute behind.
+    if (!(out.backBufferLength <= 60)) out.backBufferLength = 60;
+    return out;
+  };
+  const tuneHls = H => {
+    if (typeof H !== 'function' || H.__filmie || typeof H.isSupported !== 'function') return H;
+    // Wraps the constructor rather than DefaultConfig, since a page's own `new Hls(config)` overrides the defaults.
+    const T = class extends H { constructor(c, ...r) { super(tuneConfig(c || {}), ...r); } };
+    try { Object.defineProperty(T, '__filmie', { value: true }); } catch {}
+    return T;
+  };
+  try {
+    let hls = tuneHls(window.Hls);
+    Object.defineProperty(window, 'Hls', { configurable: true, enumerable: true, get: () => hls, set: v => { hls = tuneHls(v); } });
+  } catch {}
   let applied = null;
   let timer = null;
   let tickN = 0;

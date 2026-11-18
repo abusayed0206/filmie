@@ -83,7 +83,7 @@ How pages work:
 
 **Player**
 - The iframe is cross-origin, so `app.js` can't read or change it. The toolbar sits above the iframe, and menus overlay it only while open.
-- `INJECT_PLAYER` in `main.rs` runs in every frame through `initialization_script_for_all_frames` and does nothing in the top frame or on YouTube. It removes ad nodes, retries autoplay and applies the preferred quality.
+- `INJECT_PLAYER` in `main.rs` runs in every frame through `initialization_script_for_all_frames` and does nothing in the top frame or on YouTube. It removes ad nodes, retries autoplay and applies the preferred quality. It also wraps a global `window.Hls` so hls.js buffers 3 minutes ahead; players that bundle hls.js privately keep their own buffer.
 - Trailers and videos play in `playVideo` in `controls.js`, an embedded YouTube player in a dialog. YouTube's terms require the `Referer` it gets from `strict-origin-when-cross-origin`, and forbid covering or changing the player.
 - `app.js` sends the quality as a `{ __filmieQuality }` `postMessage`, which the script relays to nested frames.
 - Auto server (`server-auto` in `localStorage`, on until a server is picked by hand) loads every other server in hidden `.player-probe` frames. They get `{ __filmieProbe }`, which keeps them muted and silent about progress, and every frame posts `{ __filmieVideo: { h } }` with its tallest video. After 8 seconds `betterServer` in `lib.js` decides whether to switch.

@@ -392,6 +392,8 @@ dialog[open]::backdrop { opacity: 1; }
 .list-meta { margin: 8px 0 0; text-align: center; }
 .row-tools { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px; margin-left: auto; }
 .row-tools .btn { height: 38px; }
+.check { display: inline-flex; align-items: center; gap: 8px; min-height: 38px; font-size: 14px; cursor: pointer; user-select: none; }
+.check input { width: 16px; height: 16px; margin: 0; accent-color: var(--accent); cursor: pointer; }
 .note-grid { grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: var(--gap); }
 .note-card { display: flex; flex-direction: column; gap: 4px; padding: 14px; background: var(--surface); border-radius: var(--radius); }
 .note-card a { text-decoration: none; font-weight: 600; }

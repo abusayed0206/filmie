@@ -200,26 +200,29 @@ async function vibesPage(into, term) {
   const genre = VIBES_GENRES.includes(term) ? term : VIBES_GENRES[0]; // the bare page opens on the first genre
   into.innerHTML = `<div class="vibes-hero"><p class="muted">Films grouped by what viewers say about them, from Nanocrowd.</p>
     <div class="vibes-pills">${VIBES_GENRES.map(g => `<a class="vibe-pill${g === genre ? ' on' : ''}" href="#/discover/vibes/${g}">${esc(g)}</a>`).join('')}</div></div>`;
-  // Every list page has the switch, but Nanocrowd only knows movies.
-  if (getMode() === 'show') { into.insertAdjacentHTML('beforeend', '<div class="row-empty"><p class="muted">Vibes covers movies only. Switch to Movies or Media to see them.</p></div>'); return; }
   const token = routeToken;
   const tier = await invoke('nanocrowd_tier', { genre }).catch(e => { console.warn(e); return null; });
   if (token !== routeToken) return;
   if (!tier) { into.insertAdjacentHTML('beforeend', '<div class="row-empty"><p class="muted">Nanocrowd is not reachable right now.</p></div>'); return; }
   const moods = (tier.subtierList ?? []).map(x => x.subtier).slice(0, 12).join(', ');
-  into.insertAdjacentHTML('beforeend', `<div class="row-head"><div class="row-heading"><h2 class="vibes-genre">${esc(genre)}</h2>${moods ? `<small class="muted">${esc(moods)}</small>` : ''}</div></div>`);
+  // Signed in, films already in the Trakt history can be left out.
+  const unwatched = !!user && getVibesUnwatched();
+  const show = user ? `<label class="check"><input type="checkbox" id="vibes-hide-watched"${unwatched ? ' checked' : ''}>Hide watched</label>` : '';
+  into.insertAdjacentHTML('beforeend', `<div class="row-head"><div class="row-heading"><h2 class="vibes-genre">${esc(genre)}</h2>${moods ? `<small class="muted">${esc(moods)}</small>` : ''}</div>${show ? `<div class="row-tools">${show}</div>` : ''}</div>`);
+  const hide = into.querySelector('#vibes-hide-watched');
+  if (hide) hide.onchange = () => { setVibesUnwatched(hide.checked); route({ soft: true }); };
   const films = (tier.titleList ?? []).filter(x => x.imdbId);
   const pageSize = 40;
   await renderGrid(into, {
     pageSize,
-    empty: 'Nanocrowd has no films for this genre.',
+    empty: unwatched ? 'You have watched every film Nanocrowd lists for this genre.' : 'Nanocrowd has no films for this genre.',
     load: async page => {
       const slice = films.slice((page - 1) * pageSize, page * pageSize);
       const found = await Promise.all(slice.map(x => tmdbByImdb(x.imdbId)));
       // A page where none matched TMDB would otherwise end the grid early.
       return slice.length === pageSize ? found.map(it => it ?? {}) : found.filter(Boolean);
     },
-    card: it => it.id ? posterCard(it) : '',
+    card: it => it.id && !(unwatched && watchedMovie(it.id)) ? posterCard(it) : '',
   });
 }
 
@@ -238,6 +241,6 @@ const discoverTitle = sub => DISCOVER_TITLES[sub] ?? { media: 'Discover', show: 
 
 pages.home.bar = { title: 'Home', mode: 'bar', filters: 'global' };
 pages.discover.bar = sub => sub === 'vibes'
-  ? { title: 'Vibes', mode: 'bar' } // Trakt's filters don't apply to Nanocrowd's lists
+  ? { title: 'Vibes' } // movies only, so no switch; Trakt's filters don't apply to Nanocrowd's lists
   : { title: discoverTitle(sub), mode: 'bar', filters: sub === 'recommended' ? false : sub ? 'local' : 'global' };
 pages.search.bar = { title: 'Search', mode: 'search' };

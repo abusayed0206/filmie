@@ -112,6 +112,8 @@ function rememberServer(type, id, source) {
   for (const k of keys.slice(0, Math.max(0, keys.length - 200))) delete memory[k];
   try { localStorage.setItem('server-for', JSON.stringify(memory)); } catch {}
 }
+const getVibesUnwatched = () => { try { return localStorage.getItem('vibes-show') === 'unwatched'; } catch { return false; } };
+const setVibesUnwatched = on => { try { localStorage.setItem('vibes-show', on ? 'unwatched' : 'all'); } catch {} };
 const setAutoServer = on => { try { localStorage.setItem('server-auto', on ? 'on' : 'off'); } catch {} };
 const setSources = list => localStorage.setItem('sources', JSON.stringify(list));
 function getQuality() {

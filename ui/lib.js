@@ -371,4 +371,19 @@ function cloudLayout(words, box = 320, { min = 12, max = 40, width = .56 } = {})
   return placed.map(({ term, x, y, size, w, h }) => ({ term, x: Math.round(x), y: Math.round(y), size, w, h }));
 }
 
-if (typeof module !== 'undefined') module.exports = { cloudLayout, validProgress, playedNote, historyBody, youtubeKey, pickTrailer, newestCredits, isoDate, shortDate, fullDate, addDays, weekStart, sortValue, hasEnded, sortLists, exactFirst, streakFrom, weekHeatmap, durationText, recentMonths, mergeContinue, startWatching, runtimeText, statusTag, navFor, modeOf, FILTERS, decadeOptions, cleanFilters, filterQuery, filterCount, addQuery, fitsSimple, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, betterServer, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm };
+// Takes one title from each list in turn, so every source shows near the start, and keeps each title once.
+// The title the page is about is left out.
+function mergeSimilar(lists, self) {
+  const seen = new Set([`${self.type}:${self.id}`]);
+  const out = [];
+  for (let i = 0; i < Math.max(0, ...lists.map(l => l.length)); i++) {
+    for (const list of lists) {
+      const it = list[i];
+      const key = it && `${it.type}:${it.id}`;
+      if (key && !seen.has(key)) { seen.add(key); out.push(it); }
+    }
+  }
+  return out;
+}
+
+if (typeof module !== 'undefined') module.exports = { mergeSimilar, cloudLayout, validProgress, playedNote, historyBody, youtubeKey, pickTrailer, newestCredits, isoDate, shortDate, fullDate, addDays, weekStart, sortValue, hasEnded, sortLists, exactFirst, streakFrom, weekHeatmap, durationText, recentMonths, mergeContinue, startWatching, runtimeText, statusTag, navFor, modeOf, FILTERS, decadeOptions, cleanFilters, filterQuery, filterCount, addQuery, fitsSimple, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, betterServer, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm };

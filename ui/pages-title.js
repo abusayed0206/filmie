@@ -243,15 +243,16 @@ async function showTitle(type, id, season = null) {
   const seasons = type === 'tv' ? await seasonRail({ d, id, t, into, season, next }) : null;
   if (token !== routeToken) return;
   const cast = d.credits?.cast?.slice(0, 20) ?? [];
-  const related = t && (async () => posters(await traktGet(`${base}/related?limit=20&extended=full`), tt));
-  // One row of similar titles: Nanocrowd's for a movie it knows, Trakt's otherwise.
-  const similar = vibes && (async () => {
-    const found = (await Promise.all(((await vibes)?.mostLikeTitles ?? []).slice(0, 20).map(r => tmdbMovie(r.title, r.year)))).filter(Boolean);
-    return found.length ? found.map(it => posterCard(it)).join('') : related ? related() : '';
+  // One row of similar titles from both Nanocrowd (movies it knows) and Trakt's Related, taking turns, each title once.
+  const fromTrakt = async () => t ? (await traktGet(`${base}/related?limit=20&extended=full`)).map(x => norm(x, tt)).filter(Boolean) : [];
+  const fromNanocrowd = async () => vibes ? (await Promise.all(((await vibes)?.mostLikeTitles ?? []).slice(0, 20).map(r => tmdbMovie(r.title, r.year)))).filter(Boolean) : [];
+  const similar = (t || vibes) && (async () => {
+    const lists = await Promise.all([fromNanocrowd().catch(() => []), fromTrakt().catch(() => [])]);
+    return mergeSimilar(lists, { type, id }).map(it => posterCard(it)).join('');
   });
   const rows = renderRows([
     cast.length && { id: 'cast', title: 'Cast', load: async () => cast.map(personCard).join('') },
-    (similar || related) && { id: 'similar', title: 'More like this', bright: true, load: similar || related },
+    similar && { id: 'similar', title: 'More like this', bright: true, load: similar },
     t && { id: 'lists', title: 'Lists', kind: 'list', load: async () => (await traktGet(`${base}/lists/personal/popular?limit=10`)).map(publicListCard).join('') },
   ], into);
   await rows;

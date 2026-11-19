@@ -402,3 +402,12 @@ test('cloudLayout keeps words apart, inside the circle, strongest in the middle'
   }
   assert.deepEqual(cloudLayout([]), []);
 });
+
+test('mergeSimilar takes turns, keeps each title once and leaves out the title the page is about', () => {
+  const { mergeSimilar } = require('../ui/lib.js');
+  const m = id => ({ type: 'movie', id });
+  assert.deepEqual(mergeSimilar([[m(1), m(2), m(3)], [m(2), m(9), m(4)]], m(4)).map(x => x.id), [1, 2, 9, 3]);
+  assert.deepEqual(mergeSimilar([[], [m(5)]], m(1)).map(x => x.id), [5]);
+  assert.deepEqual(mergeSimilar([[], []], m(1)), []);
+  assert.deepEqual(mergeSimilar([[{ type: 'tv', id: 1 }], [m(1)]], m(2)).length, 2); // a show and a movie can share an id
+});

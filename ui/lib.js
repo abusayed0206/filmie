@@ -372,15 +372,22 @@ function cloudLayout(words, box = 320, { min = 12, max = 40, width = .56 } = {})
 }
 
 // Takes one title from each list in turn, so every source shows near the start, and keeps each title once.
+// Each list is { from, items }; a title gets `from` naming its source, or 'Both' when both lists have it.
 // The title the page is about is left out.
 function mergeSimilar(lists, self) {
-  const seen = new Set([`${self.type}:${self.id}`]);
+  const seen = new Map([[`${self.type}:${self.id}`, null]]);
   const out = [];
-  for (let i = 0; i < Math.max(0, ...lists.map(l => l.length)); i++) {
-    for (const list of lists) {
-      const it = list[i];
-      const key = it && `${it.type}:${it.id}`;
-      if (key && !seen.has(key)) { seen.add(key); out.push(it); }
+  for (let i = 0; i < Math.max(0, ...lists.map(l => l.items.length)); i++) {
+    for (const { from, items } of lists) {
+      const it = items[i];
+      if (!it) continue;
+      const key = `${it.type}:${it.id}`;
+      const kept = seen.get(key);
+      if (kept && kept.from !== from) kept.from = 'Both';
+      if (seen.has(key)) continue;
+      const entry = { ...it, from };
+      seen.set(key, entry);
+      out.push(entry);
     }
   }
   return out;

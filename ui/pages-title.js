@@ -118,7 +118,13 @@ document.addEventListener('click', ev => {
 // Its genres can list films, so those link to the Vibes page.
 function vibeCloud(keywords) {
   const box = 320;
-  const words = cloudLayout(keywords.slice(0, 20).map(k => ({ term: k.term, weight: k.fpm })), box);
+  const input = keywords.slice(0, 20).map(k => ({ term: k.term, weight: k.fpm }));
+  // Long words may not fit at full size, so smaller sizes are tried until every word has a place.
+  let words = [];
+  for (const max of [40, 34, 29, 25, 22]) {
+    words = cloudLayout(input, box, { max, min: Math.min(12, max - 10) });
+    if (words.length === input.length) break;
+  }
   const text = (w, i) => {
     const t = `<text x="${w.x}" y="${w.y}" font-size="${w.size}" class="cloud-word tone-${i === 0 ? 0 : i < 6 ? 1 : 2}">${esc(w.term)}</text>`;
     return VIBES_GENRES.includes(w.term) ? `<a href="#/discover/vibes/${w.term}" aria-label="${esc(w.term)} films">${t}</a>` : t;
@@ -247,8 +253,9 @@ async function showTitle(type, id, season = null) {
   const fromTrakt = async () => t ? (await traktGet(`${base}/related?limit=20&extended=full`)).map(x => norm(x, tt)).filter(Boolean) : [];
   const fromNanocrowd = async () => vibes ? (await Promise.all(((await vibes)?.mostLikeTitles ?? []).slice(0, 20).map(r => tmdbMovie(r.title, r.year)))).filter(Boolean) : [];
   const similar = (t || vibes) && (async () => {
-    const lists = await Promise.all([fromNanocrowd().catch(() => []), fromTrakt().catch(() => [])]);
-    return mergeSimilar(lists, { type, id }).map(it => posterCard(it)).join('');
+    const [nanocrowd, trakt] = await Promise.all([fromNanocrowd().catch(() => []), fromTrakt().catch(() => [])]);
+    // Each card names its source, so it's clear what Nanocrowd added.
+    return mergeSimilar([{ from: 'Nanocrowd', items: nanocrowd }, { from: 'Trakt', items: trakt }], { type, id }).map(it => posterCard(it, { label: it.from })).join('');
   });
   const rows = renderRows([
     cast.length && { id: 'cast', title: 'Cast', load: async () => cast.map(personCard).join('') },

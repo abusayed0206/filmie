@@ -14,3 +14,6 @@ src-tauri/extensions/
 node_modules/
 .cloudflare/
 .wrangler/
+
+# graphify output (regenerate with /graphify)
+graphify-out/

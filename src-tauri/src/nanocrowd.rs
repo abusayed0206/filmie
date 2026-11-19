@@ -63,27 +63,57 @@ async fn mint(http: &reqwest::Client) -> Result<Value, String> {
     }
 }
 
-/// The catalog as (lowercased "title (year)", id), so each title page searches memory instead of parsing 1.7 MB.
-type Catalog = Vec<(String, u64)>;
+/// The catalog as (normalized title, year, id), so each title page searches memory instead of parsing 1.7 MB.
+type Catalog = Vec<(String, u32, u64)>;
 
-fn index_catalog(body: &Value) -> Catalog {
-    body.as_array()
-        .map(|items| items.iter().filter_map(|it| Some((it["title"].as_str()?.to_lowercase(), it["ncTitleId"].as_u64()?))).collect())
-        .unwrap_or_default()
+/// Lowercase letters and digits only, single-spaced, without a leading article: "The Godfather: Part II" and
+/// "The Godfather Part II" both become "godfather part ii", and "Your Name." becomes "your name".
+fn normalize(title: &str) -> String {
+    let words: Vec<String> = title.split(|c: char| !c.is_alphanumeric()).filter(|w| !w.is_empty()).map(str::to_lowercase).collect();
+    let skip = usize::from(words.len() > 1 && matches!(words[0].as_str(), "the" | "a" | "an"));
+    words[skip..].join(" ")
 }
 
-/// The ids whose catalog entry reads exactly "Title (Year)", trying the neighbouring years too,
-/// since Nanocrowd and TMDB sometimes disagree on the release year by one.
-fn catalog_ids(catalog: &Catalog, title: &str, year: u32) -> Vec<u64> {
+/// The part before a subtitle: "A Silent Voice: The Movie" gives "A Silent Voice".
+fn head(title: &str) -> Option<&str> {
+    title.split_once([':', '\u{2013}']).or_else(|| title.split_once(" - ")).map(|(h, _)| h)
+}
+
+fn index_catalog(body: &Value) -> Catalog {
     let mut out = Vec::new();
-    for y in [year, year.saturating_sub(1), year.saturating_add(1)] {
-        let want = format!("{title} ({y})").to_lowercase();
-        for (t, id) in catalog {
-            if *t == want && !out.contains(id) {
-                out.push(*id);
-            }
+    for it in body.as_array().into_iter().flatten() {
+        // Every entry reads "Title (Year)". A subtitled one is also found by its head, as TMDB may leave the
+        // subtitle out ("Gabriel's Inferno: Part 1").
+        let Some((title, rest)) = it["title"].as_str().and_then(|t| t.trim_end().rsplit_once(" (")) else { continue };
+        let (Some(year), Some(id)) = (rest.strip_suffix(')').and_then(|y| y.parse().ok()), it["ncTitleId"].as_u64()) else { continue };
+        out.push((normalize(title), year, id));
+        if let Some(h) = head(title) {
+            out.push((normalize(h), year, id));
         }
     }
+    out
+}
+
+/// Candidates for a TMDB title, nearest year first. Nanocrowd's year is often a later country's release, as much as
+/// two or three years after TMDB's (Seven Samurai: 1956 against 1954), and its titles can drop a subtitle
+/// ("A Silent Voice: The Movie"), so the part before a colon or dash is tried too. The IMDb id then decides, so
+/// the looser search can't attach the wrong film.
+fn catalog_ids(catalog: &Catalog, title: &str, year: u32) -> Vec<u64> {
+    let mut keys = vec![normalize(title)];
+    keys.extend(head(title).map(normalize));
+    let mut found: Vec<(u32, usize, u64)> = catalog
+        .iter()
+        .filter_map(|(t, y, id)| Some((y.abs_diff(year), keys.iter().position(|k| k == t)?, *id)))
+        .filter(|(gap, ..)| *gap <= 3)
+        .collect();
+    found.sort_unstable();
+    let mut out = Vec::new();
+    for (.., id) in found {
+        if !out.contains(&id) {
+            out.push(id);
+        }
+    }
+    out.truncate(6); // each candidate costs one request
     out
 }
 
@@ -177,10 +207,23 @@ mod tests {
             { "title": "Lucy Gets Lost (2014)", "ncTitleId": 5 },
             { "title": "lucy (2015)", "ncTitleId": 7 },
             { "title": "No id (2014)" },
+            { "title": "The Godfather: Part II (1974)", "ncTitleId": 2439 },
+            { "title": "Seven Samurai (1956)", "ncTitleId": 8033 },
+            { "title": "Your Name (2016)", "ncTitleId": 30098 },
+            { "title": "A Silent Voice (2017)", "ncTitleId": 30946 },
+            { "title": "Up (2009)", "ncTitleId": 9 },
+            { "title": "Gabriel's Inferno: Part 1 (2020)", "ncTitleId": 40 },
         ]));
+        assert_eq!(catalog_ids(&catalog, "Gabriel's Inferno", 2020), vec![40]);
         assert_eq!(catalog_ids(&catalog, "Lucy", 2014), vec![27320, 7]);
         assert_eq!(catalog_ids(&catalog, "Lucy", 2004), vec![100]);
         assert!(catalog_ids(&catalog, "Lucy", 1990).is_empty());
+        assert_eq!(catalog_ids(&catalog, "The Godfather Part II", 1974), vec![2439]);
+        assert_eq!(catalog_ids(&catalog, "Seven Samurai", 1954), vec![8033]);
+        assert_eq!(catalog_ids(&catalog, "Your Name.", 2016), vec![30098]);
+        assert_eq!(catalog_ids(&catalog, "A Silent Voice: The Movie", 2016), vec![30946]);
+        assert_eq!(catalog_ids(&catalog, "Up", 2009), vec![9]); // a one-word title isn't emptied
+        assert_eq!(normalize("The"), "the");
     }
 
     #[test]

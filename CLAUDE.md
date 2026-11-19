@@ -84,7 +84,7 @@ How pages work:
 **Nanocrowd (`src-tauri/src/nanocrowd.rs`)**
 - An undocumented API at `bananastreampie.com`, the one Nanocrowd's own web app uses. `docs/NANOCROWD_API.md` records what was checked live; its top section overrules the rest. It can change or disappear without notice.
 - The guest token is fetched once, saved in the cache table under `nanocrowd token`, and kept until a request gets 401 or 403. Then `refused` drops it and one new token is fetched under the lock.
-- There is no search by name or mood. Title lookup matches "Title (Year)" in the catalog, indexed in memory once per run, and the IMDb id confirms it. Only the 25 genres in `VIBES_GENRES` can list films (`/api/tiers/<genre>`).
+- There is no search by name or mood. Title lookup compares normalized titles (punctuation, case and a leading article ignored, and the part before a subtitle on either side) with years up to 3 apart, in a catalog indexed in memory once per run, and the IMDb id confirms it. The catalog ends at 2024, so newer films have no vibes. Only the 25 genres in `VIBES_GENRES` can list films (`/api/tiers/<genre>`).
 - Movies only. Its films carry IMDb ids (matched with TMDB `/find`) or only a title and year (`tmdbMovie`).
 
 **Cards:** every card opens its title page. Where the next step is watching (Continue Watching, Recently played, Start Watching, Progress), `playButton` in `cards.js` adds a separate play link over the picture.

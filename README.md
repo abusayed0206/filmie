@@ -92,6 +92,51 @@ My server | https://example.com/movie/{tmdb_id} | https://example.com/tv/{tmdb_i
 | <kbd>F11</kbd> | Toggle fullscreen |
 | <kbd>Esc</kbd> | Close a menu, or leave fullscreen |
 
+## How it works
+
+Filmie is a Tauri app: the window is a WebView2 page made of plain scripts in `ui/`, and everything that touches the network or the disk is a Rust command in `src-tauri/src/`. The page never makes a web request itself; it asks Rust, and Rust answers from a local SQLite cache when it can.
+
+```mermaid
+flowchart LR
+  subgraph UI["Window: ui/ (classic scripts)"]
+    Pages["Pages<br/>Home, Discover, Vibes, Search,<br/>title, person, signed-in pages"]
+    Cards["Cards and rows<br/>cards.js"]
+    Player["Player and router<br/>app.js"]
+    Core["Shared state and calls<br/>core.js"]
+    Lib["Pure helpers, tested<br/>lib.js"]
+  end
+
+  subgraph Rust["Backend: src-tauri/src (Tauri commands)"]
+    Main["main.rs<br/>tmdb, art,<br/>window lockdown"]
+    Trakt["trakt.rs<br/>sign-in, writes, avatar,<br/>library and history sync"]
+    Nano["nanocrowd.rs<br/>guest token, catalog,<br/>vibes and similar films"]
+    Db[("db.rs<br/>SQLite: cache, history,<br/>Trakt copy for stats")]
+  end
+
+  Pages --> Cards
+  Pages --> Core
+  Player --> Core
+  Cards --> Core
+  Pages --> Lib
+  Core -- "invoke()" --> Main
+  Core -- "invoke()" --> Trakt
+  Core -- "invoke()" --> Nano
+  Main --> Db
+  Trakt --> Db
+  Nano --> Db
+  Main --> TMDB(["TMDB API"])
+  Trakt --> TraktAPI(["Trakt API"])
+  Nano --> NC(["Nanocrowd API"])
+  Player -. "iframe" .-> Servers(["Your video servers"])
+```
+
+- **Browsing:** a page asks `core.js` for data, which calls the `tmdb` or `trakt` command. `db.rs` returns a fresh cached answer, or fetches one and keeps it, and falls back to an old copy when you're offline.
+- **Trakt:** signing in uses a device code, tokens live in Windows Credential Manager, and writes are sent at most once a second. A copy of your history in SQLite powers Profile stats without VIP.
+- **Nanocrowd:** a movie's vibes and similar films come from Nanocrowd's catalog, matched to TMDB by title, year and IMDb id. Its guest token is saved and renewed only when refused.
+- **Playing:** the player loads your server in an iframe it can't read, so tracking stays manual. A script injected into the player's frames blocks ads and reports progress for Recently played.
+
+The diagram follows a graph of the code made with [graphify](https://github.com/safishamsi/graphify): 487 functions, types and files in 25 groups. Its most connected parts are the backend's shared `State` (42 links) and the SQLite store `Db` (29), which every TMDB, Trakt and Nanocrowd request goes through. To explore it yourself, run `/graphify` in Claude Code at the repository root; it writes an interactive `graphify-out/graph.html` (git-ignored).
+
 ## Build from source
 
 You need Windows, [Rust](https://rustup.rs) stable and [Node.js](https://nodejs.org) (only for the UI tests).

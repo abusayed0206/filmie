@@ -7,7 +7,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
     path::Path,
-    sync::{Mutex, MutexGuard},
+    sync::{
+        Mutex, MutexGuard,
+        atomic::{AtomicU64, Ordering},
+    },
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -136,7 +139,8 @@ fn store_rating(conn: &Connection, item: &Value) -> rusqlite::Result<bool> {
     Ok(true)
 }
 
-pub struct Db(Mutex<Connection>);
+/// The connection, and a count of user-cache clears, so a response fetched before one is not stored after it.
+pub struct Db(Mutex<Connection>, AtomicU64);
 
 impl Db {
     /// Opens the store. If the file can't be used the app still runs, with a store that lasts until it closes.
@@ -147,7 +151,7 @@ impl Db {
             Connection::open_in_memory().and_then(open).expect("SQLite can always open in memory")
         });
         let _ = conn.execute("DELETE FROM cache WHERE expires_at < ?1", [now() - KEEP_EXPIRED_SECS]);
-        Self(Mutex::new(conn))
+        Self(Mutex::new(conn), AtomicU64::new(0))
     }
 
     fn conn(&self) -> MutexGuard<'_, Connection> {
@@ -172,6 +176,15 @@ impl Db {
         if let Err(e) = result {
             eprintln!("could not cache a response: {e}");
         }
+        // Every search and page is a new row, so a long session prunes now and then, not only at start-up.
+        static STORES: AtomicU64 = AtomicU64::new(0);
+        if STORES.fetch_add(1, Ordering::Relaxed) % 500 == 499 {
+            let _ = self.conn().execute("DELETE FROM cache WHERE expires_at < ?1", [now() - KEEP_EXPIRED_SECS]);
+        }
+    }
+
+    pub fn forget(&self, key: &str) {
+        let _ = self.conn().execute("DELETE FROM cache WHERE key = ?1", [key]);
     }
 
     /// Returns a fresh cached response, or fetches and stores one. An expired copy is used when the fetch fails,
@@ -189,10 +202,13 @@ impl Db {
         {
             return Ok(body.clone());
         }
+        let clears = self.1.load(Ordering::Acquire);
         match fetch.await {
             Ok(body) => {
-                // Trakt answers 204 with no body when there's nothing to report.
-                if !body.is_null() {
+                // Trakt answers 204 with no body when there's nothing to report. A write or sign-out during the
+                // fetch makes a user's response stale, so it is returned but not kept.
+                let stale = user_scoped && self.1.load(Ordering::Acquire) != clears;
+                if !body.is_null() && !stale {
                     self.store(key, &body, ttl, user_scoped);
                 }
                 Ok(body)
@@ -204,6 +220,7 @@ impl Db {
 
     /// Forgets responses that depend on the signed-in user, after a write, new activity or sign-out.
     pub fn clear_user(&self) {
+        self.1.fetch_add(1, Ordering::AcqRel);
         let _ = self.conn().execute("DELETE FROM cache WHERE user_scoped = 1", []);
     }
 
@@ -375,12 +392,12 @@ impl Db {
 }
 
 /// Reads only local data, so it works offline and when signed out.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn stats(s: tauri::State<'_, State>, kind: Option<String>) -> Result<Value, String> {
     s.db.stats(kind.as_deref()).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn history_save(s: tauri::State<'_, State>, entry: Played) -> Result<(), String> {
     if entry.kind != "movie" && entry.kind != "tv" {
         return Err("bad history entry".into());
@@ -388,23 +405,23 @@ pub fn history_save(s: tauri::State<'_, State>, entry: Played) -> Result<(), Str
     s.db.save_played(&entry).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn history_list(s: tauri::State<'_, State>, limit: i64) -> Result<Vec<Played>, String> {
     s.db.list_played(limit).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn history_clear(s: tauri::State<'_, State>) -> Result<(), String> {
     s.db.conn().execute("DELETE FROM history", []).map(|_| ()).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn cache_info(s: tauri::State<'_, State>) -> Result<Value, String> {
     let (count, bytes) = s.db.cache_stats().map_err(|e| e.to_string())?;
     Ok(json!({ "count": count, "bytes": bytes }))
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn cache_clear(s: tauri::State<'_, State>) -> Result<(), String> {
     s.db.conn().execute("DELETE FROM cache", []).map(|_| ()).map_err(|e| e.to_string())
 }
@@ -461,6 +478,30 @@ mod tests {
         db.clear_user();
         assert!(db.lookup("public").is_some());
         assert!(db.lookup("mine").is_none());
+    }
+
+    #[test]
+    fn a_user_response_fetched_across_a_clear_is_not_kept() {
+        let db = db();
+        tauri::async_runtime::block_on(async {
+            // A write lands while the fetch is in flight: the answer is used once, then forgotten.
+            let body = db
+                .through("mine", 60, true, async {
+                    db.clear_user();
+                    Ok(json!(1))
+                })
+                .await
+                .unwrap();
+            assert_eq!(body, json!(1));
+            assert!(db.lookup("mine").is_none());
+            db.through("public", 60, false, async {
+                db.clear_user();
+                Ok(json!(2))
+            })
+            .await
+            .unwrap();
+            assert!(db.lookup("public").is_some());
+        });
     }
 
     #[test]

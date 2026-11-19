@@ -1,7 +1,7 @@
 // Run: node --test tests/ui.test.js
 const test = require('node:test');
 const assert = require('node:assert');
-const { validProgress, playedNote, historyBody, safeColor, youtubeKey, pickTrailer, newestCredits, isoDate, shortDate, fullDate, addDays, weekStart, sortValue, hasEnded, sortLists, exactFirst, streakFrom, weekHeatmap, durationText, recentMonths, mergeContinue, startWatching, runtimeText, statusTag, navFor, modeOf, FILTERS, decadeOptions, cleanFilters, filterQuery, filterCount, addQuery, fitsSimple, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, betterServer, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm } = require('../ui/lib.js');
+const { validProgress, playedNote, historyBody, youtubeKey, pickTrailer, newestCredits, isoDate, shortDate, fullDate, addDays, weekStart, sortValue, hasEnded, sortLists, exactFirst, streakFrom, weekHeatmap, durationText, recentMonths, mergeContinue, startWatching, runtimeText, statusTag, navFor, modeOf, FILTERS, decadeOptions, cleanFilters, filterQuery, filterCount, addQuery, fitsSimple, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, betterServer, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm } = require('../ui/lib.js');
 
 test('norm', () => {
   const ids = { trakt: 1, tmdb: 272 };
@@ -143,10 +143,6 @@ test('historyBody says what was watched and when', () => {
     { shows: [{ ids: { tmdb: 2 }, seasons: [{ number: 0, episodes: [{ number: 3, watched_at: '2026-01-01T00:00:00.000Z' }] }] }] });
 });
 
-test('values from Trakt are checked before they reach a page', () => {
-  assert.equal(safeColor('#a1B2c3'), '#a1B2c3');
-  for (const bad of ['red', '#12', 'url(x)', '#000000;x', null, undefined]) assert.equal(safeColor(bad), null);
-});
 
 test('newestCredits sorts and removes repeats', () => {
   const m = (id, year) => ({ movie: { year, ids: { tmdb: id } } });
@@ -274,6 +270,7 @@ test('navFor picks the rail items for a route', () => {
   assert.deepEqual(navFor('discover'), ['discover']);
   assert.deepEqual(navFor('discover', 'trending'), ['discover/trending', 'discover']);
   assert.deepEqual(navFor('discover', 'recommended'), ['discover/recommended', '']);
+  assert.deepEqual(navFor('discover', 'vibes'), ['discover/vibes', 'discover']);
   assert.deepEqual(navFor('progress'), ['progress', '']);
   assert.deepEqual(navFor('list'), ['lists']);
   assert.deepEqual(navFor('lists', 'liked'), ['lists/liked', 'lists']);
@@ -388,4 +385,20 @@ test('betterServer switches only to a taller video', () => {
   assert.equal(betterServer([0, 720, 720], 0), 1); // the current one never showed a video
   assert.equal(betterServer([0, 0, 0], 2), null);
   assert.equal(betterServer([1080, undefined], 0), null);
+});
+
+test('cloudLayout keeps words apart, inside the circle, strongest in the middle', () => {
+  const { cloudLayout } = require('../ui/lib.js');
+  const words = ['drugs', 'action', 'sci-fi', 'scientific', 'killing', 'gangster', 'car', 'cops', 'space', 'cool', 'philosophical', 'myth', 'thriller', 'violence', 'guns']
+    .map((term, i) => ({ term, weight: 700 / (i + 1) }));
+  const out = cloudLayout(words, 320);
+  assert.ok(out.length >= 12, `placed ${out.length}`);
+  assert.equal(out[0].term, 'drugs');
+  assert.ok(Math.hypot(out[0].x - 160, out[0].y - 160) < 30);
+  assert.ok(out[0].size > out.at(-1).size);
+  for (const a of out) {
+    for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) assert.ok(Math.hypot(a.x + sx * a.w / 2 - 160, a.y + sy * a.h / 2 - 160) <= 160, a.term);
+    for (const b of out) if (a !== b) assert.ok(!(Math.abs(a.x - b.x) * 2 < a.w + b.w && Math.abs(a.y - b.y) * 2 < a.h + b.h), `${a.term} overlaps ${b.term}`);
+  }
+  assert.deepEqual(cloudLayout([]), []);
 });

@@ -39,10 +39,10 @@ const mergeProgress = (shows, movies, sorted) => sorted ? [...movies, ...shows] 
 function progressGridCard(x) {
   const it = norm(x, x.show ? 'show' : 'movie');
   if (!it) return '';
-  if (!x.show) return summaryCard(it, { href: `#/play/movie/${it.id}`, line: `${Math.round(x.progress)}% watched`, action: watchAction(it) });
+  if (!x.show) return summaryCard(it, { play: `#/play/movie/${it.id}`, line: `${Math.round(x.progress)}% watched`, action: watchAction(it) });
   const ep = x.progress.next_episode;
   if (!ep) return '';
-  return summaryCard(it, { href: `#/play/tv/${it.id}/${ep.season}/${ep.number}`, line: episodeLine(ep), label: `${x.progress.aired - x.progress.completed} left`, action: watchAction(it, ep.season, ep.number) });
+  return summaryCard(it, { play: `#/play/tv/${it.id}/${ep.season}/${ep.number}`, line: episodeLine(ep), label: `${x.progress.aired - x.progress.completed} left`, action: watchAction(it, ep.season, ep.number) });
 }
 Object.assign(pages, {
   async progress() {
@@ -550,15 +550,14 @@ function renderServers(card, editing = null) {
   if (!list.length && editing === null) editing = -1;
   const current = getServer(list.length);
   const host = s => { try { return new URL(s.movie).hostname; } catch { return ''; } };
-  const rows = list.map((s, i) => `<li class="server-row" style="--dot:${accentOf(s) ?? 'var(--muted)'}">
+  const rows = list.map((s, i) => `<li class="server-row">
       <input type="radio" name="default-server" value="${i}" ${i === current ? 'checked' : ''} title="Default server" aria-label="Use ${esc(s.name)} by default">
-      <span class="server-dot"></span>
       <div class="server-row-text"><b>${esc(s.name)}</b><small class="muted">${esc([host(s), s.note].filter(Boolean).join(' · '))}</small></div>
       <span class="tag">Default</span>
       <button type="button" class="btn ghost" data-edit="${i}">Edit</button>
       <button type="button" class="btn ghost" data-remove="${i}">Remove</button></li>`).join('');
   const saved = list[editing];
-  const draft = saved ? { ...saved, ...splitServer(saved) } : { link: '', movie: MOVIE_STRUCTURES[0], tv: TV_STRUCTURES[0], accent: '#e5484d' };
+  const draft = saved ? { ...saved, ...splitServer(saved) } : { link: '', movie: MOVIE_STRUCTURES[0], tv: TV_STRUCTURES[0] };
   const options = items => items.map(x => `<option value="${esc(x)}"></option>`).join('');
   const input = (id, label, hint, value, attrs = '') => `<label class="form-field" for="${id}"><b>${label}</b>
       <input id="${id}" value="${esc(value ?? '')}" spellcheck="false" autocomplete="off" ${attrs}><small class="muted">${hint}</small></label>`;
@@ -576,7 +575,6 @@ function renderServers(card, editing = null) {
       <div class="form-grid optional">
         ${input('server-name', 'Name (optional)', 'Uses the address if left empty.', draft.name)}
         ${input('server-note', 'Note (optional)', 'Shown in the player\'s server menu.', draft.note)}
-        <label class="form-field" for="server-accent"><b>Accent</b><input id="server-accent" type="color" value="${accentOf(draft) ?? '#e5484d'}"><small class="muted">Marks this server in the player.</small></label>
       </div>
       <div class="server-preview" id="server-preview" role="status"></div>
       <div class="card-actions">${list.length ? '<button type="button" id="server-cancel" class="btn">Cancel</button>' : ''}<button type="submit" class="btn primary">${saved ? 'Save server' : 'Add server'}</button></div>
@@ -622,7 +620,7 @@ function renderServers(card, editing = null) {
   const form = card.querySelector('#server-form');
   if (!form) return;
   const value = id => form.querySelector(`#server-${id}`).value;
-  const read = () => buildServer({ link: value('link'), movie: value('movie'), tv: value('tv'), name: value('name'), note: value('note'), accent: value('accent') });
+  const read = () => buildServer({ link: value('link'), movie: value('movie'), tv: value('tv'), name: value('name'), note: value('note'), accent: saved?.accent });
   const preview = form.querySelector('#server-preview');
   const showError = e => { preview.innerHTML = `<p class="error">${esc(e.message)}</p>`; };
   form.oninput = () => {

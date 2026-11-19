@@ -106,11 +106,12 @@ Object.assign(pages, {
     await rows;
   },
 
-  async discover(sub) {
+  async discover(sub, term) {
     if (sub === 'recommended' && !user) { app.innerHTML = signInPrompt('recommendations'); return; }
     app.innerHTML = `<div class="page"><h1 class="sr-only">${esc(discoverTitle(sub))}</h1></div>`;
     const into = app.firstElementChild;
     if (sub === 'releases') return releasesPage(into);
+    if (sub === 'vibes') return vibesPage(into, term);
     if (Object.hasOwn(DISCOVER_GRIDS, sub ?? '')) return discoverGrid(sub, into);
     await renderRows([
       chart('Trending', 'trending', watchers, '#/discover/trending'),
@@ -188,9 +189,55 @@ function searchEmpty(into, mode) {
   });
 }
 
-const DISCOVER_TITLES = { trending: 'Trending', releases: 'Releases', anticipated: 'Anticipated', popular: 'Popular', recommended: 'Recommended' };
+// Nanocrowd's genres, from /api/fundamentals. They are the only words its API can list films for.
+const VIBES_GENRES = [
+  'action', 'adventure', 'animation', 'biography', 'comedy', 'cops', 'documentary', 'drama', 'fantasy', 'historical', 'horror', 'kids', 'musical',
+  'mystery', 'quest', 'relationships', 'romance', 'romantic-comedy', 'sci-fi', 'sports', 'spy', 'superhero', 'thriller', 'war', 'western',
+];
+
+// #/discover/vibes/<genre>: Nanocrowd's films for a genre, in its order, with the mood words viewers use for it.
+async function vibesPage(into, term) {
+  const genre = VIBES_GENRES.includes(term) ? term : VIBES_GENRES[0]; // the bare page opens on the first genre
+  into.innerHTML = `<div class="vibes-hero"><p class="muted">Films grouped by what viewers say about them, from Nanocrowd.</p>
+    <div class="vibes-pills">${VIBES_GENRES.map(g => `<a class="vibe-pill${g === genre ? ' on' : ''}" href="#/discover/vibes/${g}">${esc(g)}</a>`).join('')}</div></div>`;
+  // Every list page has the switch, but Nanocrowd only knows movies.
+  if (getMode() === 'show') { into.insertAdjacentHTML('beforeend', '<div class="row-empty"><p class="muted">Vibes covers movies only. Switch to Movies or Media to see them.</p></div>'); return; }
+  const token = routeToken;
+  const tier = await invoke('nanocrowd_tier', { genre }).catch(e => { console.warn(e); return null; });
+  if (token !== routeToken) return;
+  if (!tier) { into.insertAdjacentHTML('beforeend', '<div class="row-empty"><p class="muted">Nanocrowd is not reachable right now.</p></div>'); return; }
+  const moods = (tier.subtierList ?? []).map(x => x.subtier).slice(0, 12).join(', ');
+  into.insertAdjacentHTML('beforeend', `<div class="row-head"><div class="row-heading"><h2 class="vibes-genre">${esc(genre)}</h2>${moods ? `<small class="muted">${esc(moods)}</small>` : ''}</div></div>`);
+  const films = (tier.titleList ?? []).filter(x => x.imdbId);
+  const pageSize = 40;
+  await renderGrid(into, {
+    pageSize,
+    empty: 'Nanocrowd has no films for this genre.',
+    load: async page => {
+      const slice = films.slice((page - 1) * pageSize, page * pageSize);
+      const found = await Promise.all(slice.map(x => tmdbByImdb(x.imdbId)));
+      // A page where none matched TMDB would otherwise end the grid early.
+      return slice.length === pageSize ? found.map(it => it ?? {}) : found.filter(Boolean);
+    },
+    card: it => it.id ? posterCard(it) : '',
+  });
+}
+
+const movieCard = m => m ? { type: 'movie', id: m.id, title: m.title, year: m.release_date?.slice(0, 4) || undefined } : null;
+const tmdbByImdb = async imdb => movieCard((await tmdb(`/find/${imdb}`, { external_source: 'imdb_id' }).catch(() => null))?.movie_results?.[0]);
+// Nanocrowd's similar films carry only a title and year, so they are matched to TMDB by those. `year` matches any
+// release, not just the first, because Nanocrowd's year can be a later country's (Snowpiercer: 2014, not 2013).
+const tmdbMovie = async (title, year) => {
+  const results = (await tmdb('/search/movie', { query: title, ...(year ? { year: String(year) } : {}) }).catch(() => null))?.results ?? [];
+  // TMDB may know the film by another title, so a different title only counts when the year agrees.
+  return movieCard(results.find(m => m.title.toLowerCase() === title.toLowerCase()) ?? results.find(m => !year || Math.abs(m.release_date?.slice(0, 4) - year) <= 1));
+};
+
+const DISCOVER_TITLES = { trending: 'Trending', releases: 'Releases', anticipated: 'Anticipated', popular: 'Popular', recommended: 'Recommended', vibes: 'Vibes' };
 const discoverTitle = sub => DISCOVER_TITLES[sub] ?? { media: 'Discover', show: 'Shows', movie: 'Movies' }[getMode()];
 
 pages.home.bar = { title: 'Home', mode: 'bar', filters: 'global' };
-pages.discover.bar = sub => ({ title: discoverTitle(sub), mode: 'bar', filters: sub === 'recommended' ? false : sub ? 'local' : 'global' });
+pages.discover.bar = sub => sub === 'vibes'
+  ? { title: 'Vibes', mode: 'bar' } // Trakt's filters don't apply to Nanocrowd's lists
+  : { title: discoverTitle(sub), mode: 'bar', filters: sub === 'recommended' ? false : sub ? 'local' : 'global' };
 pages.search.bar = { title: 'Search', mode: 'search' };

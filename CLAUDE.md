@@ -58,7 +58,7 @@ How pages work:
 - The side rail is `nav.rail` in `index.html`, and `navFor` in `lib.js` picks its highlighted items. Its width is the `--rail` token, and `localStorage` key `rail` remembers it. Search's `#q` sits outside `#app` so it keeps focus while results swap.
 - `.row` is a container, and `@container` steps in `style.css` set how many whole cards fit.
 - Icons are SVG symbols in `index.html`, used through `icon(name)`. A test fails if a symbol is missing.
-- The design follows Trakt's desktop app, measured in `specs/002-trakt-design-parity/trakt-design-reference.md`. trakt-web is GPLv3 and Filmie is MIT, so build from that description and never copy its code, styles or assets. There is no Trakt logo, and the accent is Filmie's red. The owner's decisions overrule the reference: every list page has the media switch, and title pages have no ratings of any kind, including the person's own stars, and no Where to Watch.
+- The design follows Trakt's desktop app, measured in `specs/002-trakt-design-parity/trakt-design-reference.md`. trakt-web is GPLv3 and Filmie is MIT, so build from that description and never copy its code, styles or assets. There is no Trakt logo, and the accent is Filmie's red. The owner's decisions overrule the reference: every list page has the media switch, and title pages have no ratings of any kind, including the person's own stars, and no Where to Watch. Title pages are lean: the hero, Nanocrowd's vibe cloud (`vibeCloud`, laid out by `cloudLayout` in `lib.js`), then Seasons, Cast and one "More like this" row (Nanocrowd's similar films for a movie it knows, Trakt's Related otherwise). Trakt comments, sentiment, public lists and the videos row were removed on purpose; About lives in the Details drawer.
 - The rail's Home, Discover and Lists are `.rail-group`s. On a wide rail `openRailGroup` shows one group's sub-pages at a time, starting with the current page's. On a narrow rail they and the bottom menu open as flyouts, through the `flyout` class.
 
 **Local database (`src-tauri/src/db.rs`, `filmie.sqlite3` in the app data folder)**
@@ -81,11 +81,22 @@ How pages work:
 
 **Watch tracking is manual by decision.** Opening the player or pressing Next sends nothing to Trakt, and only Mark watched records a watch. Do not add check-ins or scrobbling: a Trakt check-in marks the item watched when its runtime ends, whether or not it was watched.
 
+**Nanocrowd (`src-tauri/src/nanocrowd.rs`)**
+- An undocumented API at `bananastreampie.com`, the one Nanocrowd's own web app uses. `docs/NANOCROWD_API.md` records what was checked live; its top section overrules the rest. It can change or disappear without notice.
+- The guest token is fetched once, saved in the cache table under `nanocrowd token`, and kept until a request gets 401 or 403. Then `refused` drops it and one new token is fetched under the lock.
+- There is no search by name or mood. Title lookup matches "Title (Year)" in the catalog, indexed in memory once per run, and the IMDb id confirms it. Only the 25 genres in `VIBES_GENRES` can list films (`/api/tiers/<genre>`).
+- Movies only. Its films carry IMDb ids (matched with TMDB `/find`) or only a title and year (`tmdbMovie`).
+
+**Cards:** every card opens its title page. Where the next step is watching (Continue Watching, Recently played, Start Watching, Progress), `playButton` in `cards.js` adds a separate play link over the picture.
+
 **Player**
 - The iframe is cross-origin, so `app.js` can't read or change it. The toolbar sits above the iframe, and menus overlay it only while open.
 - `INJECT_PLAYER` in `main.rs` runs in every frame through `initialization_script_for_all_frames` and does nothing in the top frame or on YouTube. It removes ad nodes, retries autoplay and applies the preferred quality. It also wraps a global `window.Hls` so hls.js buffers 3 minutes ahead; players that bundle hls.js privately keep their own buffer.
 - Trailers and videos play in `playVideo` in `controls.js`, an embedded YouTube player in a dialog. YouTube's terms require the `Referer` it gets from `strict-origin-when-cross-origin`, and forbid covering or changing the player.
 - `app.js` sends the quality as a `{ __filmieQuality }` `postMessage`, which the script relays to nested frames.
+- With Auto on, `rememberServer` keeps the server that won a title's race, by name, in `server-for`, and that title's next plays start there with no race. Picking Auto in the menu races again.
+- At 90% progress `nowPlaying.onNearlyDone` offers a "Finished? Add to history" prompt. It sends nothing until pressed, so watch tracking stays manual, and it needs a player that exposes its `<video>`.
+- The bar has Back (the previous page, with its scroll), Home and Details. Adding to a list happens on the title page, not in the player.
 - Auto server (`server-auto` in `localStorage`, on until a server is picked by hand) loads every other server in hidden `.player-probe` frames. They get `{ __filmieProbe }`, which keeps them muted and silent about progress, and every frame posts `{ __filmieVideo: { h } }` with its tallest video. After 8 seconds `betterServer` in `lib.js` decides whether to switch.
 - Changing episode or server inside the player replaces history instead of adding to it, and Back uses `navigation.back()`, which skips the entries the iframe adds.
 

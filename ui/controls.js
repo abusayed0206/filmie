@@ -140,7 +140,7 @@ const SEARCH_OPTIONS = [...MODE_OPTIONS, { value: 'person', label: 'People', ico
 // The command palette: Ctrl+K or /. The focus stays in the box, and the arrows move a highlight through the options.
 const PALETTE_PAGES = [
   ['Home', '#/'], ['Continue Watching', '#/progress', true], ['Calendar', '#/calendar', true], ['Recommended', '#/discover/recommended', true],
-  ['Discover', '#/discover'], ['Trending', '#/discover/trending'], ['Releases', '#/discover/releases'], ['Anticipated', '#/discover/anticipated'], ['Popular', '#/discover/popular'],
+  ['Discover', '#/discover'], ['Trending', '#/discover/trending'], ['Releases', '#/discover/releases'], ['Anticipated', '#/discover/anticipated'], ['Popular', '#/discover/popular'], ['Vibes', '#/discover/vibes'],
   ['Lists', '#/lists', true], ['Watchlist', '#/watchlist', true], ['History', '#/history', true], ['Library', '#/library', true], ['Profile', '#/profile', true],
   ['Search', '#/search'], ['Settings', '#/settings'],
 ];

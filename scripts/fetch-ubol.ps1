@@ -1,7 +1,7 @@
 # Downloads the pinned uBlock Origin Lite (Edge build, GPLv3) into src-tauri/extensions/ubol.
 # It is git-ignored because it is 31 MB of third-party code. Bump the version and hash together.
-$version = '2026.1026.1812'
-$sha256 = '12a3be6e4c24c932677208bd0b8fff0689676ef2b0db689cfe794b02e0ed69fc'
+$version = '2026.1116.1650'
+$sha256 = '9f98592f541d85271bd65eac6527d0e12d7f11d5bdff1e1414d6ae54cb60040c'
 $zip = Join-Path $env:TEMP "uBOLite_$version.edge.zip"
 $dest = Join-Path $PSScriptRoot '..\src-tauri\extensions\ubol'
 

@@ -102,30 +102,30 @@ async function historyDrawer(title, tt, t) {
   box.outerHTML = `<div class="fact-list">${plays.map(p => `<div class="fact"><span>${esc(p.episode ? episodeLine(p.episode) : title)}</span><span class="muted">${esc(new Date(p.watched_at).toLocaleDateString())}</span></div>`).join('')}</div>`;
 }
 
-const commentCard = c => {
-  const who = c.user?.username ?? 'Trakt member';
-  // shortcut: initials rather than avatars, because Trakt blocks hotlinked images. Upgrade if an image cache is added.
-  return `<article class="comment-card"><div class="comment-head"><span class="avatar small" aria-hidden="true">${esc(who[0].toUpperCase())}</span><b>${esc(who)}</b><small class="muted">${esc(shortDate(c.created_at))}</small></div>
-    ${c.spoiler ? '<button type="button" class="btn spoiler-show">Contains spoilers. Show</button>' : ''}
-    <p class="comment-text"${c.spoiler ? ' hidden' : ''}>${esc(c.comment)}</p>
-    <div class="comment-foot muted"><small>${num(c.likes)} likes</small><small>${num(c.replies)} replies</small></div></article>`;
-};
 // A real link underneath, so it's still a link to the keyboard and screen readers. A press plays it here instead.
 const videoLink = (key, title) => `href="https://www.youtube.com/watch?v=${esc(key)}" target="_blank" data-video="${esc(key)}" data-video-title="${esc(title)}"`;
-const videoCard = v => `<a class="video-card" ${videoLink(youtubeKey(v.url), v.title)} title="${esc(v.title)}"><span class="play-icon">${icon('play')}</span><b>${esc(v.title)}</b><small class="muted">${esc(statusText(v.type))}</small></a>`;
 const publicListCard = l => `<a class="list-tile" href="#/list/${l.ids.trakt}/public"><b>${esc(l.name)}</b><span>${num(l.item_count)} items${l.user?.username ? ` · ${esc(l.user.username)}` : ''}</span>${l.description ? `<p>${esc(l.description)}</p>` : ''}</a>`;
 
 document.addEventListener('click', ev => {
   const video = ev.target.closest('[data-video]');
   if (video) {
     ev.preventDefault();
-    return playVideo(video.dataset.video, video.dataset.videoTitle);
+    playVideo(video.dataset.video, video.dataset.videoTitle);
   }
-  const show = ev.target.closest('.spoiler-show');
-  if (!show) return;
-  show.nextElementSibling.hidden = false;
-  show.remove();
 });
+
+// Nanocrowd's keywords as a circular word cloud, sized by how often viewers use each word.
+// Its genres can list films, so those link to the Vibes page.
+function vibeCloud(keywords) {
+  const box = 320;
+  const words = cloudLayout(keywords.slice(0, 20).map(k => ({ term: k.term, weight: k.fpm })), box);
+  const text = (w, i) => {
+    const t = `<text x="${w.x}" y="${w.y}" font-size="${w.size}" class="cloud-word tone-${i === 0 ? 0 : i < 6 ? 1 : 2}">${esc(w.term)}</text>`;
+    return VIBES_GENRES.includes(w.term) ? `<a href="#/discover/vibes/${w.term}" aria-label="${esc(w.term)} films">${t}</a>` : t;
+  };
+  return `<svg class="vibe-cloud" viewBox="0 0 ${box} ${box}" role="img" aria-label="Viewer vibes from Nanocrowd: ${esc(words.map(w => w.term).join(', '))}">
+${words.map(text).join('')}</svg>`;
+}
 
 async function showTitle(type, id, season = null) {
   const token = routeToken;
@@ -135,7 +135,7 @@ async function showTitle(type, id, season = null) {
     tmdb(`/${type}/${id}`, { append_to_response: 'external_ids,videos,credits' }),
     traktGet(`/search/tmdb/${id}?type=${tt}`).then(r => {
       const found = r[0]?.[tt];
-      return found ? traktGet(`/${tt}s/${found.ids.trakt}?extended=full,colors`) : null;
+      return found ? traktGet(`/${tt}s/${found.ids.trakt}?extended=full`) : null;
     }).catch(none),
   ]);
   if (token !== routeToken) return;
@@ -162,13 +162,12 @@ async function showTitle(type, id, season = null) {
     : ['Created by', d.created_by ?? []];
   const people = credits[1].slice(0, 2);
   const length = runtimeText(t?.runtime ?? d.runtime);
-  const line = [yearOf(d), length, type === 'tv' && (t?.aired_episodes ?? d.number_of_episodes) && `${t?.aired_episodes ?? d.number_of_episodes} episodes`, t?.certification, statusText(t?.genres?.[0] ?? d.genres?.[0]?.name)].filter(Boolean);
-  const glow = safeColor(t?.colors?.poster?.[0]);
+  const airing = t?.status ?? d.status;
+  const line = [yearOf(d), length, type === 'tv' && (t?.aired_episodes ?? d.number_of_episodes) && `${t?.aired_episodes ?? d.number_of_episodes} episodes`, t?.certification, statusText(t?.genres?.[0] ?? d.genres?.[0]?.name), airing && !/^released$/i.test(airing) && statusText(airing)].filter(Boolean);
   const canPlay = playHref(type, id);
   const tagline = t?.tagline ?? d.tagline;
-  const about = factRows(aboutFacts(d, t));
 
-  app.innerHTML = `<section class="summary"${glow ? ` style="--glow:${glow}"` : ''}>
+  app.innerHTML = `<section class="summary">
     <div class="summary-inner">
       <div class="hero-poster">${trailerLink ? `<a ${trailerLink} aria-label="Watch the trailer">` : '<div>'}
         ${d.poster_path ? `<img class="summary-poster" src="${IMG}w500${esc(d.poster_path)}" alt="">` : `<div class="summary-poster no-poster">${esc(name)}</div>`}${trailerLink ? '</a>' : '</div>'}
@@ -177,7 +176,6 @@ async function showTitle(type, id, season = null) {
         <h1>${esc(name)}</h1>
         ${people.length ? `<p class="credit-line">${esc(credits[0])} ${people.map(p => `<a href="#/person/${+p.id}">${esc(p.name)}</a>`).join(', ')}</p>` : ''}
         <p class="meta-line muted"><span>${esc(line.join(' • '))}</span> <button type="button" class="link-btn" id="open-details">Details</button></p>
-        ${t?.status || d.status ? `<p class="status-line">${esc(statusText(t?.status ?? d.status))}</p>` : ''}
         ${tagline ? `<p class="tagline">${esc(tagline)}</p>` : ''}
         <p class="overview" id="overview">${esc(t?.overview ?? d.overview)}</p>
         <div class="action-bar">
@@ -189,7 +187,7 @@ async function showTitle(type, id, season = null) {
             <button type="button" class="action-btn" id="more-actions" title="More" aria-label="More actions">${icon('more')}</button>` : ''}
         </div>
       </div>
-      <aside class="title-side">${about ? `<h2>About</h2><div class="fact-list">${about}</div>` : ''}<div id="sentiment"></div></aside>
+      <aside class="title-side" id="vibes" hidden></aside>
     </div></section>
     <div class="page title-rows" id="title-rows"></div>`;
 
@@ -228,24 +226,32 @@ async function showTitle(type, id, season = null) {
     });
   }
 
-  // Sentiment fills in without moving what's already on the page.
-  const base = t && `/${tt}s/${t.ids.trakt}`;
-  if (t) traktGet(`${base}/sentiments`).then(s => {
-    const box = $('sentiment');
-    if (!box || token !== routeToken || !(s?.good?.length || s?.bad?.length)) return;
-    const list = (title, items, cls) => items?.length ? `<div class="sentiment-group"><b class="${cls}">${title}</b><ul>${items.slice(0, 3).map(i => `<li>${esc(i.sentiment)}</li>`).join('')}</ul></div>` : '';
-    box.innerHTML = `<h2>Sentiment</h2>${list('Good', s.good, 'good')}${list('Bad', s.bad, 'bad')}`;
-  }).catch(console.warn);
+  // Nanocrowd: what viewers say the film is about, and films that feel like it. It only covers movies,
+  // and its catalog spells titles without accents.
+  const vibes = type === 'movie' && imdb && yearOf(d)
+    ? invoke('nanocrowd_title_info', { title: name.normalize('NFD').replace(/\p{M}/gu, ''), year: +yearOf(d), imdbId: imdb }).catch(e => { console.warn(e); return null; })
+    : null;
+  vibes?.then(info => {
+    const box = $('vibes');
+    if (!box || token !== routeToken || !info?.keywords?.length) return;
+    box.innerHTML = vibeCloud(info.keywords);
+    box.hidden = false;
+  });
 
+  const base = t && `/${tt}s/${t.ids.trakt}`;
   const into = $('title-rows');
   const seasons = type === 'tv' ? await seasonRail({ d, id, t, into, season, next }) : null;
   if (token !== routeToken) return;
   const cast = d.credits?.cast?.slice(0, 20) ?? [];
+  const related = t && (async () => posters(await traktGet(`${base}/related?limit=20&extended=full`), tt));
+  // One row of similar titles: Nanocrowd's for a movie it knows, Trakt's otherwise.
+  const similar = vibes && (async () => {
+    const found = (await Promise.all(((await vibes)?.mostLikeTitles ?? []).slice(0, 20).map(r => tmdbMovie(r.title, r.year)))).filter(Boolean);
+    return found.length ? found.map(it => posterCard(it)).join('') : related ? related() : '';
+  });
   const rows = renderRows([
-    cast.length && { id: 'cast', title: 'Actors', load: async () => cast.map(personCard).join('') },
-    t && { id: 'comments', title: 'Comments', kind: 'list', load: async () => (await traktGet(`${base}/comments/likes?limit=10`)).map(commentCard).join('') },
-    t && { id: 'videos', title: 'Videos', kind: 'landscape', load: async () => (await traktGet(`${base}/videos`)).filter(v => youtubeKey(v.url)).map(videoCard).join('') },
-    t && { id: 'related', title: 'Related', bright: true, load: async () => posters(await traktGet(`${base}/related?limit=20&extended=full`), tt) },
+    cast.length && { id: 'cast', title: 'Cast', load: async () => cast.map(personCard).join('') },
+    (similar || related) && { id: 'similar', title: 'More like this', bright: true, load: similar || related },
     t && { id: 'lists', title: 'Lists', kind: 'list', load: async () => (await traktGet(`${base}/lists/personal/popular?limit=10`)).map(publicListCard).join('') },
   ], into);
   await rows;

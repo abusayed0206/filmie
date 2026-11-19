@@ -8,7 +8,7 @@ Filmie is a lightweight Windows app for browsing movies and TV shows and keeping
 
 **[Download for Windows](https://github.com/abusayed0206/filmie/releases/latest/download/Filmie-Setup-x64.exe)** · [Website](https://filmie.sayed.app) · [All releases](https://github.com/abusayed0206/filmie/releases)
 
-> **Filmie doesn't host, store or serve any content.** It includes no video servers. It only shows information from TMDB and Trakt, and opens servers you add yourself. See the [Terms of Use](TERMS.md).
+> **Filmie doesn't host, store or serve any content.** It includes no video servers. It only shows information from TMDB, Trakt and Nanocrowd, and opens servers you add yourself. See the [Terms of Use](TERMS.md).
 
 <p align="center">
   <img src="site/public/shots/home-1440.webp" width="900" alt="Filmie's Home page with Continue Watching and Start Watching rows">
@@ -20,7 +20,7 @@ These are the real app, signed in to a real Trakt account.
 
 | Title page | Player |
 |---|---|
-| <img src="site/public/shots/title-960.webp" alt="Fargo's title page with seasons and a play button for the next episode"> | <img src="site/public/shots/player-960.webp" alt="The player with the episode menu open"> |
+| <img src="site/public/shots/title-960.webp" alt="Inception's title page with its play button and a word cloud of its vibes"> | <img src="site/public/shots/player-960.webp" alt="The player with the episode menu open"> |
 | **Stats** | **Discover** |
 | <img src="site/public/shots/profile-960.webp" alt="The Profile page with totals, top genres, ratings and activity"> | <img src="site/public/shots/discover-960.webp" alt="Discover with Trending, Releases and Anticipated rows"> |
 | **Ctrl+K palette** | **Filters** |
@@ -33,13 +33,15 @@ The player shows a trailer because Filmie ships with no video servers.
 - **Browse:** trending, releases, anticipated, popular and more charts, switching between Media, Shows and Movies, with filters for genre, decade, runtime, rating and more.
 - **Find anything:** press **Ctrl+K** to jump to a page or title, or search movies, shows, people and lists.
 - **See the details:** seasons and episodes, cast and person pages, comments, videos, related titles and lists.
+- **Browse by vibe:** Nanocrowd's genres with the mood words viewers use for them, plus each movie's vibe tags and films that feel like it.
 - **Track with Trakt:** continue watching, calendar, watchlist, history, library, progress, your lists, ratings, favorites, notes and recommendations.
 - **See your stats:** totals, top genres, ratings, activity and a watching streak, worked out on your PC with no VIP needed. They work offline too.
 - **Stay in control:** nothing is marked as watched until you ask, with no check-ins or scrobbling.
 - **Recently played:** your own list and progress, kept on your PC and separate from Trakt. Progress shows when the player exposes its video.
-- **Fast and offline-friendly:** TMDB and Trakt responses are cached in a local SQLite database.
+- **Fast and offline-friendly:** TMDB, Trakt and Nanocrowd responses are cached in a local SQLite database.
 - **Move around a show:** switch seasons and jump straight to any episode from the player.
-- **Use your own servers:** add as many as you like and switch between them while watching.
+- **Use your own servers:** add as many as you like and switch between them while watching. Auto picks the sharpest and remembers it for each title.
+- **Finish and record:** near the end of a movie or episode, Filmie offers to add it to your Trakt history. Nothing is sent unless you press it.
 - **Find more info:** links to IMDb, Letterboxd, TMDB, Rotten Tomatoes, Metacritic and Trakt.
 - **Watch distraction-free:** fullscreen mode, and pop-ups from embedded pages are blocked.
 

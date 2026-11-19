@@ -297,7 +297,7 @@ impl State {
                 items.extend(mirrored.iter().cloned());
                 continue;
             }
-            for page in 1.. {
+            for page in 1..=MAX_PAGES {
                 let batch = self.request(Method::GET, &format!("/sync/ratings/{t}?page={page}&limit={HISTORY_PAGE}"), None).await?;
                 let batch = batch.as_array().cloned().unwrap_or_default();
                 let last = batch.len() < HISTORY_PAGE;
@@ -363,7 +363,7 @@ impl State {
             Some(newest) => Some(self.db.iso_time(newest).map_err(err)?),
             None => None,
         };
-        for page in 1.. {
+        for page in 1..=MAX_PAGES {
             let batch = self.request(Method::GET, &newer_path(start.as_deref(), page), None).await?;
             let batch = batch.as_array().cloned().unwrap_or_default();
             if self.while_signed_in(|db| db.store_history(&batch)).await?.is_none() {
@@ -405,12 +405,15 @@ fn history_diverged(total: i64, gap: i64, stored: i64) -> bool {
     total - gap != stored
 }
 
+// Ends a paging loop even if Trakt keeps sending full pages: 200,000 items at 100 a page.
+const MAX_PAGES: usize = 2000;
+
 #[tauri::command]
 pub async fn trakt(s: tauri::State<'_, State>, method: String, path: String, body: Option<Value>) -> Result<Value, String> {
     if !path.starts_with('/') {
         return Err("bad path".into());
     }
-    let method = Method::from_bytes(method.as_bytes()).map_err(err)?;
+    let method = Method::from_bytes(method.to_ascii_uppercase().as_bytes()).map_err(err)?;
     if method == Method::GET {
         let (ttl, user_scoped) = cache_policy(&path);
         return s.db.through(&format!("trakt {path}"), ttl, user_scoped, s.request(Method::GET, &path, None)).await;
@@ -440,6 +443,7 @@ pub async fn device_poll(s: tauri::State<'_, State>, device_code: String) -> Res
             *s.tokens.lock().await = Some(t);
             // A session that expired leaves its copy behind, and this may be someone else signing in.
             s.db.clear_trakt_data().map_err(err)?;
+            s.db.clear_user();
             Ok("ok")
         }
         400 => Ok("pending"),
@@ -502,7 +506,7 @@ pub async fn status(s: tauri::State<'_, State>) -> Result<Value, String> {
 }
 
 /// The last library copy on disk, without touching the network, so the first page can draw at once.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn library(s: tauri::State<'_, State>) -> Value {
     s.read_library()
 }
@@ -526,7 +530,7 @@ pub async fn sync(s: tauri::State<'_, State>) -> Result<Value, String> {
             continue;
         }
         let mut items = Vec::new();
-        for page in 1.. {
+        for page in 1..=MAX_PAGES {
             let batch = s.request(Method::GET, &format!("{path}?page={page}&limit={PAGE}"), None).await?;
             let batch = batch.as_array().cloned().unwrap_or_default();
             let last = batch.len() < PAGE;
@@ -538,6 +542,10 @@ pub async fn sync(s: tauri::State<'_, State>) -> Result<Value, String> {
         lib[*key] = Value::Array(items);
     }
     lib["activities"] = activities;
+    // Signing out during the fetch deletes the copy, which must not come back.
+    if s.tokens.lock().await.is_none() {
+        return Ok(Value::Null);
+    }
     std::fs::write(&s.library_path, serde_json::to_vec(&lib).map_err(err)?).map_err(err)?;
     Ok(lib)
 }

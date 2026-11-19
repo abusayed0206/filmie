@@ -97,14 +97,27 @@ const setServer = i => { try { localStorage.setItem('server', i); } catch {} };
 function getAutoServer() {
   try { return localStorage.getItem('server-auto') !== 'off'; } catch { return true; }
 }
+// With Auto on, a title keeps the server that won its race, by name, so its next episodes skip the race.
+// shortcut: kept for the last 200 titles, oldest dropped first; raise it if people ask.
+const serverMemory = () => { try { return JSON.parse(localStorage.getItem('server-for')) ?? {}; } catch { return {}; } };
+function rememberedServer(type, id, sources) {
+  const i = sources.findIndex(x => x.name === serverMemory()[`${type}:${id}`]);
+  return i >= 0 ? i : null;
+}
+function rememberServer(type, id, source) {
+  const memory = serverMemory();
+  delete memory[`${type}:${id}`];
+  memory[`${type}:${id}`] = source.name;
+  const keys = Object.keys(memory);
+  for (const k of keys.slice(0, Math.max(0, keys.length - 200))) delete memory[k];
+  try { localStorage.setItem('server-for', JSON.stringify(memory)); } catch {}
+}
 const setAutoServer = on => { try { localStorage.setItem('server-auto', on ? 'on' : 'off'); } catch {} };
 const setSources = list => localStorage.setItem('sources', JSON.stringify(list));
 function getQuality() {
   try { return qualityOf(localStorage.getItem('quality')); } catch { return '1080p'; }
 }
 const setQuality = q => { try { localStorage.setItem('quality', qualityOf(q)); } catch {} };
-// Per-server design is optional; invalid saved values fall back to the app theme.
-const accentOf = s => /^#[0-9a-f]{6}$/i.test(s?.accent ?? '') ? s.accent : null;
 const closeMenus = except => document.querySelectorAll('.server-picker, .episode-picker').forEach(p => {
   if (p === except) return;
   p.querySelector('.server-menu, .episode-menu').hidden = true;
@@ -148,6 +161,10 @@ window.addEventListener('message', ev => {
   nowPlaying.entry.position = progress.t;
   nowPlaying.entry.duration = progress.d;
   savePlayed();
+  if (!nowPlaying.offered && progress.d > 0 && progress.t / progress.d >= .9) {
+    nowPlaying.offered = true;
+    nowPlaying.onNearlyDone?.();
+  }
 });
 
 // ---------- Trakt library lookups (TMDB ids)
@@ -225,25 +242,6 @@ async function write(path, body) {
 }
 
 const episodeBody = (id, s, e) => ({ shows: [{ ...ids(id), seasons: [{ number: +s, episodes: [{ number: +e }] }] }] });
-
-// Fills a <select> with the user's own Trakt lists; picking one adds the movie or show to it.
-async function listPicker(el, tt, id) {
-  if (!el) return;
-  const lists = await traktGet('/users/me/lists').catch(() => []);
-  el.innerHTML = `<option value="">Add to list…</option>${lists.map(l => `<option value="${l.ids.trakt}">${esc(l.name)}</option>`).join('')}`;
-  el.hidden = !lists.length;
-  el.onchange = async () => {
-    const list = lists.find(l => String(l.ids.trakt) === el.value);
-    el.value = '';
-    if (!list) return;
-    el.disabled = true;
-    try {
-      const r = await trakt('POST', `/users/me/lists/${list.ids.trakt}/items`, { [`${tt}s`]: [ids(id)] });
-      toast(`${r?.added?.[`${tt}s`] ? 'Added to' : 'Already in'} ${list.name}`);
-    } catch (e) { toast(e); }
-    el.disabled = false;
-  };
-}
 
 // Where "Play" goes: a movie, or the next unwatched episode of a show (S1E1 when new).
 function playHref(type, id) {

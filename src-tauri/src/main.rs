@@ -2,6 +2,7 @@
 
 mod db;
 mod keys;
+mod nanocrowd;
 mod trakt;
 
 use serde_json::{Value, json};
@@ -284,7 +285,9 @@ async fn tmdb_fetch(s: &trakt::State, path: &str, query: &BTreeMap<String, Strin
         .map_err(|e| e.to_string())?;
     let status = res.status();
     trakt::log_request("tmdb", "GET", status.as_u16(), path);
-    let body: Value = res.json().await.map_err(|e| e.to_string())?;
+    // An error page may not be JSON; the status still says what went wrong, and art() needs to see a 404.
+    let body: Value =
+        if status.is_success() { res.json().await.map_err(|e| e.to_string())? } else { res.json().await.unwrap_or(Value::Null) };
     if status.is_success() {
         Ok(body)
     } else {
@@ -299,7 +302,13 @@ async fn tmdb(s: tauri::State<'_, trakt::State>, path: String, query: Option<BTr
     }
     let query = query.unwrap_or_default();
     // Airing shows gain episodes; a movie's details rarely change. TMDB's terms allow caching for up to 6 months.
-    let ttl = if path.starts_with("/movie/") { 7 * 86_400 } else { 86_400 };
+    let ttl = if path.starts_with("/find/") {
+        30 * 86_400 // an IMDb id always maps to the same TMDB id
+    } else if path.starts_with("/movie/") {
+        7 * 86_400
+    } else {
+        86_400
+    };
     // The key leaves out the API key, and BTreeMap keeps the query in a stable order.
     let key = format!("tmdb {path} {}", serde_json::to_string(&query).map_err(|e| e.to_string())?);
     s.db.through(&key, ttl, false, tmdb_fetch(&s, &path, &query)).await
@@ -348,6 +357,14 @@ fn main() {
             };
             std::fs::create_dir_all(&data_dir)?;
             app.manage(trakt::State::new(data_dir.join("library.json"), db::Db::open(data_dir.join("filmie.sqlite3"))));
+            app.manage(nanocrowd::NanocrowdState::new());
+            // Ready before the first title page asks: from the database after the first launch, so usually no request.
+            let warm = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                if let Err(e) = warm.state::<nanocrowd::NanocrowdState>().token(&warm.state::<trakt::State>()).await {
+                    eprintln!("{e}");
+                }
+            });
 
             let handle = app.handle().clone();
             let mut window = WebviewWindowBuilder::new(app, "main", WebviewUrl::default())
@@ -394,7 +411,9 @@ fn main() {
             db::history_clear,
             db::cache_info,
             db::cache_clear,
-            db::stats
+            db::stats,
+            nanocrowd::nanocrowd_title_info,
+            nanocrowd::nanocrowd_tier
         ])
         .run(tauri::generate_context!())
         .expect("error while running Filmie");

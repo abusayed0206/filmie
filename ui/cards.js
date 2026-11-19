@@ -10,7 +10,7 @@ const watchAction = (it, s, e) => user ? `<button type="button" class="card-acti
 // Takes a title off a list of the person's own. `path` is the Trakt route that removes it.
 const removeAction = (it, path, label, done = 'Removed') => `<button type="button" class="card-action" title="${esc(label)}" aria-label="${esc(label)}: ${esc(it.title)}" data-remove-path="${esc(path)}" data-remove-type="${it.type}" data-id-value="${it.id}" data-remove-done="${esc(done)}">${icon('close')}</button>`;
 
-function posterCard(it, { label, titled, action } = {}) {
+function posterCard(it, { label, titled, action, play } = {}) {
   const tt = traktType(it.type);
   const started = it.type === 'tv' && nextEps.has(it.id);
   const watched = it.type === 'movie' ? watchedMovie(it.id) : !!watchedShow(it.id) && !started;
@@ -22,25 +22,27 @@ function posterCard(it, { label, titled, action } = {}) {
     <a class="poster" href="#/title/${it.type}/${it.id}" data-type="${it.type}" data-id="${it.id}" title="${esc(it.title)}" aria-label="${esc([it.title, it.year].filter(Boolean).join(', '))}">
       <div class="art"><span class="cover-title">${esc(it.title)}</span><div class="tags">${typeTag}</div>${status ? `<i class="status-tag">${esc(status)}</i>` : ''}</div>
       <div class="card-footer${titled ? ' titled' : ''}">${titled ? `<b>${esc(it.title)}</b>` : ''}${tags.map(t => `<span class="meta-tag">${esc(t)}</span>`).join('')}</div></a>
-    ${cardMenuButton(it)}${action ?? ''}</div>`;
+    ${playButton(it, play)}${cardMenuButton(it)}${action ?? ''}</div>`;
 }
 const posters = (items, type, label) => (items ?? []).map(x => [norm(x, type), x]).filter(([it]) => it).map(([it, x]) => posterCard(it, { label: label?.(x) })).join('');
 const traktPosters = (path, type, label) => async () => posters(await traktGet(path), type, label);
 
-function progressCard(href, it, line, pct, note, { action, play = true } = {}) {
+// Every card opens its title page. Where a card can also start watching, `play` is the player link, a button of its own.
+const playButton = (it, play) => play ? `<a class="card-play" href="${play}" title="Play" aria-label="Play ${esc(it.title)}"><span class="play-icon">${icon('play')}</span></a>` : '';
+function progressCard(href, it, line, pct, note, { action, play } = {}) {
   return `<div class="media-card landscape-card"><a class="ep-card" href="${href}" data-type="${it.type}" data-id="${it.id}" data-art="backdrop" title="${esc(it.title)}">
-    <div class="art"><span class="cover-title">${esc(it.title)}</span>${play ? `<span class="play-icon">${icon('play')}</span>` : ''}</div>
+    <div class="art"><span class="cover-title">${esc(it.title)}</span></div>
     <b>${esc(it.title)}</b><span>${esc(line)}</span>
-    ${pct === null ? '' : `<div class="bar"><i style="width:${Math.min(100, Math.round(pct))}%"></i></div>`}<small>${esc(note)}</small></a>${action ?? ''}</div>`;
+    ${pct === null ? '' : `<div class="bar"><i style="width:${Math.min(100, Math.round(pct))}%"></i></div>`}<small>${esc(note)}</small></a>${playButton(it, play)}${action ?? ''}</div>`;
 }
 const episodeLine = ep => `S${ep.season}E${ep.number}${ep.title ? ` · ${ep.title}` : ''}`;
-const epCard = (it, s, e, title, pct, note, opts) => progressCard(`#/play/tv/${it.id}/${s}/${e}`, it, episodeLine({ season: s, number: e, title }), pct, note, opts);
+const epCard = (it, s, e, title, pct, note, opts) => progressCard(`#/title/tv/${it.id}/${s}`, it, episodeLine({ season: s, number: e, title }), pct, note, { ...opts, play: `#/play/tv/${it.id}/${s}/${e}` });
 
 // Continue Watching: a show's next episode, or a paused movie.
 function continueCard(x) {
   const it = norm(x, x.show ? 'show' : 'movie');
   if (!it) return '';
-  if (!x.show) return progressCard(`#/play/movie/${it.id}`, it, it.year ?? '', x.progress, `${Math.round(x.progress)}% watched`, { action: watchAction(it) });
+  if (!x.show) return progressCard(`#/title/movie/${it.id}`, it, it.year ?? '', x.progress, `${Math.round(x.progress)}% watched`, { action: watchAction(it), play: `#/play/movie/${it.id}` });
   const p = x.progress;
   const ep = p.next_episode;
   if (!ep) return '';
@@ -61,8 +63,8 @@ function calendarCard(x) {
   if (!it) return '';
   const date = shortDate(x.first_aired ?? x.released);
   return x.episode
-    ? progressCard(`#/title/tv/${it.id}/${x.episode.season}`, it, episodeLine(x.episode), null, date, { play: false })
-    : progressCard(`#/title/movie/${it.id}`, it, it.year ?? 'Movie', null, date, { play: false });
+    ? progressCard(`#/title/tv/${it.id}/${x.episode.season}`, it, episodeLine(x.episode), null, date)
+    : progressCard(`#/title/movie/${it.id}`, it, it.year ?? 'Movie', null, date);
 }
 
 // A history entry. The History page also lets each play be removed.
@@ -71,8 +73,8 @@ function historyCard(x, { removable } = {}) {
   if (!it) return '';
   const date = shortDate(x.watched_at);
   const action = removable && x.id ? `<button type="button" class="card-action" title="Remove this play" aria-label="Remove this play of ${esc(it.title)}" data-remove-play="${+x.id}">${icon('close')}</button>` : '';
-  if (!x.episode) return progressCard(`#/title/movie/${it.id}`, it, it.year ?? 'Movie', null, date, { play: false, action });
-  return progressCard(`#/title/tv/${it.id}/${x.episode.season}`, it, episodeLine(x.episode), null, date, { play: false, action });
+  if (!x.episode) return progressCard(`#/title/movie/${it.id}`, it, it.year ?? 'Movie', null, date, { action });
+  return progressCard(`#/title/tv/${it.id}/${x.episode.season}`, it, episodeLine(x.episode), null, date, { action });
 }
 
 // For a grid of calendar entries in date order: adds a heading wherever the day changes.
@@ -92,7 +94,7 @@ const byAirDate = (a, b) => (a.first_aired ?? a.released ?? '').localeCompare(b.
 function startCard(x) {
   const it = norm(x, x.show ? 'show' : 'movie');
   if (!it) return '';
-  return posterCard(it, { titled: true, label: it.type === 'tv' ? 'S1E1' : runtimeText(it.runtime) || it.year, action: it.type === 'tv' ? watchAction(it, 1, 1) : watchAction(it) });
+  return posterCard(it, { titled: true, label: it.type === 'tv' ? 'S1E1' : runtimeText(it.runtime) || it.year, action: it.type === 'tv' ? watchAction(it, 1, 1) : watchAction(it), play: it.type === 'tv' ? `#/play/tv/${it.id}/1/1` : `#/play/movie/${it.id}` });
 }
 
 // This PC's own list, kept in SQLite and separate from Trakt's "Continue watching".
@@ -101,7 +103,7 @@ const recentCards = async () => (await invoke('history_list', { limit: 30 })).fi
   const pct = p.duration > 0 ? 100 * p.position / p.duration : null;
   return p.kind === 'tv'
     ? epCard(it, p.season, p.episode, '', pct, playedNote(p))
-    : progressCard(`#/play/movie/${p.id}`, it, 'Movie', pct, playedNote(p));
+    : progressCard(`#/title/movie/${p.id}`, it, 'Movie', pct, playedNote(p), { play: `#/play/movie/${p.id}` });
 }).join('');
 
 const personCard = c => `<a class="person" href="#/person/${+c.id}"><div class="art"${c.profile_path ? ` style="background-image:url('${IMG}w185${esc(c.profile_path)}')"` : ''}>${c.profile_path ? '' : icon('user')}</div>
@@ -110,18 +112,18 @@ const personCard = c => `<a class="person" href="#/person/${+c.id}"><div class="
 const listTile = (l, href = `#/list/${+l.ids.trakt}`) => `<a class="list-tile" href="${esc(href)}"><b>${esc(l.name)}</b><span>${num(l.item_count)} items${l.privacy ? ` · ${esc(l.privacy)}` : ''}</span>${l.description ? `<p>${esc(l.description)}</p>` : ''}</a>`;
 
 // Rich card for the full grids: backdrop behind, poster on the left, details on the right.
-function summaryCard(it, { sortValue, label, line, href, action } = {}) {
+function summaryCard(it, { sortValue, label, line, play, action } = {}) {
   const genres = (it.genres ?? []).slice(0, 2).join(', ');
   const score = sortValue ?? (it.rating ? `${Math.round(it.rating * 10)}%` : '');
   const tags = [label, it.year, it.type === 'tv' ? it.episodes && `${it.episodes} eps` : runtimeText(it.runtime)].filter(Boolean);
   return `<div class="media-card summary-card">
-    <a class="summary-link" href="${href ?? `#/title/${it.type}/${it.id}`}" data-type="${it.type}" data-id="${it.id}" data-art="summary" title="${esc(it.title)}">
+    <a class="summary-link" href="#/title/${it.type}/${it.id}" data-type="${it.type}" data-id="${it.id}" data-art="summary" title="${esc(it.title)}">
       <div class="summary-back"></div>
       <div class="art summary-thumb"><span class="cover-title">${esc(it.title)}</span></div>
       <div class="summary-body"><b>${esc(it.title)}</b>${line ? `<small>${esc(line)}</small>` : ''}${genres ? `<small class="muted">${esc(genres)}</small>` : ''}
         <div class="summary-tags">${tags.map(t => `<span class="meta-tag">${esc(t)}</span>`).join('')}</div>
         ${score ? `<span class="summary-score">${esc(score)}</span>` : ''}</div></a>
-    ${cardMenuButton(it)}${action ?? ''}</div>`;
+    ${playButton(it, play)}${cardMenuButton(it)}${action ?? ''}</div>`;
 }
 
 // Artwork comes from TMDB, one request per title. Only cards still near the screen wait for it, a few at a time,

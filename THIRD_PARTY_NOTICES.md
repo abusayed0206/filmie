@@ -7,9 +7,9 @@ Filmie's own code is under the [MIT License](LICENSE). These components keep the
 The Windows installer bundles an unmodified copy of uBlock Origin Lite for ad blocking. It runs as a separate browser extension and isn't part of Filmie's MIT-licensed code.
 
 - License: [GNU General Public License v3.0](https://www.gnu.org/licenses/gpl-3.0.html)
-- Version: 2026.1026.1812, the Edge build
+- Version: 2026.1116.1650, the Edge build
 - Source: <https://github.com/uBlockOrigin/uBOL-home>
-- Release used: <https://github.com/uBlockOrigin/uBOL-home/releases/tag/2026.1026.1812>
+- Release used: <https://github.com/uBlockOrigin/uBOL-home/releases/tag/2026.1116.1650>
 
 `scripts/fetch-ubol.ps1` downloads this version and checks its SHA-256 hash.
 

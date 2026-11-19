@@ -212,9 +212,6 @@ function historyBody({ type, id, season, episode }, watchedAt) {
   if (season === undefined) return { shows: [{ ids: { tmdb: id }, ...at }] };
   return { shows: [{ ids: { tmdb: id }, seasons: [{ number: season, episodes: [{ number: episode, ...at }] }] }] };
 }
-
-// A title's colour goes into a style attribute, so only a plain hex colour gets through.
-const safeColor = c => /^#[0-9a-f]{6}$/i.test(c ?? '') ? c : null;
 // A YouTube video's id, which goes into an embed address, so nothing else gets through.
 function youtubeKey(url) {
   return /^https:\/\/(?:(?:www\.|m\.)?youtube\.com\/(?:watch\?(?:[^#]*&)?v=|embed\/)|youtu\.be\/)([\w-]{1,32})(?:[&?#/]|$)/.exec(url ?? '')?.[1] ?? null;
@@ -350,4 +347,28 @@ function playedNote(p, now = Date.now() / 1000) {
   return `Opened ${Math.floor(mins / 1440)} d ago`;
 }
 
-if (typeof module !== 'undefined') module.exports = { validProgress, playedNote, historyBody, safeColor, youtubeKey, pickTrailer, newestCredits, isoDate, shortDate, fullDate, addDays, weekStart, sortValue, hasEnded, sortLists, exactFirst, streakFrom, weekHeatmap, durationText, recentMonths, mergeContinue, startWatching, runtimeText, statusTag, navFor, modeOf, FILTERS, decadeOptions, cleanFilters, filterQuery, filterCount, addQuery, fitsSimple, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, betterServer, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm };
+// Lays out a word cloud inside a circle, the strongest word in the middle. Each word is sized by its weight and set
+// down at the first free spot on a spiral out from the centre; one that fits nowhere is left out.
+// Returns { term, x, y, size } in a box `box` units square, with x and y at the word's centre.
+function cloudLayout(words, box = 320, { min = 12, max = 40, width = .56 } = {}) {
+  const sorted = [...words].filter(w => w.weight > 0).sort((a, b) => b.weight - a.weight);
+  if (!sorted.length) return [];
+  const top = Math.sqrt(sorted[0].weight);
+  const r = box / 2;
+  const placed = [];
+  const overlaps = (a, b) => Math.abs(a.x - b.x) * 2 < a.w + b.w + 10 && Math.abs(a.y - b.y) * 2 < a.h + b.h + 8;
+  const inside = c => [[-1, -1], [1, -1], [-1, 1], [1, 1]].every(([sx, sy]) => Math.hypot(c.x + sx * c.w / 2 - r, c.y + sy * c.h / 2 - r) <= r - 4);
+  for (const w of sorted) {
+    const size = Math.round(min + (max - min) * Math.sqrt(w.weight) / top);
+    const c = { term: w.term, size, w: w.term.length * size * width, h: size * .9, x: r, y: r };
+    for (let t = 0; t < 600; t++) {
+      const a = t * .35;
+      c.x = r + a * 1.6 * Math.cos(a);
+      c.y = r + a * 1.1 * Math.sin(a); // flatter than a circle, since words are wide
+      if (inside(c) && !placed.some(p => overlaps(c, p))) { placed.push({ ...c }); break; }
+    }
+  }
+  return placed.map(({ term, x, y, size, w, h }) => ({ term, x: Math.round(x), y: Math.round(y), size, w, h }));
+}
+
+if (typeof module !== 'undefined') module.exports = { cloudLayout, validProgress, playedNote, historyBody, youtubeKey, pickTrailer, newestCredits, isoDate, shortDate, fullDate, addDays, weekStart, sortValue, hasEnded, sortLists, exactFirst, streakFrom, weekHeatmap, durationText, recentMonths, mergeContinue, startWatching, runtimeText, statusTag, navFor, modeOf, FILTERS, decadeOptions, cleanFilters, filterQuery, filterCount, addQuery, fitsSimple, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, betterServer, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm };

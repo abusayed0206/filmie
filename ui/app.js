@@ -19,7 +19,9 @@ Object.assign(pages, {
           <p class="muted">Only add servers you have the right to use.</p></div></section></div>`;
       return;
     }
-    const server = getServer(sources.length);
+    const auto = sources.length > 1 && getAutoServer();
+    const remembered = auto ? rememberedServer(type, id, sources) : null;
+    const server = remembered ?? getServer(sources.length);
     const tt = traktType(type);
     const d = await tmdb(`/${type}/${id}`);
     const next = type === 'tv' ? episodeAfter(d, s, e) : null;
@@ -36,43 +38,37 @@ Object.assign(pages, {
         <div class="episode-menu" id="episode-menu" hidden>
           <div class="episode-menu-head"><b>Episodes</b><select id="episode-season" aria-label="Season">${seasonOptions}</select></div>
           <div class="episode-list" id="episode-list"><p class="menu-note">Loading…</p></div>
-          <a class="episode-menu-edit" href="${backHref}">View show details</a>
         </div>
       </div>` : '';
     const btn = (id, ic, label) => `<button id="${id}" class="btn">${icon(ic)}<span class="label">${label}</span></button>`;
-    const dot = x => accentOf(x) ?? 'var(--muted)';
-    const serverOptions = sources.map((x, i) => `<button type="button" class="server-option" data-server="${i}" aria-pressed="${i === server}" style="--dot:${dot(x)}">
-        <span class="server-dot"></span>
+    const serverOptions = sources.map((x, i) => `<button type="button" class="server-option" data-server="${i}" aria-pressed="${i === server}">
         <span class="server-option-text"><b>${esc(x.name)}</b>${x.note ? `<small>${esc(x.note)}</small>` : ''}</span>
         ${icon('check')}
       </button>`).join('');
-    const auto = sources.length > 1 && getAutoServer();
-    const autoOption = sources.length > 1 ? `<button type="button" class="server-option" data-server="auto" aria-pressed="${auto}" style="--dot:var(--muted)">
-        <span class="server-dot"></span>
+    const autoOption = sources.length > 1 ? `<button type="button" class="server-option" data-server="auto" aria-pressed="${auto}">
         <span class="server-option-text"><b>Auto</b><small>Tries every server and plays the sharpest</small></span>
         ${icon('check')}
       </button>` : '';
     // The bar sits above the iframe, never over it, so the player's own controls stay clickable.
     // The server list opens over the video only while choosing, so it costs the player no space.
-    app.innerHTML = `<div class="player-page" style="--server-accent:${accentOf(sources[server]) ?? 'var(--line)'}">
+    app.innerHTML = `<div class="player-page">
       <div class="player-bar">
         <a class="icon-btn ghost" href="${backHref}" data-player-back aria-label="Back" title="Back">${icon('back')}</a>
         <a class="icon-btn ghost" href="#/" aria-label="Home" title="Home">${icon('home')}</a>
-        <a class="player-title" href="${backHref}" title="Show details"><b>${esc(d.title ?? d.name)}</b>
-          <span>${type === 'tv' ? `S${s} · E${e}${epName ? ` · ${esc(epName)}` : ''}` : esc(yearOf(d))}</span></a>
+        <div class="player-title"><b>${esc(d.title ?? d.name)}</b>
+          <span>${type === 'tv' ? `S${s} · E${e}${epName ? ` · ${esc(epName)}` : ''}` : esc(yearOf(d))}</span></div>
+        <a class="btn" href="${backHref}" title="Open the ${type === 'tv' ? 'show' : 'movie'}'s page">${icon('info')}<span class="label">Details</span></a>
         ${episodeMenuHtml}
         <div class="server-picker">
           <button id="server" class="btn server-btn" aria-haspopup="true" aria-expanded="false" title="Change server">
-            <span class="server-dot" style="--dot:${dot(sources[server])}"></span>
             <span class="server-btn-name">${esc(sources[server].name)}</span>${icon('chevron')}
           </button>
           <div class="server-menu" id="server-menu" role="group" aria-label="Video servers" hidden>
-            <div class="server-menu-head">Servers</div>${autoOption}${serverOptions}
+            ${autoOption}${serverOptions}
             <a class="server-menu-edit" href="#/settings">Edit servers</a>
           </div>
         </div>
-        ${user ? `<span class="divider"></span>${btn('mark', 'check', 'Mark watched')}${btn('wl', 'plus', 'Watchlist')}
-          <select id="addlist" aria-label="Add to a Trakt list" hidden></select>` : ''}
+        ${user ? `<span class="divider"></span>${btn('mark', 'check', 'Mark watched')}${btn('wl', 'plus', 'Watchlist')}` : ''}
         ${next ? `<a class="btn primary" href="#/play/tv/${id}/${next[0]}/${next[1]}" title="Next episode: S${next[0]} · E${next[1]}"><span class="label">Next</span>${icon('next')}</a>` : ''}
         ${fsButton}
       </div>
@@ -118,8 +114,6 @@ Object.assign(pages, {
       try { playerFrame.contentWindow.location.replace(srcFor(i)); } catch { playerFrame.src = srcFor(i); }
       syncQuality();
       serverBtn.querySelector('.server-btn-name').textContent = sources[i].name;
-      serverBtn.querySelector('.server-dot').style.setProperty('--dot', dot(sources[i]));
-      playerPage.style.setProperty('--server-accent', accentOf(sources[i]) ?? 'var(--line)');
       serverMenu.querySelectorAll('[data-server]').forEach(o => o.setAttribute('aria-pressed', String(o.dataset.server === String(i) || (o.dataset.server === 'auto' && getAutoServer()))));
     };
     // The race: every other server loads in a hidden, muted frame, each frame's injected script reports its video height,
@@ -158,9 +152,12 @@ Object.assign(pages, {
         stopRace();
         if (!playerFrame.isConnected || frames[at] !== playerFrame) return;
         const best = betterServer(heights, at);
-        if (best === null) return;
-        switchTo(best);
-        toast(`Switched to ${sources[best].name}, ${heights[best]}p`);
+        if (best !== null) {
+          switchTo(best);
+          toast(`Switched to ${sources[best].name}, ${heights[best]}p`);
+        }
+        // Whichever is playing now and showed a video is kept for this title, so its next episodes start there.
+        if (heights[current] > 0) rememberServer(type, id, sources[current]);
       }, 8000);
       stopRace = () => {
         clearTimeout(timer);
@@ -169,7 +166,7 @@ Object.assign(pages, {
         stopRace = () => {};
       };
     };
-    if (auto) race();
+    if (auto && remembered === null) race();
     serverMenu.onclick = ev => {
       const option = ev.target.closest('[data-server]');
       if (!option) return;
@@ -231,7 +228,8 @@ Object.assign(pages, {
     // Trakt actions are manual: nothing is sent until the user presses a button.
     const $ = id => document.getElementById(id);
     const body = { [`${tt}s`]: [ids(id)] };
-    let marked = false;
+    let marked = tt === 'movie' && watchedMovie(id);
+    let markedNow = false; // during this viewing; a rewatch is still offered the prompt
     const paint = () => {
       const set = (el, on, label, title) => { el.classList.toggle('on', on); el.querySelector('.label').textContent = label; el.title = title; };
       set($('mark'), marked, marked ? 'Watched' : 'Mark watched', marked ? 'Add another play to your Trakt history' : 'Add this to your Trakt history');
@@ -242,17 +240,32 @@ Object.assign(pages, {
     busy($('mark'), async () => {
       await write('/sync/history', type === 'movie' ? body : episodeBody(id, s, e));
       if (type === 'tv') refreshProgress().catch(console.warn);
-      marked = true;
+      marked = markedNow = true;
       paint();
+      app.querySelector('.finish-prompt')?.remove();
       toast('Marked watched on Trakt');
     });
+    // Near the end, offer to record the watch. Nothing is sent unless it is pressed, as watch tracking stays manual.
+    nowPlaying.onNearlyDone = () => {
+      if (markedNow || !playerPage.isConnected) return;
+      const what = type === 'tv' ? `S${s} · E${e}` : esc(d.title ?? d.name);
+      playerPage.insertAdjacentHTML('beforeend', `<div class="finish-prompt" role="dialog" aria-label="Finished watching?">
+        <p><b>Finished ${what}?</b><small class="muted">Add it to your Trakt history.</small></p>
+        <div class="finish-actions"><button type="button" class="btn primary" data-finish="add">${icon('check')}Add to history</button>
+        <button type="button" class="btn ghost" data-finish="later">Not now</button></div></div>`);
+      const box = playerPage.lastElementChild;
+      box.onclick = ev => {
+        const choice = ev.target.closest('[data-finish]')?.dataset.finish;
+        if (choice === 'add') $('mark').click();
+        if (choice) box.remove();
+      };
+    };
     busy($('wl'), async () => {
       const wl = inWatchlist(tt, id);
       await write(wl ? '/sync/watchlist/remove' : '/sync/watchlist', body);
       paint();
       toast(wl ? 'Removed from watchlist' : 'Added to watchlist');
     });
-    listPicker($('addlist'), tt, id);
   },
 });
 

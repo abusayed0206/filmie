@@ -5,7 +5,7 @@ Object.assign(pages, {
 });
 
 pages.title.bar = { back: true };
-pages.person.bar = { back: true, title: 'Person', mode: 'bar' };
+pages.person.bar = { back: true, title: 'Person', mode: 'bar', filters: 'local', trakt: false };
 
 const seasonChoice = new Map(); // show id -> the season being viewed, so a refresh stays on it
 const statusText = s => s ? s.replace(/\b\w/g, c => c.toUpperCase()) : '';
@@ -182,6 +182,7 @@ async function showTitle(type, id, season = null) {
         <h1>${esc(name)}</h1>
         ${people.length ? `<p class="credit-line">${esc(credits[0])} ${people.map(p => `<a href="#/person/${+p.id}">${esc(p.name)}</a>`).join(', ')}</p>` : ''}
         <p class="meta-line muted"><span>${esc(line.join(' • '))}</span> <button type="button" class="link-btn" id="open-details">Details</button></p>
+        <div class="title-ratings" id="title-ratings" hidden></div>
         ${tagline ? `<p class="tagline">${esc(tagline)}</p>` : ''}
         <p class="overview" id="overview">${esc(t?.overview ?? d.overview)}</p>
         <div class="action-bar">
@@ -232,11 +233,12 @@ async function showTitle(type, id, season = null) {
     });
   }
 
-  // Nanocrowd: what viewers say the film is about, and films that feel like it. It only covers movies,
-  // and its catalog spells titles without accents.
-  const vibes = type === 'movie' && imdb && yearOf(d)
-    ? invoke('nanocrowd_title_info', { title: name.normalize('NFD').replace(/\p{M}/gu, ''), year: +yearOf(d), imdbId: imdb }).catch(e => { console.warn(e); return null; })
+  // Nanocrowd: what viewers say the title is about, titles that feel like it, and its audience rating. Its catalog
+  // holds movies and shows, and spells titles without accents.
+  const vibes = imdb && yearOf(d)
+    ? invoke('nanocrowd_title_info', { title: plainTitle(name), year: +yearOf(d), imdbId: imdb }).catch(e => { console.warn(e); return null; })
     : null;
+  titleRatings($('title-ratings'), { type, id, imdb, name, year: yearOf(d), t, d, links, info: vibes });
   vibes?.then(info => {
     const box = $('vibes');
     if (!box || token !== routeToken || !info?.keywords?.length) return;
@@ -249,9 +251,10 @@ async function showTitle(type, id, season = null) {
   const seasons = type === 'tv' ? await seasonRail({ d, id, t, into, season, next }) : null;
   if (token !== routeToken) return;
   const cast = d.credits?.cast?.slice(0, 20) ?? [];
-  // One row of similar titles from both Nanocrowd (movies it knows) and Trakt's Related, taking turns, each title once.
+  // One row of similar titles from both Nanocrowd (titles it knows) and Trakt's Related, taking turns, each title once.
+  // A show's similar titles in Nanocrowd are shows, and a movie's are movies.
   const fromTrakt = async () => t ? (await traktGet(`${base}/related?limit=20&extended=full`)).map(x => norm(x, tt)).filter(Boolean) : [];
-  const fromNanocrowd = async () => vibes ? (await Promise.all(((await vibes)?.mostLikeTitles ?? []).slice(0, 20).map(r => tmdbMovie(r.title, r.year)))).filter(Boolean) : [];
+  const fromNanocrowd = async () => vibes ? (await Promise.all(((await vibes)?.mostLikeTitles ?? []).slice(0, 20).map(r => tmdbMatch(type, r.title, r.year)))).filter(Boolean) : [];
   const similar = (t || vibes) && (async () => {
     const [nanocrowd, trakt] = await Promise.all([fromNanocrowd().catch(() => []), fromTrakt().catch(() => [])]);
     // Each card names its source, so it's clear what Nanocrowd added.

@@ -66,8 +66,9 @@ function setSearchMode(m) {
   route({ soft: true });
 }
 
-// Filters: pages with `filters: 'global'` share one saved set, and other pages keep their own until the app closes.
-// A person's saved default is where both start.
+// Filters: pages with `filters: 'global'` share one saved set. 'local' pages keep their own until the app closes, and
+// any other name is a set shared by the pages using it, also until the app closes. A person's saved default is where
+// all start. A set holds Trakt's filters and Filmie's local rating sort and filters, and each page says which it takes.
 function readStoredFilters(key) {
   try { return cleanFilters(JSON.parse(localStorage.getItem(key))); } catch { return {}; }
 }
@@ -75,23 +76,39 @@ function hasStored(key) {
   try { return localStorage.getItem(key) !== null; } catch { return false; }
 }
 const savedDefaultFilters = () => readStoredFilters('filters-default');
-const saveDefaultFilters = f => { try { localStorage.setItem('filters-default', JSON.stringify(cleanFilters(f))); } catch {} };
 const localFilters = new Map();
 let filterScope = false; // this page's `bar.filters`
+let filterKinds = { trakt: false, rank: false }; // whether it takes Trakt's filters, and the local rating ones
+const scopeKey = () => filterScope === 'local' ? location.hash : filterScope;
+function storedFilters() {
+  if (filterScope === 'global') return hasStored('filters') ? readStoredFilters('filters') : savedDefaultFilters();
+  return localFilters.get(scopeKey()) ?? savedDefaultFilters();
+}
+const filterApplies = key => {
+  const def = filterDef(key);
+  return (def.local ? filterKinds.rank : filterKinds.trakt) && (user || !def.auth);
+};
+// Filters that need an account would fail, or mean nothing, when signed out.
 function activeFilters() {
   if (!filterScope) return {};
-  const stored = filterScope === 'global'
-    ? (hasStored('filters') ? readStoredFilters('filters') : savedDefaultFilters())
-    : localFilters.get(location.hash) ?? savedDefaultFilters();
-  // Filters that need an account would fail, or mean nothing, when signed out.
-  return Object.fromEntries(Object.entries(stored).filter(([k]) => user || !filterDef(k).auth));
+  return Object.fromEntries(Object.entries(storedFilters()).filter(([k]) => filterApplies(k)));
 }
+// Keeps what this page can't show, such as Trakt's filters while on a page that only takes the rating ones.
+const keepHidden = (stored, next) => ({ ...Object.fromEntries(Object.entries(stored).filter(([k]) => !filterApplies(k))), ...cleanFilters(next) });
 function setActiveFilters(filters) {
-  const clean = cleanFilters(filters);
-  if (filterScope === 'global') { try { localStorage.setItem('filters', JSON.stringify(clean)); } catch {} }
-  else localFilters.set(location.hash, clean);
+  const all = keepHidden(storedFilters(), filters);
+  if (filterScope === 'global') { try { localStorage.setItem('filters', JSON.stringify(all)); } catch {} }
+  else localFilters.set(scopeKey(), all);
 }
+const saveDefaultFilters = f => { try { localStorage.setItem('filters-default', JSON.stringify(keepHidden(savedDefaultFilters(), f))); } catch {} };
+const defaultFiltersHere = () => Object.fromEntries(Object.entries(savedDefaultFilters()).filter(([k]) => filterApplies(k)));
 const withFilters = path => addQuery(path, filterQuery(activeFilters()));
+// The local rating sort and filters on this page.
+const currentRank = () => rankSpec(activeFilters());
+// Trakt's own sort orders, where a page has them (`bar.sorts`). Each page remembers its choice until the app closes,
+// so Back returns to the same order. The filter drawer sets it.
+const sortChoice = new Map();
+const chosenSort = sorts => sorts.find(s => s.value === sortChoice.get(location.hash)) ?? sorts[0];
 const setServer = i => { try { localStorage.setItem('server', i); } catch {} };
 // Auto races the servers each time the player opens. It is on until a server is picked by hand in the player.
 function getAutoServer() {

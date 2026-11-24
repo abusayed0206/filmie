@@ -32,13 +32,15 @@ The player shows a trailer because Filmie ships with no video servers.
 
 - **Browse:** trending, releases, anticipated, popular and more charts, switching between Media, Shows and Movies, with filters for genre, decade, runtime, rating and more.
 - **Find anything:** press **Ctrl+K** to jump to a page or title, or search movies, shows, people and lists.
-- **See the details:** seasons and episodes, cast and person pages, comments, videos, related titles and lists.
-- **Browse by vibe:** Nanocrowd's genres with the mood words viewers use for them, plus each movie's vibe tags and films that feel like it.
+- **See the details:** seasons and episodes, cast and person pages, public lists, and one More like this row that mixes Nanocrowd's similar titles with Trakt's Related.
+- **See the ratings:** Nanocrowd's audience rating on every card with no setup. Add your own free [MDBList](https://mdblist.com/preferences/#api) key in Settings for IMDb, Rotten Tomatoes (critics and audience), Metacritic, Letterboxd, Trakt and TMDB too, plus the Filmie score, the average of them all. Settings shows how many MDBList requests are left today.
+- **Sort and filter by rating:** order any page or row of titles, Home included, by any of those ratings, or keep only the ones within a range, such as IMDb 7.5 and up. The sort menu sits in the top bar on every page, the ranked titles are numbered, and a rating from few votes counts for less, as on IMDb's Top 250. It all happens on your PC, over the first 300 titles of a page.
+- **Browse by vibe:** Nanocrowd's genres with the mood words viewers use for them, plus each movie's and show's vibe tags and titles that feel like it.
 - **Track with Trakt:** continue watching, calendar, watchlist, history, library, progress, your lists, ratings, favorites, notes and recommendations.
 - **See your stats:** totals, top genres, ratings, activity and a watching streak, worked out on your PC with no VIP needed. They work offline too.
 - **Stay in control:** nothing is marked as watched until you ask, with no check-ins or scrobbling.
 - **Recently played:** your own list and progress, kept on your PC and separate from Trakt. Progress shows when the player exposes its video.
-- **Fast and offline-friendly:** TMDB, Trakt and Nanocrowd responses are cached in a local SQLite database.
+- **Fast and offline-friendly:** TMDB, Trakt and Nanocrowd responses are cached in a local SQLite database, and MDBList's ratings for 8 hours.
 - **Move around a show:** switch seasons and jump straight to any episode from the player.
 - **Use your own servers:** add as many as you like and switch between them while watching. Auto picks the sharpest and remembers it for each title.
 - **Finish and record:** near the end of a movie or episode, Filmie offers to add it to your Trakt history. Nothing is sent unless you press it.
@@ -104,12 +106,14 @@ flowchart LR
     Player["Player and router<br/>app.js"]
     Core["Shared state and calls<br/>core.js"]
     Lib["Pure helpers, tested<br/>lib.js"]
+    Ratings["Ratings, local sort and filters<br/>ratings.js"]
   end
 
   subgraph Rust["Backend: src-tauri/src (Tauri commands)"]
     Main["main.rs<br/>tmdb, art,<br/>window lockdown"]
     Trakt["trakt.rs<br/>sign-in, writes, avatar,<br/>library and history sync"]
-    Nano["nanocrowd.rs<br/>guest token, catalog,<br/>vibes and similar films"]
+    Nano["nanocrowd.rs<br/>guest token, catalog,<br/>vibes, similar titles, rating index"]
+    Rate["ratings.rs<br/>ratings for cards and titles,<br/>MDBList key and quota"]
     Db[("db.rs<br/>SQLite: cache, history,<br/>Trakt copy for stats")]
   end
 
@@ -118,12 +122,17 @@ flowchart LR
   Player --> Core
   Cards --> Core
   Pages --> Lib
+  Cards --> Ratings
   Core -- "invoke()" --> Main
   Core -- "invoke()" --> Trakt
   Core -- "invoke()" --> Nano
+  Ratings -- "invoke()" --> Rate
+  Rate --> Nano
   Main --> Db
   Trakt --> Db
   Nano --> Db
+  Rate --> Db
+  Rate --> MDB(["MDBList API,<br/>with your key"])
   Main --> TMDB(["TMDB API"])
   Trakt --> TraktAPI(["Trakt API"])
   Nano --> NC(["Nanocrowd API"])
@@ -132,7 +141,8 @@ flowchart LR
 
 - **Browsing:** a page asks `core.js` for data, which calls the `tmdb` or `trakt` command. `db.rs` returns a fresh cached answer, or fetches one and keeps it, and falls back to an old copy when you're offline.
 - **Trakt:** signing in uses a device code, tokens live in Windows Credential Manager, and writes are sent at most once a second. A copy of your history in SQLite powers Profile stats without VIP.
-- **Nanocrowd:** a movie's vibes and similar films come from Nanocrowd's catalog, matched to TMDB by title, year and IMDb id. Its guest token is saved and renewed only when refused.
+- **Nanocrowd:** a title's vibes, similar titles and audience rating come from Nanocrowd's catalog, matched to TMDB by title, year and IMDb id. Cards get their rating from an index of its 25 genre lists, rebuilt weekly. Its guest token is saved and renewed only when refused.
+- **Ratings:** `ratings.rs` answers for up to 100 cards at a time: Nanocrowd from that index, and every other source from MDBList in one batch request per 100 titles, once you've added a key. The key lives in Windows Credential Manager, and only TMDB ids are sent. Sorting and filtering by rating runs in the page, on the numbers it got back.
 - **Playing:** the player loads your server in an iframe it can't read, so tracking stays manual. A script injected into the player's frames blocks ads and reports progress for Recently played.
 
 The diagram follows a graph of the code made with [graphify](https://github.com/safishamsi/graphify): 487 functions, types and files in 25 groups. Its most connected parts are the backend's shared `State` (42 links) and the SQLite store `Db` (29), which every TMDB, Trakt and Nanocrowd request goes through. To explore it yourself, run `/graphify` in Claude Code at the repository root; it writes an interactive `graphify-out/graph.html` (git-ignored).

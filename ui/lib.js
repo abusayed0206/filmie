@@ -115,7 +115,9 @@ function norm(x, bareType) {
     ...(m.runtime ? { runtime: m.runtime } : {}),
     ...(m.aired_episodes ? { episodes: m.aired_episodes } : {}),
     ...(released ? { released } : {}),
+    ...(m.ids.imdb ? { imdb: m.ids.imdb } : {}),
     ...(m.rating ? { rating: m.rating } : {}),
+    ...(m.votes ? { votes: m.votes } : {}),
     ...(m.genres?.length ? { genres: m.genres } : {}),
     ...(m.after_credits || m.during_credits ? { postCredits: true } : {}),
   };
@@ -267,6 +269,125 @@ function decadeOptions(year = new Date().getFullYear()) {
   for (let d = Math.floor(year / 10) * 10; d >= 1960; d -= 10) decades.push({ label: `${d}s`, value: `${d}-${d + 9}` });
   return [{ label: 'This year', value: String(year) }, ...decades];
 }
+// ---------- ratings
+// Every rating Filmie shows. `max` is the source's own scale, and each value also gets a 0-100 score so sources
+// can be compared and averaged. Nanocrowd needs no setup. The rest come from MDBList with the person's own key, and
+// `mdb` names the source there. Trakt also comes free on Trakt's own items, and TMDB on title pages.
+// `minVotes`: below this many votes (or reviews, for critics) a rating says too little to show or rank by, as a
+// brand-new title with one 10/10 vote would otherwise top every list. A source that gives no count passes.
+// `trust`: for sorting, how many votes it takes before a rating counts mostly for itself (see rankScore).
+const RATING_SOURCES = [
+  { key: 'filmie', label: 'Filmie score', tag: 'Filmie', max: 100, free: true, about: 'the average of the others, each out of 100' },
+  { key: 'nanocrowd', label: 'Nanocrowd', tag: 'NC', max: 5, free: true, about: 'audience rating from what viewers write' },
+  { key: 'imdb', label: 'IMDb', tag: 'IMDb', max: 10, mdb: ['imdb'], minVotes: 25, trust: 5000 },
+  { key: 'tomatoes', label: 'Rotten Tomatoes', tag: 'RT', max: 100, unit: '%', mdb: ['tomatoes'], about: 'critics', minVotes: 5, trust: 40 },
+  { key: 'popcorn', label: 'RT Audience', tag: 'Aud', max: 100, unit: '%', mdb: ['tomatoesaudience', 'popcorn', 'audience'], minVotes: 25, trust: 1000 },
+  { key: 'metacritic', label: 'Metacritic', tag: 'MC', max: 100, mdb: ['metacritic'], minVotes: 4, trust: 15 },
+  { key: 'letterboxd', label: 'Letterboxd', tag: 'LB', max: 5, mdb: ['letterboxd'], minVotes: 25, trust: 5000 },
+  { key: 'trakt', label: 'Trakt', tag: 'Trakt', max: 100, unit: '%', mdb: ['trakt'], free: true, minVotes: 10, trust: 500 },
+  { key: 'tmdb', label: 'TMDB', tag: 'TMDB', max: 100, unit: '%', mdb: ['tmdb'], minVotes: 20, trust: 500 },
+  { key: 'mdblist', label: 'MDBList score', tag: 'MDB', max: 100, about: "MDBList's own blend" },
+  { key: 'rogerebert', label: 'Roger Ebert', tag: 'Ebert', max: 4, mdb: ['rogerebert'] },
+  { key: 'mal', label: 'MyAnimeList', tag: 'MAL', max: 10, mdb: ['myanimelist', 'mal'], minVotes: 25, trust: 2000 },
+];
+const ratingSource = key => RATING_SOURCES.find(s => s.key === key);
+// Whether a source works without an MDBList key. Trakt only does on cards from Trakt's own lists.
+const freeRating = key => !!ratingSource(key)?.free;
+
+// raw: the `ratings` command's answer for one title. extra: { trakt, traktVotes, tmdb, tmdbVotes }, each rating out
+// of 10, from the title's own record. Returns { source: { value, score, votes? } } for the sources that have one.
+function ratingsOf(raw, extra = {}) {
+  const out = {};
+  const put = (key, value, votes) => {
+    const { max, minVotes = 0 } = ratingSource(key);
+    if (!(value > 0) || (votes != null && votes < minVotes)) return;
+    const v = Math.round(Math.min(value, max) * 100) / 100;
+    out[key] = { value: v, score: Math.round(v / max * 1000) / 10, ...(votes ? { votes } : {}) };
+  };
+  put('nanocrowd', raw?.nanocrowd?.rating);
+  const m = raw?.mdblist;
+  for (const src of RATING_SOURCES.filter(s => s.mdb)) {
+    const r = src.mdb.map(name => m?.ratings?.[name]).find(Boolean);
+    // Batch answers can give Letterboxd out of 10 rather than 5.
+    if (r) put(src.key, src.key === 'letterboxd' && r.value > 5 ? r.value / 2 : r.value, r.votes);
+  }
+  put('mdblist', m?.score);
+  if (!out.trakt) put('trakt', extra.trakt * 10, extra.traktVotes);
+  if (!out.tmdb && extra.tmdbVotes) put('tmdb', extra.tmdb * 10, extra.tmdbVotes);
+  // Filmie's own combined score. Trakt's terms allow one only labeled as Filmie's and naming its sources: `from` does.
+  const from = Object.keys(out).filter(k => k !== 'mdblist');
+  if (from.length) {
+    const avg = from.reduce((n, k) => n + out[k].score, 0) / from.length;
+    out.filmie = { value: Math.round(avg), score: Math.round(avg * 10) / 10, from };
+  }
+  return out;
+}
+
+// "4.7", "8.8", "94%" or "81", as each source writes its own.
+function ratingText(key, r) {
+  const src = ratingSource(key);
+  if (!r || !src) return '';
+  return src.max <= 10 ? r.value.toFixed(1) : `${Math.round(r.value)}${src.unit ?? ''}`;
+}
+// The tooltip: what the number is, out of what, and how many voted.
+function ratingTitle(key, r) {
+  const src = ratingSource(key);
+  if (!r || !src) return '';
+  const of = src.unit === '%' ? '' : ` out of ${src.max}`;
+  const votes = r.votes ? ` from ${compactNumber(r.votes)} votes` : '';
+  const about = r.from ? `, the average of ${r.from.map(k => ratingSource(k).label).join(', ')}` : src.about ? ` (${src.about})` : '';
+  return `${src.label}: ${ratingText(key, r)}${of}${votes}${about}`;
+}
+const compactNumber = n => n >= 1e6 ? `${+(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${+(n / 1e3).toFixed(1)}K` : String(n);
+
+// A rating range filter, in the source's own scale.
+function ratingFilter(key) {
+  const { label, max } = ratingSource(key);
+  return { key: `rate_${key}`, label, local: true, rating: key, range: [0, max], step: max <= 5 ? .1 : max <= 10 ? .5 : 5 };
+}
+
+// What a sort orders by: the score weighted toward an average one (RANK_PRIOR, out of 100) until it has `trust`
+// votes, as IMDb's Top 250 does, so 8.4 from 300 votes doesn't beat 8.3 from two million. `raw` turns that off.
+const RANK_PRIOR = 60;
+function rankScore(key, r, raw = false) {
+  const trust = ratingSource(key)?.trust;
+  if (raw || !trust || !r.votes) return r.score;
+  return (r.votes * r.score + trust * RANK_PRIOR) / (r.votes + trust);
+}
+
+// The local sort and filters in a set of filters: { sort, asc, raw, ranges: [{ key, lo, hi }], keepUnrated }.
+// `rank` is the source, then `.asc` for lowest first and `.raw` for no weighting by votes, as in 'imdb.asc.raw'.
+function rankSpec(filters) {
+  const f = cleanFilters(filters);
+  const [sort, ...how] = (f.rank ?? '').split('.');
+  const ranges = Object.entries(f).filter(([k]) => filterDef(k).rating).map(([k, v]) => {
+    const [lo, hi] = v.split('-').map(Number);
+    return { key: filterDef(k).rating, lo: lo || 0, hi: Number.isFinite(hi) ? hi : Infinity };
+  });
+  return { sort: ratingSource(sort) ? sort : null, asc: how.includes('asc'), raw: how.includes('raw'), ranges, keepUnrated: f.rate_unrated === 'true' };
+}
+const rankValue = ({ sort, asc, raw }) => [sort, asc && 'asc', raw && 'raw'].filter(Boolean).join('.');
+const rankActive = spec => !!(spec?.sort || spec?.ranges.length);
+const rankSources = spec => [...new Set([spec.sort, ...spec.ranges.map(r => r.key)].filter(Boolean))];
+
+// entries: [{ ratings }] from ratingsOf. Leaves out those outside a range (or without that rating, unless kept),
+// then sorts by the chosen source. Titles without it go last. Equal scores put the more-voted first, then keep their
+// original order.
+function rankItems(entries, spec) {
+  const kept = entries.filter(({ ratings }) => spec.ranges.every(({ key, lo, hi }) => {
+    const r = ratings?.[key];
+    return r ? r.value >= lo && r.value <= hi : spec.keepUnrated;
+  }));
+  if (!spec.sort) return kept;
+  const dir = spec.asc ? 1 : -1;
+  const votes = e => e.ratings?.[spec.sort]?.votes ?? 0;
+  const score = e => { const r = e.ratings?.[spec.sort]; return r ? rankScore(spec.sort, r, spec.raw) : undefined; };
+  return kept.map((e, i) => [e, i, score(e)]).sort(([a, i, x], [b, j, y]) => {
+    if (x === undefined || y === undefined) return x === y ? i - j : x === undefined ? 1 : -1;
+    return (x - y) * dir || votes(b) - votes(a) || i - j;
+  }).map(([e]) => e);
+}
+
 const GRADES = ['None', 'Mild', 'Moderate', 'Severe'];
 const parental = (key, label) => ({ key: `parental_${key}`, label, range: [0, 3], grades: GRADES, advancedOnly: true });
 const FILTERS = [
@@ -297,6 +418,10 @@ const FILTERS = [
   // Asking to see watched titles means not ignoring them, so Yes sends false.
   { key: 'ignore_watched', label: 'Watched', display: true, auth: true, flag: true, options: [{ label: 'Yes', value: 'false' }, { label: 'No', value: 'true' }] },
   { key: 'ignore_watchlisted', label: 'Watchlisted', display: true, auth: true, flag: true, options: [{ label: 'Yes', value: 'false' }, { label: 'No', value: 'true' }] },
+  // Local ones: Filmie sorts and filters on these itself, over the titles it has loaded. They're never sent to Trakt.
+  { key: 'rank', label: 'Sort by rating', local: true, sort: true },
+  ...['nanocrowd', 'filmie', 'imdb', 'tomatoes', 'popcorn', 'metacritic', 'letterboxd', 'mdblist'].map(ratingFilter),
+  { key: 'rate_unrated', label: 'Without that rating', local: true, flag: true, options: [{ label: 'Keep', value: 'true' }] },
   // Advanced's ratings slider also sets these, so they count as one filter.
   { key: 'imdb_ratings', alias: true, range: [0, 10] }, { key: 'rt_meters', alias: true, range: [0, 100] }, { key: 'rt_user_meters', alias: true, range: [0, 100] },
 ];
@@ -316,7 +441,8 @@ function cleanFilters(filters) {
 }
 
 // Commas separate multiple values in Trakt's query strings, so they stay readable.
-const filterQuery = filters => Object.entries(cleanFilters(filters)).map(([k, v]) => `${k}=${encodeURIComponent(v).replace(/%2C/g, ',')}`).join('&');
+const filterQuery = filters => Object.entries(cleanFilters(filters)).filter(([k]) => !filterDef(k).local)
+  .map(([k, v]) => `${k}=${encodeURIComponent(v).replace(/%2C/g, ',')}`).join('&');
 const filterCount = filters => Object.keys(cleanFilters(filters)).filter(k => !filterDef(k).alias).length;
 const addQuery = (path, query) => query ? `${path}${path.includes('?') ? '&' : '?'}${query}` : path;
 
@@ -324,6 +450,7 @@ const addQuery = (path, query) => query ? `${path}${path.includes('?') ? '&' : '
 function fitsSimple(filters) {
   return Object.entries(cleanFilters(filters)).every(([key, value]) => {
     const def = filterDef(key);
+    if (def.local) return true; // shown outside the Simple and Advanced tabs
     if (def.alias || def.advancedOnly) return false;
     if (def.simpleRange) return true;
     if (def.options) return def.options.some(o => o.value === value);
@@ -393,4 +520,4 @@ function mergeSimilar(lists, self) {
   return out;
 }
 
-if (typeof module !== 'undefined') module.exports = { mergeSimilar, cloudLayout, validProgress, playedNote, historyBody, youtubeKey, pickTrailer, newestCredits, isoDate, shortDate, fullDate, addDays, weekStart, sortValue, hasEnded, sortLists, exactFirst, streakFrom, weekHeatmap, durationText, recentMonths, mergeContinue, startWatching, runtimeText, statusTag, navFor, modeOf, FILTERS, decadeOptions, cleanFilters, filterQuery, filterCount, addQuery, fitsSimple, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, betterServer, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm };
+if (typeof module !== 'undefined') module.exports = { rankScore, rankValue, RATING_SOURCES, ratingSource, freeRating, ratingsOf, ratingText, ratingTitle, compactNumber, rankSpec, rankActive, rankSources, rankItems, mergeSimilar, cloudLayout, validProgress, playedNote, historyBody, youtubeKey, pickTrailer, newestCredits, isoDate, shortDate, fullDate, addDays, weekStart, sortValue, hasEnded, sortLists, exactFirst, streakFrom, weekHeatmap, durationText, recentMonths, mergeContinue, startWatching, runtimeText, statusTag, navFor, modeOf, FILTERS, decadeOptions, cleanFilters, filterQuery, filterCount, addQuery, fitsSimple, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, betterServer, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm };

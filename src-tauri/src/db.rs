@@ -6,9 +6,10 @@ use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use std::{
+    collections::HashMap,
     path::Path,
     sync::{
-        Mutex, MutexGuard,
+        Arc, Mutex, MutexGuard,
         atomic::{AtomicU64, Ordering},
     },
     time::{SystemTime, UNIX_EPOCH},
@@ -139,8 +140,28 @@ fn store_rating(conn: &Connection, item: &Value) -> rusqlite::Result<bool> {
     Ok(true)
 }
 
-/// The connection, and a count of user-cache clears, so a response fetched before one is not stored after it.
-pub struct Db(Mutex<Connection>, AtomicU64);
+/// The connection, a count of user-cache clears, so a response fetched before one is not stored after it, and the
+/// keys being fetched right now (see `through`).
+pub struct Db(Mutex<Connection>, AtomicU64, Flights);
+
+type Flights = Mutex<HashMap<String, Arc<tokio::sync::Mutex<()>>>>;
+
+/// A turn to fetch one key. Dropping it lets the next caller in, and forgets the key once nobody else waits on it.
+struct Flight<'a> {
+    flights: &'a Flights,
+    key: &'a str,
+    _turn: tokio::sync::OwnedMutexGuard<()>,
+}
+
+impl Drop for Flight<'_> {
+    fn drop(&mut self) {
+        let mut map = self.flights.lock().unwrap_or_else(|e| e.into_inner());
+        // The map holds one reference and this turn another; any more belong to callers still waiting.
+        if map.get(self.key).is_some_and(|lock| Arc::strong_count(lock) <= 2) {
+            map.remove(self.key);
+        }
+    }
+}
 
 impl Db {
     /// Opens the store. If the file can't be used the app still runs, with a store that lasts until it closes.
@@ -151,7 +172,7 @@ impl Db {
             Connection::open_in_memory().and_then(open).expect("SQLite can always open in memory")
         });
         let _ = conn.execute("DELETE FROM cache WHERE expires_at < ?1", [now() - KEEP_EXPIRED_SECS]);
-        Self(Mutex::new(conn), AtomicU64::new(0))
+        Self(Mutex::new(conn), AtomicU64::new(0), Mutex::default())
     }
 
     fn conn(&self) -> MutexGuard<'_, Connection> {
@@ -183,6 +204,15 @@ impl Db {
         }
     }
 
+    /// A cached body and whether it is still fresh, for callers that fetch many entries in one request.
+    pub fn peek(&self, key: &str) -> Option<(Value, bool)> {
+        self.lookup(key).map(|(body, expires_at)| (body, expires_at > now()))
+    }
+
+    pub fn put(&self, key: &str, body: &Value, ttl: i64) {
+        self.store(key, body, ttl, false);
+    }
+
     pub fn forget(&self, key: &str) {
         let _ = self.conn().execute("DELETE FROM cache WHERE key = ?1", [key]);
     }
@@ -196,11 +226,18 @@ impl Db {
         user_scoped: bool,
         fetch: impl Future<Output = Result<Value, String>>,
     ) -> Result<Value, String> {
+        let fresh = |hit: &Option<(Value, i64)>| hit.as_ref().filter(|(_, expires_at)| *expires_at > now()).map(|(body, _)| body.clone());
         let hit = self.lookup(key);
-        if let Some((body, expires_at)) = &hit
-            && *expires_at > now()
-        {
-            return Ok(body.clone());
+        if let Some(body) = fresh(&hit) {
+            return Ok(body);
+        }
+        // One fetch per key at a time. A caller that finds the key already being fetched waits for it, then answers
+        // from the cache: a title page and its cards often ask for the same entry within a few milliseconds.
+        let lock = self.2.lock().unwrap_or_else(|e| e.into_inner()).entry(key.to_string()).or_default().clone();
+        let _flight = Flight { flights: &self.2, key, _turn: lock.lock_owned().await };
+        let hit = self.lookup(key);
+        if let Some(body) = fresh(&hit) {
+            return Ok(body);
         }
         let clears = self.1.load(Ordering::Acquire);
         match fetch.await {
@@ -451,6 +488,28 @@ mod tests {
         assert_eq!(block_on(db.through("k", 60, false, fetch())).unwrap(), json!({ "n": 1 }));
         assert_eq!(block_on(db.through("k", 60, false, fetch())).unwrap(), json!({ "n": 1 }));
         assert_eq!(calls.get(), 1);
+    }
+
+    #[test]
+    fn callers_asking_together_share_one_fetch() {
+        let db = db();
+        let calls = Cell::new(0);
+        let fetch = || async {
+            calls.set(calls.get() + 1);
+            tokio::task::yield_now().await; // the first fetch is still running when the second caller arrives
+            Ok(json!({ "n": calls.get() }))
+        };
+        let (a, b) = block_on(futures_util::future::join(db.through("k", 60, false, fetch()), db.through("k", 60, false, fetch())));
+        assert_eq!((a.unwrap(), b.unwrap()), (json!({ "n": 1 }), json!({ "n": 1 })));
+        assert_eq!(calls.get(), 1);
+        assert!(db.2.lock().unwrap().is_empty(), "the key is forgotten once nobody waits on it");
+        // A failed fetch still lets the next caller try.
+        let (x, y) = block_on(futures_util::future::join(
+            db.through("bad", 60, false, async { Err::<Value, _>("offline".to_string()) }),
+            db.through("bad", 60, false, async { Ok(json!(2)) }),
+        ));
+        assert!(x.is_err());
+        assert_eq!(y.unwrap(), json!(2));
     }
 
     #[test]

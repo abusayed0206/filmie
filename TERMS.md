@@ -14,7 +14,7 @@ Filmie doesn't host, store, supply or recommend any video. It includes no video 
 
 - Only add and use video servers that you have the right to use.
 - Follow copyright law and the laws of your country.
-- Follow the terms of each service you connect to, including [TMDB](https://www.themoviedb.org/api-terms-of-use) and [Trakt](https://trakt.tv/terms).
+- Follow the terms of each service you connect to, including [TMDB](https://www.themoviedb.org/api-terms-of-use), [Trakt](https://trakt.tv/terms) and, if you add a key, [MDBList](https://mdblist.com/).
 - Don't use Filmie to access, copy or share content without permission from its rights holder.
 
 You alone are responsible for the servers you add and for what you do with them. The developer doesn't control or review those servers.
@@ -23,7 +23,7 @@ You alone are responsible for the servers you add and for what you do with them.
 
 Filmie relies on services the developer doesn't run. They may change, limit or end access at any time, which can stop features from working. Your use of them is covered by their own terms and privacy policies.
 
-Filmie uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB. Filmie uses Trakt but is not endorsed or certified by Trakt. Filmie shows data from Nanocrowd, through the same service its own web app uses, and is not affiliated with or endorsed by Nanocrowd.
+Filmie uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB. Filmie uses Trakt but is not endorsed or certified by Trakt. Filmie shows data from Nanocrowd, through the same service its own web app uses, and is not affiliated with or endorsed by Nanocrowd. If you add an MDBList API key, Filmie shows ratings from MDBList with it, under your own MDBList account and its terms, and is not affiliated with or endorsed by MDBList, IMDb, Rotten Tomatoes, Metacritic or Letterboxd. The Filmie score is Filmie's own average of those ratings.
 
 ## Software license
 

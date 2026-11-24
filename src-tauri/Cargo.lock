@@ -1086,6 +1086,7 @@ dependencies = [
 name = "filmie"
 version = "0.6.0"
 dependencies = [
+ "futures-util",
  "keyring-core",
  "reqwest",
  "rusqlite",

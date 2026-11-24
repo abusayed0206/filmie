@@ -3,6 +3,7 @@
 mod db;
 mod keys;
 mod nanocrowd;
+mod ratings;
 mod trakt;
 
 use serde_json::{Value, json};
@@ -263,8 +264,17 @@ const INJECT_PLAYER: &str = r##"
 "##;
 
 // Every pop-up is denied. Only links to these sites open, in the system browser.
-const EXTERNAL_HOSTS: &[&str] =
-    &["imdb.com", "letterboxd.com", "trakt.tv", "themoviedb.org", "rottentomatoes.com", "metacritic.com", "youtube.com", "myanimelist.net"];
+const EXTERNAL_HOSTS: &[&str] = &[
+    "imdb.com",
+    "letterboxd.com",
+    "trakt.tv",
+    "themoviedb.org",
+    "rottentomatoes.com",
+    "metacritic.com",
+    "youtube.com",
+    "myanimelist.net",
+    "mdblist.com",
+];
 
 fn is_external_allowed(url: &Url) -> bool {
     url.scheme() == "https" && url.host_str().is_some_and(|h| EXTERNAL_HOSTS.iter().any(|d| h == *d || h.ends_with(&format!(".{d}"))))
@@ -282,12 +292,16 @@ async fn tmdb_fetch(s: &trakt::State, path: &str, query: &BTreeMap<String, Strin
         .query(query)
         .send()
         .await
-        .map_err(|e| e.to_string())?;
+        // reqwest names the URL in its errors, and this one carries the API key.
+        .map_err(|e| e.without_url().to_string())?;
     let status = res.status();
     trakt::log_request("tmdb", "GET", status.as_u16(), path);
     // An error page may not be JSON; the status still says what went wrong, and art() needs to see a 404.
-    let body: Value =
-        if status.is_success() { res.json().await.map_err(|e| e.to_string())? } else { res.json().await.unwrap_or(Value::Null) };
+    let body: Value = if status.is_success() {
+        res.json().await.map_err(|e| e.without_url().to_string())?
+    } else {
+        res.json().await.unwrap_or(Value::Null)
+    };
     if status.is_success() {
         Ok(body)
     } else {
@@ -300,9 +314,13 @@ async fn tmdb(s: tauri::State<'_, trakt::State>, path: String, query: Option<BTr
     if !path.starts_with('/') {
         return Err("bad path".into());
     }
-    let query = query.unwrap_or_default();
+    tmdb_cached(&s, &path, &query.unwrap_or_default()).await
+}
+
+/// A TMDB GET through the local cache, for the frontend and for other commands.
+pub(crate) async fn tmdb_cached(s: &trakt::State, path: &str, query: &BTreeMap<String, String>) -> Result<Value, String> {
     // Airing shows gain episodes; a movie's details rarely change. TMDB's terms allow caching for up to 6 months.
-    let ttl = if path.starts_with("/find/") {
+    let ttl = if path.starts_with("/find/") || path.ends_with("/external_ids") {
         30 * 86_400 // an IMDb id always maps to the same TMDB id
     } else if path.starts_with("/movie/") {
         7 * 86_400
@@ -310,8 +328,24 @@ async fn tmdb(s: tauri::State<'_, trakt::State>, path: String, query: Option<BTr
         86_400
     };
     // The key leaves out the API key, and BTreeMap keeps the query in a stable order.
-    let key = format!("tmdb {path} {}", serde_json::to_string(&query).map_err(|e| e.to_string())?);
-    s.db.through(&key, ttl, false, tmdb_fetch(&s, &path, &query)).await
+    let key = format!("tmdb {path} {}", serde_json::to_string(query).map_err(|e| e.to_string())?);
+    s.db.through(&key, ttl, false, tmdb_fetch(s, path, query)).await
+}
+
+/// A title's external ids, for the ratings lookup. A 404 is remembered as `{}`, as `art` does, so a title TMDB has
+/// dropped isn't asked for again, and only a few run at once, since one page of cards can ask for many.
+pub(crate) async fn tmdb_ids(s: &trakt::State, kind: &str, id: u64) -> Result<Value, String> {
+    static TURNS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(6);
+    let path = format!("/{kind}/{id}/external_ids");
+    // The same key tmdb_cached would use, so either fills the cache for the other.
+    let fetch = async {
+        let _turn = TURNS.acquire().await.map_err(|e| e.to_string())?;
+        match tmdb_fetch(s, &path, &BTreeMap::new()).await {
+            Err(e) if e.starts_with("404") => Ok(json!({})),
+            other => other,
+        }
+    };
+    s.db.through(&format!("tmdb {path} {{}}"), 30 * 86_400, false, fetch).await
 }
 
 /// All a card draws from TMDB's record for a title.
@@ -358,10 +392,13 @@ fn main() {
             std::fs::create_dir_all(&data_dir)?;
             app.manage(trakt::State::new(data_dir.join("library.json"), db::Db::open(data_dir.join("filmie.sqlite3"))));
             app.manage(nanocrowd::NanocrowdState::new());
+            app.manage(ratings::MdbState::default());
             // Ready before the first title page asks: from the database after the first launch, so usually no request.
+            // The rating index follows: from the database too, except about once a week, when it costs 25 requests.
             let warm = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                if let Err(e) = warm.state::<nanocrowd::NanocrowdState>().token(&warm.state::<trakt::State>()).await {
+                let (nc, s) = (warm.state::<nanocrowd::NanocrowdState>(), warm.state::<trakt::State>());
+                if let Err(e) = nc.token(&s).await.and(nc.rating_index(&s).await.map(|_| ())) {
                     eprintln!("{e}");
                 }
             });
@@ -413,7 +450,11 @@ fn main() {
             db::cache_clear,
             db::stats,
             nanocrowd::nanocrowd_title_info,
-            nanocrowd::nanocrowd_tier
+            nanocrowd::nanocrowd_tier,
+            ratings::ratings,
+            ratings::mdblist_status,
+            ratings::mdblist_set_key,
+            ratings::mdblist_forget_key
         ])
         .run(tauri::generate_context!())
         .expect("error while running Filmie");

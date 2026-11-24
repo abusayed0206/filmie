@@ -1,7 +1,5 @@
 // The signed-in user's pages and Settings.
-// Each page remembers its sort until the app closes, so Back returns to the same order.
-const sortChoice = new Map();
-const chosenSort = sorts => sorts.find(s => s.value === sortChoice.get(location.hash)) ?? sorts[0];
+// Pages of titles take their Trakt sort from the Sort and filter drawer (`bar.sorts`). Pages of lists use this one.
 const sortButton = sorts => `<button type="button" class="btn" data-sort-open>Sort: ${esc(chosenSort(sorts).label)}</button>`;
 function bindSort(root, sorts) {
   root.querySelector('[data-sort-open]').onclick = () => {
@@ -48,10 +46,8 @@ Object.assign(pages, {
   async progress() {
     if (!user) { app.innerHTML = signInPrompt('progress'); return; }
     const sort = chosenSort(SHOW_SORTS);
-    app.innerHTML = `<div class="page"><h1 class="sr-only">Continue Watching</h1>
-      <div class="page-tools">${sortButton(SHOW_SORTS)}</div></div>`;
+    app.innerHTML = '<div class="page"><h1 class="sr-only">Continue Watching</h1></div>';
     const into = app.firstElementChild;
-    bindSort(into, SHOW_SORTS);
     const query = sortQuery(sort);
     await renderGrid(into, {
       cls: 'summary-grid', empty: 'Nothing in progress. Start something and it will show here.',
@@ -170,7 +166,7 @@ Object.assign(pages, {
     await renderRows([
       {
         id: 'lists-watchlist', title: 'Watchlist', more: '#/watchlist', empty: 'Your watchlist is empty.',
-        load: traktPosters(`/sync/watchlist/${syncTypes()}/rank/asc?limit=${ROW_ITEMS}&extended=full`),
+        load: traktPosters(`/sync/watchlist/${syncTypes()}/rank/asc?limit=${rowLimit(ROW_ITEMS)}&extended=full`),
       },
       {
         id: 'lists-mine', title: 'My Lists', more: `#/lists/${listsKind}`, kind: 'list', empty: LIST_KINDS[listsKind].empty,
@@ -183,9 +179,8 @@ Object.assign(pages, {
   async watchlist() {
     if (!user) { app.innerHTML = signInPrompt('watchlist'); return; }
     const sort = chosenSort(WATCHLIST_SORTS);
-    app.innerHTML = `<div class="page"><h1 class="sr-only">Watchlist</h1><div class="page-tools">${sortButton(WATCHLIST_SORTS)}</div></div>`;
+    app.innerHTML = '<div class="page"><h1 class="sr-only">Watchlist</h1></div>';
     const into = app.firstElementChild;
-    bindSort(into, WATCHLIST_SORTS);
     await renderGrid(into, {
       cls: 'summary-grid', empty: 'Your watchlist is empty.',
       load: page => traktGet(`/sync/watchlist/${syncTypes()}/${sortPath(sort)}?page=${page}&limit=100&extended=full`),
@@ -206,9 +201,8 @@ Object.assign(pages, {
     const sort = chosenSort(LIST_SORTS);
     app.innerHTML = `<div class="page"><h1 class="sr-only">${esc(meta.name)}</h1>
       <p class="muted list-meta">${num(meta.item_count)} items${meta.description ? ` · ${esc(meta.description)}` : ''}</p>
-      <div class="page-tools">${sortButton(LIST_SORTS)}${own ? `<button type="button" class="btn" id="list-edit">Edit</button><button type="button" class="btn danger" id="list-delete">Delete</button>` : ''}</div></div>`;
+      ${own ? '<div class="page-tools"><button type="button" class="btn" id="list-edit">Edit</button><button type="button" class="btn danger" id="list-delete">Delete</button></div>' : ''}</div>`;
     const into = app.firstElementChild;
-    bindSort(into, LIST_SORTS);
     if (own) {
       into.querySelector('#list-edit').onclick = () => openListForm(meta);
       into.querySelector('#list-delete').onclick = () => confirmDeleteList(meta);
@@ -249,6 +243,7 @@ Object.assign(pages, {
           : `<div class="account-row"><p class="muted">Not connected.</p><div class="row-actions"><button id="connect" class="btn primary">Sign in with Trakt</button></div></div>`}
       </section>
       <section class="card" id="servers"></section>
+      <section class="card" id="ratings"></section>
       <section class="card">
         <div class="card-head"><h2>Playback</h2><p class="muted">Nothing is marked watched on Trakt until you press Mark watched.</p></div>
         ${field('Preferred quality', 'The player starts at this quality when the server supports it. Default: 1080p.',
@@ -267,8 +262,9 @@ Object.assign(pages, {
         <p>Filmie uses TMDB and the TMDB APIs but is not endorsed, certified, or otherwise approved by TMDB.
         <a href="https://www.themoviedb.org/" target="_blank">themoviedb.org</a></p>
         <p>Filmie uses Trakt but is not endorsed or certified by Trakt.</p>
+        <p>Vibes and audience ratings from Nanocrowd. Other ratings, with your own key, from <a href="https://mdblist.com/" target="_blank">MDBList</a>. The Filmie score is Filmie's own average of them.</p>
         <p>Ad blocking by uBlock Origin Lite (GPLv3), <a href="https://github.com/uBlockOrigin/uBOL-home" target="_blank">source</a>.</p>
-        <p class="muted">Privacy: your Trakt tokens are kept in Windows Credential Manager, and your library copy and avatar in this app's data folder. Signing out deletes all of them. Your Recently played list, cached pages, and a copy of your Trakt history and ratings are kept in a local database. You can clear the first two above, and signing out deletes the copy of your history and ratings.</p></section></div>`;
+        <p class="muted">Privacy: your Trakt tokens and MDBList key are kept in Windows Credential Manager, and your library copy and avatar in this app's data folder. Signing out deletes the Trakt ones, and Remove key deletes the MDBList key. Only TMDB ids are sent to MDBList. Your Recently played list, cached pages, and a copy of your Trakt history and ratings are kept in a local database. You can clear the first two above, and signing out deletes the copy of your history and ratings.</p></section></div>`;
     const $ = id => document.getElementById(id);
     busy($('connect'), () => connectTrakt($('trakt-box')).catch(e => { route(); throw e; }));
     busy($('signout'), async () => { await invoke('sign_out'); await refreshUser(); route(); });
@@ -286,28 +282,30 @@ Object.assign(pages, {
     busy($('clear-recent'), async () => { await invoke('history_clear'); toast('Recently played cleared'); });
     $('quality').onchange = ev => { setQuality(ev.target.value); toast('Preferred quality saved'); };
     renderServers($('servers'));
-    if (sub === 'servers') $('servers').scrollIntoView({ block: 'start' });
+    renderRatingSettings($('ratings'));
+    if (sub === 'servers' || sub === 'ratings') $(sub).scrollIntoView({ block: 'start' });
   },
 });
 
-// Filters only appear where Trakt's endpoint takes them, which leaves out the sync routes behind most of these pages.
-pages.progress.bar = { title: 'Continue Watching', mode: 'bar' };
+// Trakt's filters only appear where its endpoint takes them, which leaves out the sync routes behind most of these
+// pages (`trakt: false`). The rating sort and filters work on any page of titles not in date order.
+pages.progress.bar = { title: 'Continue Watching', mode: 'bar', filters: 'local', trakt: false, sorts: SHOW_SORTS };
 pages.calendar.bar = { title: 'Calendar', mode: 'bar', filters: 'local' };
-pages.history.bar = { title: 'History', mode: 'bar' };
-pages.library.bar = { title: 'Library', mode: 'bar' };
+pages.history.bar = { title: 'History', mode: 'bar', filters: 'local', trakt: false };
+pages.library.bar = { title: 'Library', mode: 'bar', filters: 'local', trakt: false };
 pages.profile.bar = sub => {
   const view = Object.hasOwn(PROFILE_VIEWS, sub ?? '') ? PROFILE_VIEWS[sub] : null;
-  return view ? { title: view.title, back: true, mode: view.mode } : { title: 'Profile', mode: user ? 'bar' : false };
+  return view ? { title: view.title, back: true, mode: view.mode, ...view.bar } : { title: 'Profile', mode: user ? 'bar' : false };
 };
-pages.lists.bar = kind => Object.hasOwn(LIST_KINDS, kind ?? '') ? { title: LIST_KINDS[kind].title, mode: 'bar' } : { title: 'Lists', mode: 'bar' };
+pages.lists.bar = kind => ({ title: Object.hasOwn(LIST_KINDS, kind ?? '') ? LIST_KINDS[kind].title : 'Lists', mode: 'bar', filters: 'local', trakt: false });
 pages.watchlist.bar = () => {
   const count = forMode(['movies', 'shows'], ['shows'], ['movies']).reduce((n, t) => n + (lib?.[`watchlist_${t}`]?.length ?? 0), 0);
-  return { title: 'Watchlist', meta: user ? `${num(count)} items` : '', mode: 'bar' };
+  return { title: 'Watchlist', meta: user ? `${num(count)} items` : '', mode: 'bar', filters: 'local', trakt: false, sorts: WATCHLIST_SORTS };
 };
-pages.list.bar = { title: 'List', back: true, mode: 'bar', filters: 'local' };
-pages.hidden.bar = { title: 'Hidden items', back: true, mode: 'bar' };
+pages.list.bar = { title: 'List', back: true, mode: 'bar', filters: 'local', sorts: LIST_SORTS };
+pages.hidden.bar = { title: 'Hidden items', back: true, mode: 'bar', filters: 'local', trakt: false };
 // #/settings/servers is where the player sends someone with no servers, so Back returns them to what they wanted to play.
-pages.settings.bar = sub => ({ title: 'Settings', back: sub === 'servers' });
+pages.settings.bar = sub => ({ title: 'Settings', back: sub === 'servers' || sub === 'ratings' });
 
 // ---------- calendar and hidden-item state, kept until the app closes
 let calendarView = 'week';
@@ -356,7 +354,7 @@ async function listsOfKind(kind) {
     const { href, base } = listRoute(l, kind);
     return {
       id: `list-${l.ids.trakt}`, title: l.name, meta: `${num(l.item_count)} items`, more: href, empty: 'Nothing here yet.',
-      load: traktPosters(`${base}/items/${itemTypes()}/rank/asc?limit=${ROW_ITEMS}&extended=full`),
+      load: traktPosters(`${base}/items/${itemTypes()}/rank/asc?limit=${rowLimit(ROW_ITEMS)}&extended=full`),
     };
   }), into);
 }
@@ -445,9 +443,8 @@ async function progressView() {
   const dropped = tab === 'dropped';
   const sort = chosenSort(SHOW_SORTS);
   app.innerHTML = `<div class="page"><h1 class="sr-only">Progress</h1>
-    <div class="page-tools">${segmented('progress-tab', PROGRESS_TABS, tab, v => { progressTab = v; route({ soft: true }); }, 'Progress')}${dropped ? '' : sortButton(SHOW_SORTS)}</div></div>`;
+    <div class="page-tools">${segmented('progress-tab', PROGRESS_TABS, tab, v => { progressTab = v; route({ soft: true }); }, 'Progress')}</div></div>`;
   const into = app.firstElementChild;
-  if (!dropped) bindSort(into, SHOW_SORTS);
   await renderGrid(into, {
     cls: 'summary-grid', empty: { completed: "You're not up to date on any airing shows.", ended: "You haven't finished any ended shows.", 'in-progress': 'Nothing in progress.', dropped: "You haven't dropped any shows." }[tab],
     load: page => traktGet(dropped ? `/users/hidden/dropped?page=${page}&limit=100&extended=full`
@@ -538,9 +535,9 @@ async function notesView() {
 }
 
 const PROFILE_VIEWS = {
-  progress: { title: 'Progress', about: 'Shows you finished, are watching or dropped.', open: progressView },
-  ratings: { title: 'Ratings', about: 'Everything you have rated.', open: ratingsView, mode: 'bar' },
-  favorites: { title: 'Favorites', about: 'The titles you love most.', open: favoritesView, mode: 'bar' },
+  progress: { title: 'Progress', about: 'Shows you finished, are watching or dropped.', open: progressView, bar: { filters: 'local', trakt: false, sorts: SHOW_SORTS } },
+  ratings: { title: 'Ratings', about: 'Everything you have rated.', open: ratingsView, mode: 'bar', bar: { filters: 'local', trakt: false } },
+  favorites: { title: 'Favorites', about: 'The titles you love most.', open: favoritesView, mode: 'bar', bar: { filters: 'local', trakt: false } },
   notes: { title: 'Notes', about: 'Notes you wrote on Trakt.', open: notesView, mode: 'bar' },
 };
 

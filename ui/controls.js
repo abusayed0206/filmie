@@ -54,25 +54,36 @@ function playVideo(key, title) {
   d.querySelector('[data-close]').onclick = () => d.close();
 }
 
-// Pop-up menu for a button. items: [{ label, icon, danger, onClick }]. The popover API handles Escape and clicks outside.
+// Pop-up menu for a button. items: [{ label, icon, danger, onClick }], [{ label, checked, onClick }] for a choice
+// (checked items get a tick, the rest a blank of the same width), or [{ heading }] for a section title.
+// The popover API handles Escape and clicks outside.
 function menu(button, items) {
   const m = document.createElement('div');
   m.className = 'menu';
   m.popover = 'auto';
   m.setAttribute('role', 'menu');
-  m.innerHTML = items.map((x, i) => `<button type="button" role="menuitem" data-item="${i}"${x.danger ? ' class="danger"' : ''}>${x.icon ? icon(x.icon) : ''}${esc(x.label)}</button>`).join('');
+  const lead = x => x.checked ? icon('check') : x.icon ? icon(x.icon) : x.checked === false ? '<span class="i" aria-hidden="true"></span>' : '';
+  m.innerHTML = items.map((x, i) => x.heading ? `<div class="menu-heading" role="presentation">${esc(x.heading)}</div>`
+    : `<button type="button" role="${x.checked === undefined ? 'menuitem' : 'menuitemradio'}"${x.checked === undefined ? '' : ` aria-checked="${x.checked}"`} data-item="${i}"${x.danger ? ' class="danger"' : ''}>${lead(x)}${esc(x.label)}</button>`).join('');
   document.body.append(m);
   button.setAttribute('aria-haspopup', 'menu');
   button.popoverTargetElement = m;
   m.addEventListener('toggle', ev => {
     button.setAttribute('aria-expanded', String(ev.newState === 'open'));
     if (ev.newState !== 'open') return;
-    // Opens under the button, and flips to stay inside the window.
+    // Opens under the button, and flips to stay inside the page. clientWidth leaves out the scrollbar, which
+    // innerWidth counts, so a menu at the right edge isn't drawn under it. A button on the right half lines the
+    // menu up with its right edge, as the top bar's sort menu needs.
     const b = button.getBoundingClientRect();
-    const fitsBelow = b.bottom + m.offsetHeight + 6 <= innerHeight;
-    m.style.top = `${fitsBelow ? b.bottom + 6 : Math.max(6, b.top - m.offsetHeight - 6)}px`;
-    m.style.left = `${Math.max(6, Math.min(b.left, innerWidth - m.offsetWidth - 6))}px`;
-    m.querySelector('button')?.focus();
+    const { clientWidth: width, clientHeight: height } = document.documentElement;
+    // Below the button unless there is more room above, and scrolling inside that room when it's still too tall.
+    const [below, above] = [height - b.bottom - 14, b.top - 14];
+    const down = m.scrollHeight <= below || below >= above;
+    m.style.maxHeight = `${down ? below : above}px`;
+    const left = b.left + b.width / 2 > width / 2 ? b.right - m.offsetWidth : b.left;
+    m.style.top = `${down ? b.bottom + 6 : Math.max(8, b.top - 6 - m.offsetHeight)}px`;
+    m.style.left = `${Math.max(8, Math.min(left, width - m.offsetWidth - 8))}px`;
+    (m.querySelector('[aria-checked="true"]') ?? m.querySelector('button'))?.focus();
   });
   m.addEventListener('click', ev => {
     const item = ev.target.closest('[data-item]');
@@ -106,7 +117,7 @@ function rangeSlider(def, label, value) {
   const [a, b] = (value ?? '').split('-');
   const min = a ? +a : lo;
   const max = b ? +b : hi;
-  const step = hi - lo <= 10 ? 1 : hi - lo > 100 ? 10 : 5;
+  const step = def.step ?? (hi - lo <= 10 ? 1 : hi - lo > 100 ? 10 : 5);
   return `<div class="slider" data-slider="${esc(def.key)}">
     <div class="slider-head"><span class="filter-label">${esc(label)}</span><output>${esc(sliderText(def, min, max))}</output></div>
     <div class="slider-track" style="--a:${(min - lo) / (hi - lo)};--b:${(max - lo) / (hi - lo)}">
@@ -209,24 +220,32 @@ function togglePalette() {
   input.focus();
 }
 
-// The filter drawer. It edits a draft, and the page only reloads on close if something changed.
+// The Sort and filter drawer: the page's order (Trakt's, where it has one, or a rating), the local rating filters, and
+// Trakt's filters where the page's endpoint takes them. It edits a draft, and the page reloads on close if anything changed.
 async function openFilterDrawer() {
-  const sources = await loadFilterSources();
+  const sources = filterKinds.trakt ? await loadFilterSources() : {};
+  const sorts = bar.sorts ?? null;
   const start = JSON.stringify(cleanFilters(activeFilters()));
+  const startSort = sorts ? chosenSort(sorts).value : '';
   let draft = activeFilters();
+  let draftSort = startSort;
   let tab = 'simple';
   try { if (localStorage.getItem('filters-tab') === 'advanced') tab = 'advanced'; } catch {}
   const d = drawer({
-    title: 'Filters',
+    title: filterKinds.rank ? 'Sort and filter' : 'Filters',
     onClose: () => {
-      if (JSON.stringify(cleanFilters(draft)) === start) return;
+      if (JSON.stringify(cleanFilters(draft)) === start && draftSort === startSort) return;
+      if (sorts) sortChoice.set(location.hash, draftSort);
       setActiveFilters(draft);
       route({ soft: true });
     },
   });
   const body = d.querySelector('.drawer-body');
   const setValue = (key, value) => { if (value) draft[key] = value; else delete draft[key]; };
-  const updateReset = () => { body.querySelector('[data-reset]').disabled = JSON.stringify(cleanFilters(draft)) === JSON.stringify(savedDefaultFilters()); };
+  const defaultSort = sorts ? sorts[0].value : '';
+  const updateReset = () => {
+    body.querySelector('[data-reset]').disabled = JSON.stringify(cleanFilters(draft)) === JSON.stringify(defaultFiltersHere()) && draftSort === defaultSort;
+  };
   const field = (label, html) => `<div class="filter-field"><span class="filter-label">${esc(label)}</span>${html}</div>`;
   const select = (def, options, label = def.label) => field(label, `<select data-filter="${esc(def.key)}" aria-label="${esc(label)}">
     <option value="">${def.display ? 'Default' : 'All'}</option>${options.map(o => `<option value="${esc(o.value)}"${draft[def.key] === o.value ? ' selected' : ''}>${esc(o.label)}</option>`).join('')}</select>`);
@@ -247,7 +266,7 @@ async function openFilterDrawer() {
     if (def.source || def.multi) return multi(def, multiOptions(def), label);
     return select(def, def.options, label);
   };
-  const shown = FILTERS.filter(f => !f.alias && (user || !f.auth));
+  const shown = FILTERS.filter(f => !f.alias && !f.local && (user || !f.auth));
   const showTab = next => {
     tab = next;
     try { localStorage.setItem('filters-tab', tab); } catch {}
@@ -259,16 +278,47 @@ async function openFilterDrawer() {
     modal({
       title: 'Clear advanced filters?',
       body: '<p class="muted">Simple can\'t show your advanced filters, so switching clears them.</p>',
-      actions: [{ label: 'Cancel' }, { label: 'Clear filters', primary: true, onClick: () => { confirmed = true; draft = {}; } }],
+      actions: [{ label: 'Cancel' }, { label: 'Clear filters', primary: true, onClick: () => {
+        confirmed = true;
+        draft = Object.fromEntries(Object.entries(draft).filter(([k]) => filterDef(k).local));
+      } }],
       onClose: () => showTab(confirmed ? 'simple' : 'advanced'),
     });
   };
-  function draw() {
+  const setDirection = how => {
+    const spec = rankSpec(draft);
+    if (spec.sort) setValue('rank', rankValue({ ...spec, asc: how === 'asc' }));
+    updateReset();
+  };
+  // One list for both kinds of order, since only one can apply: Trakt's (or the page's own) and Filmie's by rating.
+  const sortSection = () => {
+    const spec = rankSpec(draft);
+    const option = (value, label, on) => `<option value="${esc(value)}"${on ? ' selected' : ''}>${esc(label)}</option>`;
+    const own = (sorts ?? [{ value: '', label: 'Default' }]).map(s => option(`t:${s.value}`, s.label, !spec.sort && s.value === draftSort));
+    const rated = filterKinds.rank ? usableSources().map(s => option(`r:${s.key}`, s.label, spec.sort === s.key)) : [];
+    return `<h3 class="filter-section">Sort</h3>
+      ${field('Order', `<select data-sort-pick aria-label="Sort by">${rated.length ? `<optgroup label="${sorts ? 'Trakt' : 'This page'}">${own.join('')}</optgroup><optgroup label="Rating">${rated.join('')}</optgroup>` : own.join('')}</select>`)}
+      ${spec.sort ? `<div class="filter-switch">${segmented('rank-how', [{ value: 'desc', label: 'Highest first' }, { value: 'asc', label: 'Lowest first' }], spec.asc ? 'asc' : 'desc', setDirection, 'Direction')}</div>
+        ${ratingSource(spec.sort).trust ? `<label class="check"><input type="checkbox" data-rank-weigh${spec.raw ? '' : ' checked'}>Weigh by number of votes</label>
+        <p class="muted filter-hint">A rating from few votes counts for less, so a well-known 8.3 can come before an obscure 8.5.</p>` : ''}` : ''}`;
+  };
+  const ratingSection = () => {
+    const defs = FILTERS.filter(f => f.rating && usableRating(f.rating));
+    return `<h3 class="filter-section">Ratings</h3>
+      ${defs.map(def => rangeSlider(def, def.label, draft[def.key])).join('')}
+      <label class="check"><input type="checkbox" data-keep-unrated${draft.rate_unrated === 'true' ? ' checked' : ''}>Keep titles with no rating to compare</label>
+      <p class="muted filter-hint">Filmie rates and orders up to the first ${RANK_POOL} titles of a page itself.${mdb.connected ? '' : ' For IMDb, Rotten Tomatoes, Metacritic and Letterboxd, <a href="#/settings/ratings">add an MDBList key in Settings</a>.'}</p>`;
+  };
+  const traktSection = () => {
     const controls = tab === 'simple' ? shown.filter(f => !f.advancedOnly && !f.display).map(simpleControl) : shown.filter(f => !f.display).map(advancedControl);
     const display = shown.filter(f => f.display).map(f => select(f, f.options));
-    body.innerHTML = `<div class="filter-actions"><button type="button" class="btn danger" data-reset>Reset</button><button type="button" class="btn primary" data-save>Set as default</button></div>
+    return `${filterKinds.rank ? '<h3 class="filter-section">Trakt filters</h3>' : ''}
       <div class="filter-switch">${segmented('filter-tab', [{ value: 'simple', label: 'Simple' }, { value: 'advanced', label: 'Advanced' }], tab, changeTab, 'Filter detail')}</div>
       ${controls.join('')}${display.length ? `<h3 class="filter-section">Display</h3>${display.join('')}` : ''}`;
+  };
+  function draw() {
+    body.innerHTML = `<div class="filter-actions"><button type="button" class="btn danger" data-reset>Reset</button><button type="button" class="btn primary" data-save>Set as default</button></div>
+      ${filterKinds.rank || sorts ? sortSection() : ''}${filterKinds.rank ? ratingSection() : ''}${filterKinds.trakt ? traktSection() : ''}`;
     updateReset();
   }
   // Slider ends can't cross, and a slider at full range counts as no filter through cleanFilters.
@@ -294,13 +344,24 @@ async function openFilterDrawer() {
     updateReset();
   });
   body.addEventListener('change', ev => {
+    if (ev.target.matches('[data-sort-pick]')) {
+      const [kind, value] = [ev.target.value.slice(0, 1), ev.target.value.slice(2)];
+      if (kind === 'r') { setValue('rank', rankValue({ ...rankSpec(draft), sort: value })); draftSort = defaultSort; }
+      else { setValue('rank', ''); draftSort = value; }
+      draw();
+      body.querySelector('[data-sort-pick]').focus();
+      return;
+    }
+    if (ev.target.matches('[data-rank-weigh]')) { setValue('rank', rankValue({ ...rankSpec(draft), raw: !ev.target.checked })); updateReset(); return; }
+    if (ev.target.matches('[data-keep-unrated]')) { setValue('rate_unrated', ev.target.checked ? 'true' : ''); updateReset(); return; }
     const key = ev.target.dataset?.filter;
     if (!key) return;
     setValue(key, ev.target.value);
     updateReset();
   });
   body.addEventListener('click', ev => {
-    if (ev.target.closest('[data-reset]')) { draft = savedDefaultFilters(); draw(); return; }
+    if (ev.target.closest('a[href^="#/"]')) { d.close(); return; }
+    if (ev.target.closest('[data-reset]')) { draft = defaultFiltersHere(); draftSort = defaultSort; draw(); return; }
     if (ev.target.closest('[data-save]')) { saveDefaultFilters(draft); d.close(); return; }
     const option = ev.target.closest('.multi-list button');
     if (!option) return;

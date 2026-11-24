@@ -1,18 +1,19 @@
 // Browsing pages: Home, Discover, Search.
 // A chart for the current mode. /media/popular has no type on its items, so bare ones fall back to movie.
+// A rating sort or filter ranks 30 titles rather than the 10 a row shows (`rowLimit`), so the row still fills.
 const chart = (title, path, label, more) => ({
   id: path, title, more, filtered: true, bright: true,
-  load: traktPosters(withFilters(`${forMode('/media', '/shows', '/movies')}/${path}?limit=${more ? ROW_ITEMS : 30}&extended=full`), forMode('movie', 'show', 'movie'), label),
+  load: traktPosters(withFilters(`${forMode('/media', '/shows', '/movies')}/${path}?limit=${more ? rowLimit(ROW_ITEMS) : 30}&extended=full`), forMode('movie', 'show', 'movie'), label),
 });
 // Trakt ignores filters on recommendations, so this row doesn't take them.
 const recommendedRow = more => ({
   id: 'recommended', title: 'Recommended', more, bright: true,
-  load: traktPosters(`${forMode('/media/recommendations', '/recommendations/shows', '/recommendations/movies')}?limit=${more ? ROW_ITEMS : 30}&extended=full`, forMode('movie', 'show', 'movie')),
+  load: traktPosters(`${forMode('/media/recommendations', '/recommendations/shows', '/recommendations/movies')}?limit=${more ? rowLimit(ROW_ITEMS) : 30}&extended=full`, forMode('movie', 'show', 'movie')),
 });
 const recentRow = () => ({ id: 'recent', title: 'Recently played', kind: 'landscape', load: recentCards });
 const continueRow = () => ({
   id: 'continue', title: 'Continue Watching', kind: 'landscape', more: '#/progress', empty: 'Nothing in progress. Start something and it will show here.',
-  load: async () => (await loadContinue(ROW_ITEMS)).map(continueCard).join(''),
+  load: async () => (await loadContinue(rowLimit(ROW_ITEMS))).map(continueCard).join(''),
 });
 const startRow = () => ({
   id: 'start', title: 'Start Watching', more: '#/watchlist', empty: 'Add something to your watchlist and it will show here.',
@@ -27,16 +28,16 @@ const calendarRow = () => {
     id: 'calendar', title: 'Calendar', kind: 'landscape', more: '#/calendar', filtered: true, empty: 'Nothing coming up in the next two weeks.',
     actions: getMode() === 'movie' ? '' : segmented('calendar-kind', [{ value: 'all', label: 'All' }, { value: 'premieres', label: 'Premieres' }, { value: 'finales', label: 'Finales' }], kind,
       v => { calendarKind = v; route({ soft: true }); }, 'Calendar type'),
-    load: async () => (await traktGet(withFilters(`/calendars/my/${path}/${isoDate()}/14`))).slice(0, ROW_ITEMS).map(calendarCard).join(''),
+    load: async () => (await traktGet(withFilters(`/calendars/my/${path}/${isoDate()}/14`))).slice(0, rowLimit(ROW_ITEMS)).map(calendarCard).join(''),
   };
 };
 const historyRow = () => ({
   id: 'history', title: 'History', kind: 'landscape', more: '#/history', empty: 'What you watch will show here.',
-  load: async () => (await traktGet(`/sync/history${forMode('', '/episodes', '/movies')}?limit=${ROW_ITEMS}&extended=full`)).map(historyCard).join(''),
+  load: async () => (await traktGet(`/sync/history${forMode('', '/episodes', '/movies')}?limit=${rowLimit(ROW_ITEMS)}&extended=full`)).map(historyCard).join(''),
 });
 const releasesRow = () => ({
   id: 'releases', title: 'Releases', kind: 'landscape', more: '#/discover/releases', filtered: true, bright: true,
-  load: async () => (await traktGet(withFilters(`/calendars/all/${forMode('media', 'shows', 'movies')}/${isoDate()}/30`))).slice(0, ROW_ITEMS).map(calendarCard).join(''),
+  load: async () => (await traktGet(withFilters(`/calendars/all/${forMode('media', 'shows', 'movies')}/${isoDate()}/30`))).slice(0, rowLimit(ROW_ITEMS)).map(calendarCard).join(''),
 });
 
 // The other free charts. Trakt has no Media version of these, so Media mode shows a row for each type.
@@ -227,20 +228,32 @@ async function vibesPage(into, term) {
 }
 
 const movieCard = m => m ? { type: 'movie', id: m.id, title: m.title, year: m.release_date?.slice(0, 4) || undefined } : null;
-const tmdbByImdb = async imdb => movieCard((await tmdb(`/find/${imdb}`, { external_source: 'imdb_id' }).catch(() => null))?.movie_results?.[0]);
-// Nanocrowd's similar films carry only a title and year, so they are matched to TMDB by those. `year` matches any
-// release, not just the first, because Nanocrowd's year can be a later country's (Snowpiercer: 2014, not 2013).
-const tmdbMovie = async (title, year) => {
-  const results = (await tmdb('/search/movie', { query: title, ...(year ? { year: String(year) } : {}) }).catch(() => null))?.results ?? [];
-  // TMDB may know the film by another title, so a different title only counts when the year agrees.
-  return movieCard(results.find(m => m.title.toLowerCase() === title.toLowerCase()) ?? results.find(m => !year || Math.abs(m.release_date?.slice(0, 4) - year) <= 1));
+const showCard = m => m ? { type: 'tv', id: m.id, title: m.name, year: m.first_air_date?.slice(0, 4) || undefined } : null;
+const tmdbByImdb = async imdb => {
+  const it = movieCard((await tmdb(`/find/${imdb}`, { external_source: 'imdb_id' }).catch(() => null))?.movie_results?.[0]);
+  return it && { ...it, imdb };
+};
+// Nanocrowd's similar titles carry only a title and year, so they are matched to TMDB by those. A movie's `year` matches
+// any release, not just the first, because Nanocrowd's year can be a later country's (Snowpiercer: 2014, not 2013).
+const tmdbMatch = async (type, title, year) => {
+  const tv = type === 'tv';
+  const query = { query: title, ...(year ? { [tv ? 'first_air_date_year' : 'year']: String(year) } : {}) };
+  const results = (await tmdb(tv ? '/search/tv' : '/search/movie', query).catch(() => null))?.results ?? [];
+  const name = m => (tv ? m.name : m.title) ?? '';
+  const date = m => (tv ? m.first_air_date : m.release_date)?.slice(0, 4);
+  // TMDB may know the title by another name, so a different name only counts when the year agrees.
+  const pick = results.find(m => name(m).toLowerCase() === title.toLowerCase()) ?? results.find(m => !year || Math.abs(date(m) - year) <= 1);
+  return (tv ? showCard : movieCard)(pick);
 };
 
 const DISCOVER_TITLES = { trending: 'Trending', releases: 'Releases', anticipated: 'Anticipated', popular: 'Popular', recommended: 'Recommended', vibes: 'Vibes' };
 const discoverTitle = sub => DISCOVER_TITLES[sub] ?? { media: 'Discover', show: 'Shows', movie: 'Movies' }[getMode()];
 
+// `filters` names the set of filters a page uses. `trakt: false` leaves out Trakt's, for endpoints that don't take
+// them, and `rank: false` the rating sort and filters. Every page listing titles takes those.
 pages.home.bar = { title: 'Home', mode: 'bar', filters: 'global' };
 pages.discover.bar = sub => sub === 'vibes'
-  ? { title: 'Vibes' } // movies only, so no switch; Trakt's filters don't apply to Nanocrowd's lists
-  : { title: discoverTitle(sub), mode: 'bar', filters: sub === 'recommended' ? false : sub ? 'local' : 'global' };
-pages.search.bar = { title: 'Search', mode: 'search' };
+  ? { title: 'Vibes', filters: 'vibes', trakt: false } // movies only, so no switch; Trakt's filters don't apply to Nanocrowd's lists
+  : { title: discoverTitle(sub), mode: 'bar', filters: sub ? 'local' : 'global', trakt: sub !== 'recommended' }; // Trakt ignores filters on recommendations
+// People and Lists have no ratings. Every search shares one set until the app closes.
+pages.search.bar = () => ({ title: 'Search', mode: 'search', ...(['person', 'list'].includes(getSearchMode()) ? {} : { filters: 'search', trakt: false }) });

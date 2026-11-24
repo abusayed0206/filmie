@@ -30,7 +30,7 @@ filmie/
       main.rs         window setup, adblock hooks, commands
       tmdb.rs         TMDB client
       trakt.rs        Trakt auth, sync, write queue
-      ratings.rs      OMDb + Wikidata
+      ratings.rs      Nanocrowd + MDBList ratings (built 2026-11-24)
       links.rs        external link builder
       db.rs           SQLite: cache, library mirror, settings
     extensions/ubol/  uBlock Origin Lite, unpacked (GPLv3, shipped unmodified)
@@ -150,16 +150,23 @@ The player is a cross-origin iframe, so the app can't read the playback position
 - **Sources:** [sync contract](https://github.com/trakt/trakt-api/blob/main/projects/api/src/contracts/sync/index.ts), [notes contract](https://github.com/trakt/trakt-api/blob/main/projects/api/src/contracts/notes/index.ts), [user lists contract](https://github.com/trakt/trakt-api/blob/main/projects/api/src/contracts/users/subroutes/userLists.ts).
 
 ## 5. Ratings and links
+What is built (2026-11-24). The research behind it is in [RATINGS-RESEARCH.md](RATINGS-RESEARCH.md).
+
 | Source | How |
 |---|---|
-| TMDB | `vote_average` |
-| Trakt | `GET /movies/{id}/ratings` or `/shows/{id}/ratings` (by TMDB ID through search, or Trakt ID from sync) |
-| IMDb, Rotten Tomatoes, Metacritic | OMDb API by `imdb_id` (free key, 1,000 requests/day, cached) |
-| Letterboxd | Link only (`letterboxd.com/tmdb/{id}`). No public API, and scraping breaks its terms. |
+| Nanocrowd `crowdRating` | Always on. Cards: an index of the 25 `/api/tiers/<genre>` lists (about 15,300 movies and shows), cached a week, then the catalog lookup for titles the lists miss. Title pages: the catalog lookup. Scale 0 to 5, checked live 2026-11-24. |
+| IMDb, Rotten Tomatoes (critics and audience), Metacritic, Letterboxd, Trakt, TMDB, Roger Ebert, MyAnimeList, MDBList score | [MDBList](https://api.mdblist.com/docs/), only with the person's own API key from [mdblist.com/preferences/#api](https://mdblist.com/preferences/#api). `POST /tmdb/{movie,show}/` with `{ "ids": [...] }` rates up to 100 titles in one request; each title is cached 8 hours. `GET /user` gives the plan and quota. |
+| Trakt | Free on Trakt's own list items (`rating`, `votes` with `extended=full`). |
+| TMDB | Free on title pages (`vote_average`, `vote_count`). |
+| Letterboxd | Its number through MDBList. Its page is a link only (`letterboxd.com/tmdb/{id}`): no public API, and scraping breaks its terms. |
+
+MDBList, checked live 2026-11-24 with a free key: rating `source` names are `imdb`, `tomatoes`, `popcorn` (RT audience), `metacritic`, `metacriticuser`, `letterboxd`, `trakt`, `tmdb`, `rogerebert`, `myanimelist`; each has `value` and `votes`. Trakt and TMDB are out of 100; Letterboxd comes out of 10 in batch answers. Free accounts get 1,000 requests a day, reset at 00:00 UTC, and a batch of 100 ids counted as one. The OpenAPI schema is at `https://api.mdblist.com/schema/?format=json`.
+
+A rating from fewer votes than its source's `minVotes` in `lib.js` is left out, so a new title with one 10/10 vote doesn't top a sorted page.
 
 Links: IMDb from `imdb_id`. Rotten Tomatoes, Metacritic and Trakt come from Wikidata properties P1258, P1712 and P8013, found through TMDB `wikidata_id`. A search URL is the fallback.
 
-Trakt's policy allows combining scores only if the app labels the result as its own combined score and names the sources.
+Trakt's policy allows combining scores only if the app labels the result as its own combined score and names the sources. The Filmie score does both: it is labeled as Filmie's, and its tooltip names every source in it.
 
 ## 6. Player and adblocking
 - **Player:** an iframe loading user-configured URL templates (`{tmdb_id}`, `{season}`, `{episode}`). No sources are bundled. TMDB "where to watch" and trailers are shown on every detail page.
@@ -203,7 +210,8 @@ Trakt's policy allows combining scores only if the app labels the result as its 
 - Device-code sign-in.
 - Manual watch tracking: a "Mark watched" button, no check-in or scrobble.
 - uBO Lite, loaded if `src-tauri/extensions/ubol/` exists.
-- No OMDb until a key is added.
+- **2026-11-24, the owner's call, reversing part of 2026-11-03:** ratings are back, on cards, title pages and summary grids. Nanocrowd's needs no setup. Every other source comes from MDBList with a key the person adds in Settings, kept in Windows Credential Manager, cached 8 hours, with the day's remaining quota shown. Every page and row of titles, Home included, sorts and filters by any rating locally, over a grid's first 300 titles, from a sort menu in the top bar and the same drawer as Trakt's filters and sort orders, which replaced the separate Sort buttons on Watchlist, lists and Progress. A sort weighs each rating by its votes, Bayesian-style, unless turned off. Where to Watch and the person's own stars stay out.
+- No OMDb: MDBList covers the same sources and more.
 - Search links instead of Wikidata.
 - External links open in the system browser through an allowlist.
 
@@ -235,7 +243,7 @@ Run tests with `cargo test` (in `src-tauri/`) and `node --test tests/ui.test.js`
 
 **Adblock status (2026-11-02):** adblock-tester.com, loaded inside an iframe in the app, scored 90/100. That covers ad requests made by an embedded page, not only by the app itself. uBO Lite 2026.1026.1812 (Edge build) loads through WebView2. It blocked `googlesyndication` and `doubleclick` requests from iframes (`net::ERR_BLOCKED_BY_CLIENT`), while normal pages loaded. Install it with `scripts/fetch-ubol.ps1`; the version and SHA-256 are pinned there. The `extensions/` folder is git-ignored and bundled as a Tauri resource.
 
-**Trakt-style UI (planned 2026-11-03):** recreate Trakt's desktop layout in `ui/`, keeping Filmie's brand. trakt-web is GPLv3 and SvelteKit, so no code is copied. The API use policy (updated 2026-10-20) makes the Trakt logo optional and requires the "not endorsed or certified" sentence, which Settings has. Measurements, platform checks and links are in `specs/001-trakt-style-ui/research.md`.
+**Trakt-style UI (planned 2026-11-03):** recreate Trakt's desktop layout in `ui/`, keeping Filmie's brand. trakt-web is GPLv3 and SvelteKit, so no code is copied. The API use policy (updated 2026-10-20) makes the Trakt logo optional and requires the "not endorsed or certified" sentence, which Settings has. Measurements, platform checks and links are in `specs/002-trakt-design-parity/research.md`; feature 001's original research is in git history.
 
 **Trakt design parity (specified 2026-11-03):** follow Trakt's desktop design as is, with Filmie's red accent and name. Checked against trakt-web `9ebdbff` and trakt-api `090d333`. Desktop uses the side rail plus `NavbarActions`; `TopNavbar` only renders at 768 px and below. Standard tier is free; Limited Access endpoints may need approval, and VIP Only returns `426`. `/users/:id/stats` is VIP only, so stats come from local data. Limits are 500 GET per 5 minutes and 1 write per second. Measurements are in `specs/002-trakt-design-parity/trakt-design-reference.md`. Per-page endpoints are in `specs/002-trakt-design-parity/contracts/api-usage.md`. Limited Access covers per-title `/watchnow` and `/watchnow/sources`, so where to watch stays on TMDB's JustWatch data. 
 

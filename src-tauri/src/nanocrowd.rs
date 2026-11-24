@@ -1,11 +1,15 @@
 //! Nanocrowd API (bananastreampie.com) integration for Filmie.
-//! A guest token, a movie's keywords and similar films, and films by genre. The API is undocumented: see docs/NANOCROWD_API.md.
+//! A guest token, a title's keywords, similar films and audience rating, and films by genre.
+//! The API is undocumented: see docs/NANOCROWD.md.
 
 use crate::trakt::{State, log_request};
+use futures_util::future::join_all;
 use reqwest::StatusCode;
 use reqwest::header::AUTHORIZATION;
-use serde_json::{Value, json};
-use tokio::sync::Mutex;
+use serde_json::{Map, Value, json};
+use std::collections::HashMap;
+use std::time::{Duration, Instant};
+use tokio::sync::{Mutex, Semaphore};
 
 const BASE_URL: &str = "https://bananastreampie.com";
 const DAY: i64 = 86_400;
@@ -13,17 +17,59 @@ const TOKEN_KEY: &str = "nanocrowd token";
 // Nanocrowd gives no expiry, and the same guest token comes back for days, so it is kept until a request is refused.
 const TOKEN_TTL: i64 = 3650 * DAY;
 
+/// The 25 genres from `/api/fundamentals`, the only words `/api/tiers/<genre>` answers for. ui/pages-browse.js has the same list.
+pub const GENRES: [&str; 25] = [
+    "action",
+    "adventure",
+    "animation",
+    "biography",
+    "comedy",
+    "cops",
+    "documentary",
+    "drama",
+    "fantasy",
+    "historical",
+    "horror",
+    "kids",
+    "musical",
+    "mystery",
+    "quest",
+    "relationships",
+    "romance",
+    "romantic-comedy",
+    "sci-fi",
+    "sports",
+    "spy",
+    "superhero",
+    "thriller",
+    "war",
+    "western",
+];
+
+/// IMDb id (lowercase) -> (crowdRating, crowdSize), from every genre's film list.
+pub type RatingIndex = HashMap<String, (f64, f64)>;
+
 /// The guest token, held in memory and saved in the cache table so it survives restarts.
-#[derive(Default)]
 pub struct NanocrowdState {
     token: Mutex<Option<String>>,
     // shortcut: loaded once per run from the 30-day cache, so a run lasting longer keeps an older catalog; fine for a desktop app.
     catalog: tokio::sync::OnceCell<Catalog>,
+    // shortcut: the same holds for the rating index and its 7-day cache.
+    ratings: tokio::sync::OnceCell<RatingIndex>,
+    index_failed: Mutex<Option<Instant>>,
+    // Cards look titles up one by one when the index misses them, so this keeps it to a few requests at a time.
+    lookups: Semaphore,
 }
 
 impl NanocrowdState {
     pub fn new() -> Self {
-        Self::default()
+        Self {
+            token: Mutex::default(),
+            catalog: tokio::sync::OnceCell::new(),
+            ratings: tokio::sync::OnceCell::new(),
+            index_failed: Mutex::default(),
+            lookups: Semaphore::new(3),
+        }
     }
 
     /// From memory, else the database, else a new one from Nanocrowd. The lock is held while it is fetched,
@@ -98,7 +144,7 @@ fn index_catalog(body: &Value) -> Catalog {
 /// two or three years after TMDB's (Seven Samurai: 1956 against 1954), and its titles can drop a subtitle
 /// ("A Silent Voice: The Movie"), so the part before a colon or dash is tried too. The IMDb id then decides, so
 /// the looser search can't attach the wrong film.
-fn catalog_ids(catalog: &Catalog, title: &str, year: u32) -> Vec<u64> {
+fn catalog_ids(catalog: &Catalog, title: &str, year: u32, max: usize) -> Vec<u64> {
     let mut keys = vec![normalize(title)];
     keys.extend(head(title).map(normalize));
     let mut found: Vec<(u32, usize, u64)> = catalog
@@ -113,7 +159,7 @@ fn catalog_ids(catalog: &Catalog, title: &str, year: u32) -> Vec<u64> {
             out.push(id);
         }
     }
-    out.truncate(6); // each candidate costs one request
+    out.truncate(max); // each candidate costs one request
     out
 }
 
@@ -156,7 +202,34 @@ async fn title_details(s: &State, nc: &NanocrowdState, id: u64) -> Result<Value,
     s.db.through(&format!("nanocrowd title {id}"), TITLE_TTL, false, fetch).await
 }
 
-/// A movie's Nanocrowd entry, with its `keywords` and `mostLikeTitles`, or `{}` when Nanocrowd doesn't have it.
+/// A title's Nanocrowd entry, with its `keywords`, `mostLikeTitles` and `crowdRating`, or `{}` when Nanocrowd doesn't
+/// have it. `max` caps how many same-named candidates are fetched to find it.
+pub async fn find(s: &State, nc: &NanocrowdState, title: &str, year: u32, imdb_id: &str, max: usize) -> Result<Value, String> {
+    // Nanocrowd has no search by name: its web app downloads the whole catalog (about 2 MB) and searches it locally.
+    let catalog = nc
+        .catalog
+        .get_or_try_init(async || {
+            let body = s.db.through("nanocrowd catalog", TITLE_TTL, false, fetch_with_auth(s, nc, "/api/titlesearch/")).await?;
+            Ok::<_, String>(index_catalog(&body))
+        })
+        .await?;
+    // Titles repeat, so the IMDb id decides which one it is.
+    for id in catalog_ids(catalog, title.trim(), year, max) {
+        let details = title_details(s, nc, id).await?;
+        if details["imdbId"].as_str().is_some_and(|i| i.eq_ignore_ascii_case(imdb_id)) {
+            return Ok(details);
+        }
+    }
+    Ok(json!({}))
+}
+
+/// The same for a card, which the rating index missed: a few at a time, and only the two nearest candidates.
+pub async fn find_for_card(s: &State, nc: &NanocrowdState, title: &str, year: u32, imdb_id: &str) -> Result<Value, String> {
+    let _turn = nc.lookups.acquire().await.map_err(|e| e.to_string())?;
+    find(s, nc, title, year, imdb_id, 2).await
+}
+
+/// A title page's Nanocrowd entry. Movies and shows both work: the catalog holds both.
 #[tauri::command]
 pub async fn nanocrowd_title_info(
     s: tauri::State<'_, State>,
@@ -165,29 +238,74 @@ pub async fn nanocrowd_title_info(
     year: u32,
     imdb_id: String,
 ) -> Result<Value, String> {
-    // Nanocrowd has no search by name: its web app downloads the whole catalog (about 2 MB) and searches it locally.
-    let catalog = nc_s
-        .catalog
-        .get_or_try_init(async || {
-            let body = s.db.through("nanocrowd catalog", TITLE_TTL, false, fetch_with_auth(&s, &nc_s, "/api/titlesearch/")).await?;
-            Ok::<_, String>(index_catalog(&body))
-        })
-        .await?;
-    let ids = catalog_ids(catalog, title.trim(), year);
-    // Titles repeat, so the IMDb id decides which one it is.
-    for id in ids {
-        let details = title_details(&s, &nc_s, id).await?;
-        if details["imdbId"].as_str().is_some_and(|i| i.eq_ignore_ascii_case(&imdb_id)) {
-            return Ok(details);
+    find(&s, &nc_s, &title, year, &imdb_id, 6).await
+}
+
+const INDEX_TTL: i64 = 7 * DAY;
+const INDEX_RETRY: Duration = Duration::from_secs(600);
+
+impl NanocrowdState {
+    /// Every rating the genre lists carry, about 15,000 movies and shows. Saved compactly in the cache table for a week,
+    /// so building it costs 25 requests about once a week. A failed build waits 10 minutes before trying again.
+    pub async fn rating_index(&self, s: &State) -> Result<&RatingIndex, String> {
+        self.ratings
+            .get_or_try_init(async || {
+                if self.index_failed.lock().await.is_some_and(|at| at.elapsed() < INDEX_RETRY) {
+                    return Err("nanocrowd rating index failed recently".to_string());
+                }
+                let body = s.db.through("nanocrowd ratings", INDEX_TTL, false, self.build_index(s)).await;
+                if body.is_err() {
+                    *self.index_failed.lock().await = Some(Instant::now());
+                }
+                Ok(read_index(&body?))
+            })
+            .await
+    }
+
+    async fn build_index(&self, s: &State) -> Result<Value, String> {
+        // A genre the Vibes page fetched this week is already in the cache, in the same shape it keeps.
+        let tier = async |g: &str| match s.db.peek(&format!("nanocrowd tier {g}")) {
+            Some((body, true)) => Ok(body),
+            _ => Ok::<_, String>(fetch_with_auth(s, self, &format!("/api/tiers/{g}")).await?.get(0).cloned().unwrap_or(json!({}))),
+        };
+        let mut tiers = Vec::new();
+        for chunk in GENRES.chunks(5) {
+            tiers.extend(join_all(chunk.iter().map(|g| tier(g))).await);
+        }
+        let ok: Vec<&Value> = tiers.iter().filter_map(|t| t.as_ref().ok()).collect();
+        // A list or two missing only leaves those titles to the slower lookup, but most missing means Nanocrowd is down.
+        if ok.len() < GENRES.len() - 3 {
+            return Err(format!("nanocrowd answered {} of {} genre lists", ok.len(), GENRES.len()));
+        }
+        Ok(index_tiers(ok.into_iter()))
+    }
+}
+
+/// `{ "tt0903747": [4.95, 4.7], ... }`: the rating and crowd size, rounded, of every film or show in the lists.
+fn index_tiers<'a>(tiers: impl Iterator<Item = &'a Value>) -> Value {
+    let round = |x: f64| (x * 100.0).round() / 100.0;
+    let mut out = Map::new();
+    for tier in tiers {
+        for x in tier["titleList"].as_array().into_iter().flatten() {
+            if let (Some(id), Some(r)) =
+                (x["imdbId"].as_str().filter(|i| i.get(..2).is_some_and(|p| p.eq_ignore_ascii_case("tt"))), x["crowdRating"].as_f64())
+            {
+                out.insert(id.to_ascii_lowercase(), json!([round(r), round(x["crowdSize"].as_f64().unwrap_or(0.0))]));
+            }
         }
     }
-    Ok(json!({}))
+    Value::Object(out)
+}
+
+fn read_index(body: &Value) -> RatingIndex {
+    let pair = |v: &Value| Some((v[0].as_f64()?, v[1].as_f64().unwrap_or(0.0)));
+    body.as_object().into_iter().flatten().filter_map(|(k, v)| Some((k.clone(), pair(v)?))).collect()
 }
 
 /// One of the genres from `/api/fundamentals`: its mood words in `subtierList` and up to 1000 films in `titleList`.
 #[tauri::command]
 pub async fn nanocrowd_tier(s: tauri::State<'_, State>, nc_s: tauri::State<'_, NanocrowdState>, genre: String) -> Result<Value, String> {
-    if genre.is_empty() || !genre.bytes().all(|b| b.is_ascii_lowercase() || b == b'-') {
+    if !GENRES.contains(&genre.as_str()) {
         return Err("not a Nanocrowd genre".into());
     }
     let path = format!("/api/tiers/{genre}");
@@ -214,16 +332,35 @@ mod tests {
             { "title": "Up (2009)", "ncTitleId": 9 },
             { "title": "Gabriel's Inferno: Part 1 (2020)", "ncTitleId": 40 },
         ]));
-        assert_eq!(catalog_ids(&catalog, "Gabriel's Inferno", 2020), vec![40]);
-        assert_eq!(catalog_ids(&catalog, "Lucy", 2014), vec![27320, 7]);
-        assert_eq!(catalog_ids(&catalog, "Lucy", 2004), vec![100]);
-        assert!(catalog_ids(&catalog, "Lucy", 1990).is_empty());
-        assert_eq!(catalog_ids(&catalog, "The Godfather Part II", 1974), vec![2439]);
-        assert_eq!(catalog_ids(&catalog, "Seven Samurai", 1954), vec![8033]);
-        assert_eq!(catalog_ids(&catalog, "Your Name.", 2016), vec![30098]);
-        assert_eq!(catalog_ids(&catalog, "A Silent Voice: The Movie", 2016), vec![30946]);
-        assert_eq!(catalog_ids(&catalog, "Up", 2009), vec![9]); // a one-word title isn't emptied
+        assert_eq!(catalog_ids(&catalog, "Gabriel's Inferno", 2020, 6), vec![40]);
+        assert_eq!(catalog_ids(&catalog, "Lucy", 2014, 6), vec![27320, 7]);
+        assert_eq!(catalog_ids(&catalog, "Lucy", 2004, 6), vec![100]);
+        assert!(catalog_ids(&catalog, "Lucy", 1990, 6).is_empty());
+        assert_eq!(catalog_ids(&catalog, "The Godfather Part II", 1974, 6), vec![2439]);
+        assert_eq!(catalog_ids(&catalog, "Seven Samurai", 1954, 6), vec![8033]);
+        assert_eq!(catalog_ids(&catalog, "Your Name.", 2016, 6), vec![30098]);
+        assert_eq!(catalog_ids(&catalog, "A Silent Voice: The Movie", 2016, 6), vec![30946]);
+        assert_eq!(catalog_ids(&catalog, "Up", 2009, 6), vec![9]); // a one-word title isn't emptied
         assert_eq!(normalize("The"), "the");
+    }
+
+    #[test]
+    fn rating_index_keeps_titled_entries_by_lowercase_imdb_id() {
+        let tiers = [
+            json!({ "titleList": [
+                { "imdbId": "tt0903747", "crowdRating": 4.94734, "crowdSize": 4.6991 },
+                { "imdbId": "tt1", "crowdRating": 2.5 },
+                { "imdbId": "", "crowdRating": 3.0 },
+                { "imdbId": "tt2" },
+            ] }),
+            json!({ "titleList": [{ "imdbId": "TT3", "crowdRating": 1.0, "crowdSize": 2.0 }] }),
+            json!({}),
+        ];
+        let body = index_tiers(tiers.iter());
+        assert_eq!(body, json!({ "tt0903747": [4.95, 4.7], "tt1": [2.5, 0.0], "tt3": [1.0, 2.0] }));
+        let index = read_index(&body);
+        assert_eq!(index.get("tt0903747"), Some(&(4.95, 4.7)));
+        assert_eq!(index.len(), 3);
     }
 
     #[test]

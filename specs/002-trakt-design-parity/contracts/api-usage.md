@@ -132,3 +132,7 @@ Probed on 2026-11-03 with a real account that made 156 read-only requests, then 
 | 429 | Rate limit | Existing retry, then cached copy |
 | 403 | Limited Access, confirmed on `/watchnow/sources` and `/movies/{id}/watchnow/us` | Hide the feature and log it |
 | 412 | Missing JSON content type | Shouldn't occur, since `State::request` always sends it |
+
+## Ratings (added 2026-11-24, not Trakt)
+
+Every card, summary grid and title page asks `ratings` for its titles. Nanocrowd: the genre lists (`/api/tiers/<genre>`, all 25, weekly) and, for titles they miss, the catalog and `/api/titles/<id>`. MDBList, only with the person's key: `POST /tmdb/movie/` and `POST /tmdb/show/` with up to 100 TMDB ids, and `GET /user` from Settings. A page sorted or filtered by rating rates its first 300 titles. See `docs/PLAN.md` §5.

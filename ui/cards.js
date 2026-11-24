@@ -18,10 +18,10 @@ function posterCard(it, { label, titled, action, play } = {}) {
   // Media mode mixes both types, so each card says which it is.
   const typeTag = getMode() === 'media' ? `<i class="tag type-tag" title="${it.type === 'tv' ? 'Show' : 'Movie'}">${icon(it.type === 'tv' ? 'tv' : 'film')}</i>` : '';
   const tags = (label ? [label] : [it.year, it.type === 'tv' ? it.episodes && `${it.episodes} eps` : runtimeText(it.runtime)]).filter(Boolean);
-  return `<div class="media-card${watched ? ' is-watched' : ''}">
+  return `<div class="media-card${watched ? ' is-watched' : ''}"${rateAttrs(it)}>
     <a class="poster" href="#/title/${it.type}/${it.id}" data-type="${it.type}" data-id="${it.id}" title="${esc(it.title)}" aria-label="${esc([it.title, it.year].filter(Boolean).join(', '))}">
       <div class="art"><span class="cover-title">${esc(it.title)}</span><div class="tags">${typeTag}</div>${status ? `<i class="status-tag">${esc(status)}</i>` : ''}</div>
-      <div class="card-footer${titled ? ' titled' : ''}">${titled ? `<b>${esc(it.title)}</b>` : ''}${tags.map(t => `<span class="meta-tag">${esc(t)}</span>`).join('')}</div></a>
+      <div class="card-footer${titled ? ' titled' : ''}">${titled ? `<b>${esc(it.title)}</b>` : ''}${tags.map(t => `<span class="meta-tag">${esc(t)}</span>`).join('')}${ratingSlot()}</div></a>
     ${playButton(it, play)}${cardMenuButton(it)}${action ?? ''}</div>`;
 }
 const posters = (items, type, label) => (items ?? []).map(x => [norm(x, type), x]).filter(([it]) => it).map(([it, x]) => posterCard(it, { label: label?.(x) })).join('');
@@ -30,8 +30,8 @@ const traktPosters = (path, type, label) => async () => posters(await traktGet(p
 // Every card opens its title page. Where a card can also start watching, `play` is the player link, a button of its own.
 const playButton = (it, play) => play ? `<a class="card-play" href="${play}" title="Play" aria-label="Play ${esc(it.title)}"><span class="play-icon">${icon('play')}</span></a>` : '';
 function progressCard(href, it, line, pct, note, { action, play } = {}) {
-  return `<div class="media-card landscape-card"><a class="ep-card" href="${href}" data-type="${it.type}" data-id="${it.id}" data-art="backdrop" title="${esc(it.title)}">
-    <div class="art"><span class="cover-title">${esc(it.title)}</span></div>
+  return `<div class="media-card landscape-card"${rateAttrs(it)}><a class="ep-card" href="${href}" data-type="${it.type}" data-id="${it.id}" data-art="backdrop" title="${esc(it.title)}">
+    <div class="art"><span class="cover-title">${esc(it.title)}</span>${ratingSlot()}</div>
     <b>${esc(it.title)}</b><span>${esc(line)}</span>
     ${pct === null ? '' : `<div class="bar"><i style="width:${Math.min(100, Math.round(pct))}%"></i></div>`}<small>${esc(note)}</small></a>${playButton(it, play)}${action ?? ''}</div>`;
 }
@@ -111,17 +111,18 @@ const personCard = c => `<a class="person" href="#/person/${+c.id}"><div class="
 
 const listTile = (l, href = `#/list/${+l.ids.trakt}`) => `<a class="list-tile" href="${esc(href)}"><b>${esc(l.name)}</b><span>${num(l.item_count)} items${l.privacy ? ` · ${esc(l.privacy)}` : ''}</span>${l.description ? `<p>${esc(l.description)}</p>` : ''}</a>`;
 
-// Rich card for the full grids: backdrop behind, poster on the left, details on the right.
+// Rich card for the full grids: backdrop behind, poster on the left, details on the right, and a few ratings.
+// sortValue is what a Trakt sort orders by, such as the date added.
 function summaryCard(it, { sortValue, label, line, play, action } = {}) {
   const genres = (it.genres ?? []).slice(0, 2).join(', ');
-  const score = sortValue ?? (it.rating ? `${Math.round(it.rating * 10)}%` : '');
+  const score = sortValue ?? '';
   const tags = [label, it.year, it.type === 'tv' ? it.episodes && `${it.episodes} eps` : runtimeText(it.runtime)].filter(Boolean);
-  return `<div class="media-card summary-card">
+  return `<div class="media-card summary-card"${rateAttrs(it)}>
     <a class="summary-link" href="#/title/${it.type}/${it.id}" data-type="${it.type}" data-id="${it.id}" data-art="summary" title="${esc(it.title)}">
       <div class="summary-back"></div>
       <div class="art summary-thumb"><span class="cover-title">${esc(it.title)}</span></div>
       <div class="summary-body"><b>${esc(it.title)}</b>${line ? `<small>${esc(line)}</small>` : ''}${genres ? `<small class="muted">${esc(genres)}</small>` : ''}
-        <div class="summary-tags">${tags.map(t => `<span class="meta-tag">${esc(t)}</span>`).join('')}</div>
+        ${ratingSlot(true)}<div class="summary-tags">${tags.map(t => `<span class="meta-tag">${esc(t)}</span>`).join('')}</div>
         ${score ? `<span class="summary-score">${esc(score)}</span>` : ''}</div></a>
     ${playButton(it, play)}${cardMenuButton(it)}${action ?? ''}</div>`;
 }
@@ -165,7 +166,12 @@ async function loadArt(card) {
   paint(cover, 'w780', a.backdrop ?? a.poster);
   if (a.logo) cover.insertAdjacentHTML('afterbegin', `<img class="cover-logo" src="${IMG}w300${esc(a.logo)}" alt="" loading="lazy">`);
 }
-const observeArt = root => root.querySelectorAll('[data-id]').forEach(c => artObserver.observe(c));
+// roots: an element or a list of them, added to the page together.
+const observeArt = roots => {
+  const list = roots instanceof Element ? [roots] : [...roots];
+  list.forEach(root => root.querySelectorAll('[data-id]').forEach(c => artObserver.observe(c)));
+  observeRatings(list);
+};
 
 // Placeholders shaped like the page on its way, so nothing jumps when it arrives. They hold no data.
 const skeletonCards = (n, kind = 'portrait') => Array.from({ length: n }, (_, i) =>
@@ -205,6 +211,7 @@ const FILTER_EMPTY = '<div class="row-empty"><p class="muted">Nothing matches yo
 
 // A grid that loads more as the person scrolls: past 50% of the page, or when it doesn't yet fill the window.
 // One grid is active at a time, and route() clears it when the page changes.
+// With a rating sort or filter on the page, it instead gathers the first titles, ranks their cards, and shows them all.
 let growGrid = null;
 let restoreTarget = 0; // where route() will scroll to once the page has loaded
 addEventListener('scroll', () => growGrid?.(), { passive: true });
@@ -216,8 +223,20 @@ async function renderGrid(into, { load, card, pageSize = 100, cls = '', filtered
   spinner.className = 'grid-more';
   spinner.hidden = true;
   spinner.setAttribute('aria-label', 'Loading more');
-  spinner.innerHTML = '<span class="spinner"></span>';
+  spinner.innerHTML = '<span class="spinner"></span><small class="muted" aria-live="polite"></small>';
   into.append(grid, spinner);
+  const spec = rankingSpec();
+  if (spec) {
+    spinner.hidden = false;
+    const result = await rankGrid({ load, pageSize, card, spec, progress: text => { spinner.querySelector('small').textContent = text; } });
+    if (token !== routeToken) return;
+    spinner.hidden = true;
+    grid.insertAdjacentHTML('beforebegin', rankBanner(spec, result));
+    grid.append(...result.nodes);
+    observeArt(grid);
+    if (!grid.children.length) grid.outerHTML = FILTER_EMPTY;
+    return;
+  }
   let page = 1;
   let done = false;
   let inFlight = null;
@@ -239,7 +258,7 @@ async function renderGrid(into, { load, card, pageSize = 100, cls = '', filtered
     if (done) return;
     const before = grid.children.length;
     grid.insertAdjacentHTML('beforeend', items.map(card).join(''));
-    [...grid.children].slice(before).forEach(observeArt);
+    observeArt([...grid.children].slice(before));
     done = items.length < pageSize;
     // `card` may leave a whole page out, so an empty grid only means nothing once the pages run out.
     if (done && !grid.children.length) grid.outerHTML = filtered && filterCount(activeFilters()) ? FILTER_EMPTY : `<div class="row-empty"><p class="muted">${esc(empty)}</p></div>`;
@@ -259,9 +278,12 @@ async function renderGrid(into, { load, card, pageSize = 100, cls = '', filtered
 // def: { id, title, load: async () => html, more?, kind: portrait|landscape|list, meta?, filtered?, bright?, empty?, actions? }
 // `id` keys the saved collapse state. A failed row is removed, and so is an empty one, unless filters emptied it
 // or it has an `empty` message: then the person should see why.
+// With a rating sort or filter on the page, each row's cards are ranked once loaded, and a line above says how.
 async function renderRows(defs, into = app) {
   const token = routeToken;
   const collapsed = collapsedRows();
+  const spec = rankingSpec();
+  if (spec && !app.querySelector('.rank-banner')) into.insertAdjacentHTML('afterbegin', rankBanner(spec));
   const rows = defs.filter(Boolean).map(def => {
     const sec = document.createElement('section');
     const kind = def.kind ?? 'portrait';
@@ -287,7 +309,15 @@ async function renderRows(defs, into = app) {
         else sec.remove();
         return;
       }
-      track.innerHTML = html;
+      // Ranked off the page, so the row never shows its cards in the wrong order first.
+      const cards = document.createElement('div');
+      cards.innerHTML = html;
+      if (spec && cards.querySelector('.media-card[data-rk]')) {
+        await rankDom(cards, spec);
+        if (token !== routeToken || !sec.isConnected) return;
+        if (!cards.children.length) { track.innerHTML = FILTER_EMPTY; return; }
+      }
+      track.replaceChildren(...cards.childNodes);
       if (def.more) while (track.children.length > ROW_ITEMS) track.lastElementChild.remove();
       if (def.more && track.children.length <= 4) track.insertAdjacentHTML('beforeend', `<a class="cta-card" href="${def.more}">${icon('chevron')}<span>View all</span></a>`);
       // A row with a full page doesn't scroll with the mouse, except for a sideways wheel. Keyboard focus still scrolls it.
@@ -362,7 +392,7 @@ function cardMenuItems(it) {
 
 document.addEventListener('click', ev => {
   if (ev.target.closest('[data-reset-filters]')) {
-    setActiveFilters(savedDefaultFilters());
+    setActiveFilters(defaultFiltersHere());
     route({ soft: true });
     return;
   }

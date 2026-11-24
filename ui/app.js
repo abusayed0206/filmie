@@ -292,13 +292,31 @@ const filterButton = document.getElementById('filter-btn');
 let bar = {};
 function updateFilterButton() {
   const count = filterCount(activeFilters());
+  const label = filterKinds.rank ? 'Sort and filter' : 'Filters';
   filterButton.disabled = !bar.filters;
+  filterButton.title = label;
   filterButton.querySelector('.badge').textContent = count || '';
-  filterButton.setAttribute('aria-label', count ? `Filters, ${count} active` : 'Filters');
+  filterButton.setAttribute('aria-label', count ? `${label}, ${count} active` : label);
+  updateSortButton();
 }
+// The sort menu sits beside the filter button on every page that lists titles, so the order is always one click away.
+const sortMenuButton = document.getElementById('sort-btn');
+function updateSortButton() {
+  const shown = !!bar.filters && (filterKinds.rank || !!bar.sorts);
+  sortMenuButton.hidden = !shown;
+  sortMenuButton.popoverTargetElement = null; // route() removed the last menu, and its choices may be stale
+  if (!shown) return;
+  const label = sortLabel();
+  sortMenuButton.querySelector('.sort-label').textContent = label;
+  sortMenuButton.classList.toggle('on', !!(filterKinds.rank && currentRank().sort));
+  sortMenuButton.setAttribute('aria-label', `Sort: ${label}`);
+}
+// The button's own popover behaviour opens the menu right after this click.
+sortMenuButton.addEventListener('click', () => { if (!sortMenuButton.popoverTargetElement) menu(sortMenuButton, sortMenuItems()); });
 function setBar(next = {}) {
   bar = next;
   filterScope = next.filters ?? false;
+  filterKinds = { trakt: !!next.filters && next.trakt !== false, rank: !!next.filters && next.rank !== false };
   topbar.querySelector('.topbar-left').innerHTML = `${next.back ? `<button type="button" class="icon-btn ghost" data-back aria-label="Back">${icon('back')}</button>` : ''}
     <div class="topbar-title"><b>${esc(next.title ?? '')}</b>${next.meta ? `<small>${esc(next.meta)}</small>` : ''}</div>`;
   // Kept between pages so the indicator slides and keyboard focus stays on the switch.
@@ -463,4 +481,5 @@ window.addEventListener('hashchange', () => {
 // Only text fields and selected text get a menu; the rest of the app shouldn't offer "Reload" or "Save as".
 document.addEventListener('contextmenu', ev => { if (!ev.target.closest('input, textarea') && !String(getSelection())) ev.preventDefault(); });
 setInterval(() => syncInBackground().catch(console.warn), 15 * 60e3);
-refreshUser().catch(toast).finally(() => { route(); syncInBackground().catch(console.warn); });
+// The MDBList status comes from memory and the credential store, so it costs no request.
+Promise.all([refreshUser().catch(toast), refreshMdb()]).finally(() => { route(); syncInBackground().catch(console.warn); });

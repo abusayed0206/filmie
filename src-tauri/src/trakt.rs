@@ -113,7 +113,7 @@ fn tokens_from(v: &Value) -> Option<Tokens> {
 }
 
 // Windows Credential Manager caps a secret at 2560 bytes, so each token gets its own entry.
-fn entry(name: &str) -> Result<keyring_core::Entry, String> {
+pub(crate) fn entry(name: &str) -> Result<keyring_core::Entry, String> {
     keyring_core::Entry::new("filmie", name).map_err(err)
 }
 

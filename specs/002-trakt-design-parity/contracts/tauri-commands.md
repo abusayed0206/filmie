@@ -49,3 +49,13 @@ Add a variant that also returns `X-Pagination-Item-Count`, for detecting removed
 streakFrom(days, today) → number      consecutive days ending today or yesterday
 weekHeatmap(days, today) → [bool × 7]
 ```
+
+## Ratings (added 2026-11-24, `ratings.rs`)
+
+```text
+ratings({ items: [{ kind, id, imdb?, title?, year? }] ≤ 200, mdblist: bool })
+  → [{ imdb, nanocrowd: { rating, size } | null, mdblist: { score, average, ratings: { source: { value, votes } } } | null }]
+mdblist_status({ refresh: bool }) → { connected, username?, supporter?, plan?, limit?, remaining?, reset?, paused_until?, error? }
+mdblist_set_key({ key }) → status     checks the key with GET /user, then saves it in Credential Manager
+mdblist_forget_key()                  deletes it
+```

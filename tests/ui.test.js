@@ -1,7 +1,7 @@
 // Run: node --test tests/ui.test.js
 const test = require('node:test');
 const assert = require('node:assert');
-const { validProgress, playedNote, historyBody, youtubeKey, pickTrailer, newestCredits, isoDate, shortDate, fullDate, addDays, weekStart, sortValue, hasEnded, sortLists, exactFirst, streakFrom, weekHeatmap, durationText, recentMonths, mergeContinue, startWatching, runtimeText, statusTag, navFor, modeOf, FILTERS, decadeOptions, cleanFilters, filterQuery, filterCount, addQuery, fitsSimple, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, betterServer, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm } = require('../ui/lib.js');
+const { rankScore, rankValue, RATING_SOURCES, ratingsOf, ratingText, ratingTitle, compactNumber, rankSpec, rankActive, rankSources, rankItems, validProgress, playedNote, historyBody, youtubeKey, pickTrailer, newestCredits, isoDate, shortDate, fullDate, addDays, weekStart, sortValue, hasEnded, sortLists, exactFirst, streakFrom, weekHeatmap, durationText, recentMonths, mergeContinue, startWatching, runtimeText, statusTag, navFor, modeOf, FILTERS, decadeOptions, cleanFilters, filterQuery, filterCount, addQuery, fitsSimple, scrollTarget, DEFAULT_SOURCES, QUALITIES, qualityOf, esc, parseSources, formatSources, fillTemplate, buildServer, splitServer, serverAfterRemove, betterServer, MOVIE_STRUCTURES, TV_STRUCTURES, episodeAfter, norm } = require('../ui/lib.js');
 
 test('norm', () => {
   const ids = { trakt: 1, tmdb: 272 };
@@ -411,4 +411,104 @@ test('mergeSimilar takes turns, keeps each title once and leaves out the title t
   assert.deepEqual(mergeSimilar([{ from: 'Nanocrowd', items: [] }, { from: 'Trakt', items: [m(5)] }], m(1)).map(x => x.id), [5]);
   assert.deepEqual(mergeSimilar([{ from: 'Nanocrowd', items: [] }, { from: 'Trakt', items: [] }], m(1)), []);
   assert.equal(mergeSimilar([{ from: 'Nanocrowd', items: [{ type: 'tv', id: 1 }] }, { from: 'Trakt', items: [m(1)] }], m(2)).length, 2); // a show and a movie can share an id
+});
+
+test('ratingsOf puts every source on its own scale and on 0-100', () => {
+  const raw = {
+    nanocrowd: { rating: 4.6843, size: 5.06 },
+    mdblist: { score: 91, ratings: { imdb: { value: 8.8, votes: 2600000 }, tomatoes: { value: 87 }, tomatoesaudience: { value: 91 }, letterboxd: { value: 8.4 }, metacritic: { value: 74 } } },
+  };
+  const r = ratingsOf(raw);
+  assert.deepEqual(r.nanocrowd, { value: 4.68, score: 93.6 });
+  assert.deepEqual(r.imdb, { value: 8.8, score: 88, votes: 2600000 });
+  assert.equal(r.popcorn.value, 91);
+  assert.equal(r.letterboxd.value, 4.2); // a batch answer out of 10
+  assert.equal(r.mdblist.value, 91);
+  // Filmie's score averages the sources, but not MDBList's own blend of them, and names them.
+  assert.deepEqual(r.filmie.from, ['nanocrowd', 'imdb', 'tomatoes', 'popcorn', 'metacritic', 'letterboxd']);
+  assert.equal(r.filmie.value, Math.round((93.6 + 88 + 87 + 91 + 74 + 84) / 6));
+  // Nanocrowd's top films pass 5, so it's capped.
+  assert.equal(ratingsOf({ nanocrowd: { rating: 5.11 } }).nanocrowd.score, 100);
+  // Free sources from the title's own record. TMDB needs a few votes, and MDBList's Trakt wins over the item's.
+  assert.deepEqual(ratingsOf(null, { trakt: 8.12, traktVotes: 40, tmdb: 7.9, tmdbVotes: 5 }), {
+    trakt: { value: 81.2, score: 81.2, votes: 40 }, filmie: { value: 81, score: 81.2, from: ['trakt'] },
+  });
+  assert.equal(ratingsOf({ mdblist: { ratings: { trakt: { value: 70 } } } }, { trakt: 9 }).trakt.value, 70);
+  assert.equal(ratingsOf(null, { tmdb: 7.9, tmdbVotes: 300 }).tmdb.value, 79);
+  assert.deepEqual(ratingsOf(undefined), {});
+  assert.deepEqual(ratingsOf({ nanocrowd: { rating: 0 }, mdblist: null }), {});
+});
+
+test('ratingText and ratingTitle write each source its own way', () => {
+  assert.equal(ratingText('nanocrowd', { value: 4.6843 }), '4.7');
+  assert.equal(ratingText('imdb', { value: 8 }), '8.0');
+  assert.equal(ratingText('tomatoes', { value: 87.4 }), '87%');
+  assert.equal(ratingText('metacritic', { value: 74 }), '74');
+  assert.equal(ratingText('imdb', null), '');
+  assert.equal(ratingTitle('imdb', { value: 8.8, votes: 2600000 }), 'IMDb: 8.8 out of 10 from 2.6M votes');
+  assert.equal(ratingTitle('tomatoes', { value: 87 }), 'Rotten Tomatoes: 87% (critics)');
+  assert.equal(ratingTitle('filmie', { value: 80, from: ['nanocrowd', 'imdb'] }), 'Filmie score: 80 out of 100, the average of Nanocrowd, IMDb');
+  assert.equal(compactNumber(1500), '1.5K');
+  assert.equal(compactNumber(12), '12');
+  assert.ok(RATING_SOURCES.every(s => s.key && s.label && s.tag && s.max));
+});
+
+test('the rating sort and filters are local, and never reach Trakt', () => {
+  const f = { rank: 'imdb.asc', rate_imdb: '7-10', rate_nanocrowd: '0-5', rate_unrated: 'true', genres: 'drama' };
+  assert.deepEqual(cleanFilters(f), { rank: 'imdb.asc', rate_imdb: '7-10', rate_unrated: 'true', genres: 'drama' }); // full range is no filter
+  assert.equal(filterQuery(f), 'genres=drama');
+  assert.equal(filterCount(f), 4);
+  assert.ok(fitsSimple({ rank: 'imdb', rate_imdb: '7-10' }));
+  assert.deepEqual(rankSpec(f), { sort: 'imdb', asc: true, raw: false, ranges: [{ key: 'imdb', lo: 7, hi: 10 }], keepUnrated: true });
+  assert.deepEqual(rankSpec({ rank: 'nope' }), { sort: null, asc: false, raw: false, ranges: [], keepUnrated: false });
+  assert.deepEqual(rankSpec({ rate_nanocrowd: '3.5-5' }).ranges, [{ key: 'nanocrowd', lo: 3.5, hi: 5 }]);
+  assert.ok(rankActive(rankSpec({ rank: 'filmie' })));
+  assert.ok(!rankActive(rankSpec({ genres: 'drama' })));
+  assert.deepEqual(rankSources(rankSpec({ rank: 'imdb', rate_imdb: '7-10', rate_tomatoes: '60-100' })), ['imdb', 'tomatoes']);
+  // Every local filter is known to FILTERS, so cleanFilters keeps it.
+  assert.ok(FILTERS.filter(d => d.rating).every(d => d.local && d.range[1] === RATING_SOURCES.find(s => s.key === d.rating).max));
+});
+
+test('rankItems filters by range, then sorts with unrated last and ties in order', () => {
+  const e = (name, imdb) => ({ name, ratings: imdb === undefined ? {} : { imdb: { value: imdb, score: imdb * 10 } } });
+  const items = [e('a', 7.1), e('b'), e('c', 8.5), e('d', 6), e('e', 8.5)];
+  const names = (spec) => rankItems(items, { sort: null, asc: false, ranges: [], keepUnrated: false, ...spec }).map(x => x.name).join('');
+  assert.equal(names({ sort: 'imdb' }), 'ceadb');
+  assert.equal(names({ sort: 'imdb', asc: true }), 'daceb');
+  assert.equal(names({ ranges: [{ key: 'imdb', lo: 7, hi: 10 }] }), 'ace');
+  assert.equal(names({ ranges: [{ key: 'imdb', lo: 7, hi: 10 }], keepUnrated: true, sort: 'imdb' }), 'ceab');
+  assert.equal(names({}), 'abcde');
+});
+
+test('a rating from too few votes is left out, and ties go to the more-voted', () => {
+  assert.deepEqual(ratingsOf({ mdblist: { ratings: { trakt: { value: 100, votes: 1 } } } }), {});
+  assert.deepEqual(ratingsOf(null, { trakt: 10, traktVotes: 1 }), {});
+  assert.equal(ratingsOf({ mdblist: { ratings: { imdb: { value: 7, votes: null } } } }).imdb.value, 7); // no count: kept
+  assert.equal(ratingsOf({ mdblist: { ratings: { metacritic: { value: 70, votes: 3 } } } }).metacritic, undefined);
+  const e = (name, votes) => ({ name, ratings: { imdb: { value: 8, score: 80, votes } } });
+  const spec = { sort: 'imdb', asc: false, raw: true, ranges: [], keepUnrated: false };
+  assert.deepEqual(rankItems([e('a', 100), e('b', 5000), e('c')], spec).map(x => x.name), ['b', 'a', 'c']);
+});
+
+// Classic scripts share one global scope, so a name declared with const or let in two of them stops the second loading.
+test('the page scripts declare no top-level name twice', () => {
+  const fs = require('node:fs');
+  const path = require('node:path');
+  const html = fs.readFileSync(path.join(__dirname, '../ui/index.html'), 'utf8');
+  const files = [...html.matchAll(/<script src="([\w.-]+\.js)"><\/script>/g)].map(m => m[1]);
+  assert.ok(files.length > 5);
+  const all = files.map(f => fs.readFileSync(path.join(__dirname, '../ui', f), 'utf8')).join('\n;\n');
+  assert.doesNotThrow(() => new (require('node:vm').Script)(all, { filename: 'page.js' }));
+});
+
+test('sorting weighs a rating by its votes, unless asked not to', () => {
+  const e = (name, value, votes) => ({ name, ratings: { imdb: { value, score: value * 10, votes } } });
+  const items = [e('obscure', 8.6, 300), e('famous', 8.3, 2000000), e('unknown count', 7)];
+  const order = raw => rankItems(items, { sort: 'imdb', asc: false, raw, ranges: [], keepUnrated: false }).map(x => x.name);
+  assert.deepEqual(order(false), ['famous', 'unknown count', 'obscure']);
+  assert.deepEqual(order(true), ['obscure', 'famous', 'unknown count']);
+  assert.equal(rankScore('imdb', { score: 86, votes: 5000 }), 73); // halfway to the prior at `trust` votes
+  assert.equal(rankScore('nanocrowd', { score: 90 }), 90); // no votes to weigh
+  assert.equal(rankValue({ sort: 'imdb', asc: true, raw: true }), 'imdb.asc.raw');
+  assert.deepEqual(rankSpec({ rank: rankValue({ sort: 'tomatoes', raw: true }) }).raw, true);
 });

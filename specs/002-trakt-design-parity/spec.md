@@ -15,7 +15,7 @@
 
 **Design source**: [trakt-design-reference.md](trakt-design-reference.md) holds the measurements and behaviour read from Trakt's repository. "As Trakt" in this spec means as described there.
 
-**Relation to feature 001**: builds on the rail, placeholders, scroll restore and in-place refresh from `specs/001-trakt-style-ui`. Where they differ, this spec wins, which replaces 001's rail items, palette, card hover, row arrows, title layout and page cross-fade. 001's check in the real app was never finished, so this feature's check covers it too.
+**Relation to feature 001** (pruned from the repo; its files remain in git history): builds on the rail, placeholders, scroll restore and in-place refresh it introduced. Where they differ, this spec wins, which replaces 001's rail items, palette, card hover, row arrows, title layout and page cross-fade. 001's check in the real app was never finished, so this feature's check covers it too.
 
 ## User Scenarios & Testing *(mandatory)*
 

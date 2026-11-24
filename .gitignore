@@ -17,3 +17,7 @@ node_modules/
 
 # graphify output (regenerate with /graphify)
 graphify-out/
+
+# Local tool state and preview configs
+.impeccable/
+.claude/launch.json

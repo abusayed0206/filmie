@@ -27,7 +27,7 @@ description: "Task list for Trakt design parity with filters"
 
 - [X] T001 Write a throwaway probe outside the repo that calls every endpoint in `specs/002-trakt-design-parity/contracts/api-usage.md` with a free account, using keys read from `.env.local` and never printing them, then record each status in `docs/PLAN.md` with the date. Include `/sync/progress/up_next_nitro`, `statuses` as a filter name, `extended=colors`, the `/sync/watchlist` sort path, filters on `/recommendations`, the notes routes, the search empty state, and the `/stats` and `/watching` rows that research flagged. This needs a signed-in session, so ask the user to run it or to approve running it
 - [X] T002 Correct `specs/002-trakt-design-parity/contracts/api-usage.md` from T001's results, replacing or removing anything that isn't free, and note in `specs/002-trakt-design-parity/research.md` any decision that changed
-- [X] T003 Ask the user to run the remaining checks in `specs/001-trakt-style-ui/quickstart.md` in the real app, fix what fails in `ui/app.js` or `ui/style.css`, and mark T029 in `specs/001-trakt-style-ui/tasks.md`
+- [X] T003 Ask the user to run the remaining checks in feature 001's quickstart (pruned; see git history) in the real app, fix what fails in `ui/app.js` or `ui/style.css`, and mark T029 in its task list
 - [X] T004 [P] Add `roboto-latin-wght-normal.woff2` from `@fontsource-variable/roboto` 5.3.0 to `ui/fonts/`, and add a Roboto entry with its OFL 1.1 licence and source to `THIRD_PARTY_NOTICES.md`
 
 **Checkpoint**: The API is known and feature 001 is confirmed. If T001 removes something large, tell the user before continuing.

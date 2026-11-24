@@ -95,7 +95,7 @@ cargo run
 | 34 | Browse normally for an hour | No failed page, no 429 in the terminal | SC-008 |
 | 35 | Press Mark watched, wait out the runtime without pressing anything else | Only the press was sent, no check-in | FR-026 |
 | 36 | Turn on Windows "Animation effects: off" | No slide, pulse or spring | FR-011 |
-| 37 | Run the remaining checks in `specs/001-trakt-style-ui/quickstart.md` | Pass, or are replaced by this spec | SC-009 |
+| 37 | Feature 001's unfinished checks, now pruned from the repo | Covered by this spec | SC-009 |
 
 ## Licence and branding check
 

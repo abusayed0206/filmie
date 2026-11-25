@@ -387,6 +387,9 @@ pub fn run() {
         .setup(|app| {
             #[cfg(windows)]
             keyring_core::set_default_store(windows_native_keyring_store::Store::new()?);
+            // Android has no platform keyring, so keep Trakt tokens in memory for the session.
+            #[cfg(target_os = "android")]
+            keyring_core::set_default_store(keyring_core::mock::Store::new()?);
             let data_dir = match trakt::test_dir() {
                 Some(dir) => dir,
                 None => app.path().app_data_dir()?,

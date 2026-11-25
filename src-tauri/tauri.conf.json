@@ -17,14 +17,6 @@
     "active": true,
     "targets": "all",
     "icon": ["icons/icon.ico", "icons/icon.svg"],
-    "resources": { "extensions/": "extensions/" },
-    "android": {
-      "keystore": {
-        "path": "filmie.keystore",
-        "alias": "filmie",
-        "password": "",
-        "keyPassword": ""
-      }
-    }
+    "resources": { "extensions/": "extensions/" }
   }
 }

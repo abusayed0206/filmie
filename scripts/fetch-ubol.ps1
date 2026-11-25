@@ -2,7 +2,9 @@
 # It is git-ignored because it is 31 MB of third-party code. Bump the version and hash together.
 $version = '2026.1116.1650'
 $sha256 = '9f98592f541d85271bd65eac6527d0e12d7f11d5bdff1e1414d6ae54cb60040c'
-$zip = Join-Path $env:TEMP "uBOLite_$version.edge.zip"
+# $env:TEMP is Windows-only; PowerShell on Linux uses TMPDIR.
+$tmp = if ($env:TEMP) { $env:TEMP } else { [System.IO.Path]::GetTempPath() }
+$zip = Join-Path $tmp "uBOLite_$version.edge.zip"
 $dest = Join-Path $PSScriptRoot '..\src-tauri\extensions\ubol'
 
 Invoke-WebRequest -UseBasicParsing -OutFile $zip "https://github.com/uBlockOrigin/uBOL-home/releases/download/$version/uBOLite_$version.edge.zip"

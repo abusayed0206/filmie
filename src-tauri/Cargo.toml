@@ -3,6 +3,11 @@ name = "filmie"
 version = "0.7.0-beta.2"
 edition = "2024"
 
+# Tauri's mobile targets build the library, not the binary.
+[lib]
+name = "filmie_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
 [dependencies]
 futures-util = { version = "0.3", default-features = false, features = ["std"] }
 keyring-core = "1.0.1"
@@ -13,16 +18,12 @@ serde_json = "1.0.154"
 tauri = { version = "2", features = [] }
 tauri-plugin-opener = "2"
 tokio = { version = "1.54.1", features = ["sync", "time"] }
+
+[target.'cfg(windows)'.dependencies]
 windows-native-keyring-store = "1.1.0"
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
-
-[target.'cfg(target_os = "android")'.dependencies]
-android-activity = "0.6"
-jni = "0.22"
-log = "0.4"
-obfstr = "0.4"
 
 # Smallest and fastest installer; only release builds pay the extra compile time.
 [profile.release]

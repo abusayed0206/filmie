@@ -18,6 +18,12 @@ windows-native-keyring-store = "1.1.0"
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
+[target.'cfg(target_os = "android")'.dependencies]
+android-activity = "0.6"
+jni = "0.22"
+log = "0.4"
+obfstr = "0.4"
+
 # Smallest and fastest installer; only release builds pay the extra compile time.
 [profile.release]
 codegen-units = 1

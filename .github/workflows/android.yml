@@ -1,0 +1,102 @@
+name: Android Build
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "src-tauri/**"
+      - ".github/workflows/android.yml"
+      - ".github/actions/setup/**"
+  pull_request:
+    paths:
+      - "src-tauri/**"
+      - ".github/workflows/android.yml"
+      - ".github/actions/setup/**"
+  workflow_dispatch:
+
+concurrency:
+  group: android-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: short
+
+jobs:
+  build:
+    name: Build APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          api-level: 34
+          ndk-version: r27c
+          cmdline-tools-version: latest
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: ./.github/actions/setup
+        with:
+          cache-key: android
+          components: clippy
+
+      - name: Add Android targets
+        run: rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
+
+      - name: Install tauri-cli
+        uses: taiki-e/install-action@v2
+        with:
+          tool: tauri-cli@2
+
+      - name: Generate debug keystore
+        run: |
+          keytool -genkeypair \
+            -alias filmie \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -dname "CN=Filmie Debug, O=Filmie, C=US" \
+            -keypass android \
+            -keystore src-tauri/filmie.keystore \
+            -storepass android
+
+      - name: Initialize Android project
+        run: cargo tauri android init --ci
+        working-directory: src-tauri
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+
+      - name: Build APK
+        run: cargo tauri android build --ci
+        working-directory: src-tauri
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_HOME }}
+          NDK_HOME: ${{ env.ANDROID_NDK_HOME }}
+
+      - name: Collect APK
+        shell: bash
+        run: |
+          mkdir -p dist
+          find src-tauri/gen/android -name "*.apk" -type f | head -1 | xargs -I {} cp {} dist/Filmie.apk
+          (cd dist && sha256sum Filmie.apk > Filmie.apk.sha256)
+          cat dist/Filmie.apk.sha256
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: filmie-android
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14

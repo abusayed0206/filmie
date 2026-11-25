@@ -1,4 +1,4 @@
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![cfg_attr(all(not(debug_assertions), target_os = "windows"), windows_subsystem = "windows")]
 
 mod db;
 mod keys;
@@ -10,6 +10,9 @@ use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use tauri::{Manager, Theme, Url, WebviewUrl, WebviewWindowBuilder, webview::NewWindowResponse, window::Color};
 use tauri_plugin_opener::OpenerExt;
+
+#[cfg(target_os = "android")]
+use android_activity::AndroidApp;
 
 const INJECT_PLAYER: &str = r##"
 (() => {
@@ -381,6 +384,65 @@ async fn art(s: tauri::State<'_, trakt::State>, kind: String, id: u64) -> Result
 }
 
 fn main() {
+    #[cfg(target_os = "android")]
+    android_main(android_activity::AndroidApp::new());
+
+    #[cfg(not(target_os = "android"))]
+    desktop_main();
+}
+
+#[cfg(target_os = "android")]
+fn android_main(_android_app: AndroidApp) {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
+        .setup(|app| {
+            let data_dir = app.path().app_data_dir()?;
+            std::fs::create_dir_all(&data_dir)?;
+            app.manage(trakt::State::new(data_dir.join("library.json"), db::Db::open(data_dir.join("filmie.sqlite3"))));
+            app.manage(nanocrowd::NanocrowdState::new());
+            app.manage(ratings::MdbState::default());
+            // Ready before the first title page asks: from the database after the first launch, so usually no request.
+            // The rating index follows: from the database too, except about once a week, when it costs 25 requests.
+            let warm = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                let (nc, s) = (warm.state::<nanocrowd::NanocrowdState>(), warm.state::<trakt::State>());
+                if let Err(e) = nc.token(&s).await.and(nc.rating_index(&s).await.map(|_| ())) {
+                    eprintln!("{e}");
+                }
+            });
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            tmdb,
+            art,
+            trakt::trakt,
+            trakt::device_start,
+            trakt::device_poll,
+            trakt::sign_out,
+            trakt::status,
+            trakt::sync,
+            trakt::library,
+            trakt::avatar,
+            trakt::history_sync,
+            db::history_save,
+            db::history_list,
+            db::history_clear,
+            db::cache_info,
+            db::cache_clear,
+            db::stats,
+            nanocrowd::nanocrowd_title_info,
+            nanocrowd::nanocrowd_tier,
+            ratings::ratings,
+            ratings::mdblist_status,
+            ratings::mdblist_set_key,
+            ratings::mdblist_forget_key
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running Filmie");
+}
+
+#[cfg(not(target_os = "android"))]
+fn desktop_main() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {

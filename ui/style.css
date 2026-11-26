@@ -741,3 +741,108 @@ a.title-rating.main:hover { border-color: var(--accent-hover); }
 .key-form { display: flex; gap: 8px; }
 .key-form input { width: 260px; }
 .title-ratings + .tagline, .title-ratings + .overview { margin-top: 20px; }
+
+/* ---------- phones ---------- */
+/* The rail needs room a phone does not have, so below 720px it gives way to a bottom bar. */
+.mobnav { display: none; }
+
+@media (max-width: 720px) {
+  :root { --rail: 0px; --gutter: 14px; --topbar: 52px; }
+  body { padding-bottom: calc(58px + env(safe-area-inset-bottom, 0px)); }
+  body.playing { padding-bottom: 0; }
+  .rail { display: none; }
+  main, .searchbar { margin-left: 0; }
+  main { padding-top: calc(var(--topbar) + env(safe-area-inset-top, 0px)); }
+  body.playing main { padding-top: 0; }
+  body.searching main { padding-top: 0; }
+  body.searching .searchbar {
+    top: calc(var(--topbar) + env(safe-area-inset-top, 0px));
+    margin-top: calc(var(--topbar) + env(safe-area-inset-top, 0px));
+  }
+
+  .topbar {
+    left: 0;
+    height: calc(var(--topbar) + env(safe-area-inset-top, 0px));
+    padding: env(safe-area-inset-top, 0px) var(--gutter) 0;
+    grid-template-columns: minmax(0, 1fr) minmax(0, auto) auto;
+    gap: 8px;
+  }
+  .topbar-center { min-width: 0; overflow-x: auto; scrollbar-width: none; }
+  .topbar-center::-webkit-scrollbar { display: none; }
+  .topbar-center .segmented label { padding: 0 7px; font-size: 11.5px; }
+  .topbar-title b { font-size: 16px; }
+  .topbar-title small { display: none; }
+  .sort-btn { padding: 0 8px; }
+  /* The search page has no title, so its five-way switch can use the room the sort button takes. */
+  body.searching .topbar { grid-template-columns: 0 minmax(0, 1fr) auto; }
+  body.searching #sort-btn { display: none; }
+
+  .page { padding: 4px var(--gutter) 28px; }
+  h1 { font-size: 24px; }
+  h2 { margin-top: 22px; }
+  .summary-inner { flex-direction: column; align-items: flex-start; min-height: 0; padding: 20px var(--gutter) 18px; gap: 18px; }
+  .hero-poster { width: min(42vw, 180px); }
+  .summary-info { width: 100%; }
+  .summary-info h1 { font-size: 26px; }
+  .action-bar { min-width: 0; width: 100%; }
+  .row-head { flex-wrap: wrap; }
+  .row-tools { width: 100%; margin-left: 0; justify-content: flex-start; }
+
+  .grid { grid-template-columns: repeat(auto-fill, minmax(102px, 1fr)); gap: 18px 10px; }
+  .grid.summary-grid, .grid.list-grid { grid-template-columns: minmax(0, 1fr); }
+  .grid.landscape-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); }
+  .summary-card { height: 190px; }
+  .summary-card .summary-thumb { width: 92px; }
+
+  .card { padding: 16px; }
+  .settings { max-width: none; }
+  .form-grid { grid-template-columns: minmax(0, 1fr); }
+  .key-form { flex-wrap: wrap; }
+  .key-form input { width: 100%; }
+
+  .drawer { width: 100vw; border-radius: 0; }
+  .drawer::after { display: none; }
+  .drawer-head { padding: 16px 16px 8px 18px; }
+  .drawer-body { padding: 8px 18px 24px; }
+
+  .no-server { margin-top: 18px; padding: 18px; gap: 18px; border-radius: 18px; }
+  .no-server-poster { width: 100%; max-width: 200px; }
+  .no-server-actions .btn { flex: 1; justify-content: center; }
+  .profile { padding: 18px; gap: 14px; }
+  .stats { margin-left: 0; }
+  .row-actions { flex-wrap: wrap; }
+  .account-row .row-actions { width: 100%; margin-left: 0; }
+  .stat-charts { grid-template-columns: minmax(0, 1fr); }
+  .finish-prompt { right: 12px; bottom: calc(84px + env(safe-area-inset-bottom, 0px)); }
+
+  .mobnav {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    position: fixed;
+    z-index: 20;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: calc(58px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+    background: color-mix(in srgb, var(--surface) 94%, transparent);
+    border-top: 1px solid var(--line);
+    backdrop-filter: blur(14px);
+  }
+  body.playing .mobnav { display: none; }
+  .mobnav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    min-width: 0;
+    color: var(--muted);
+    text-decoration: none;
+    font-size: 10.5px;
+    font-weight: 600;
+  }
+  .mobnav-item .i { width: 22px; height: 22px; }
+  .mobnav-item.active { color: var(--text); }
+  .mobnav-item.active .i { color: var(--accent-text); }
+}

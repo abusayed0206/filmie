@@ -5,7 +5,7 @@
 // paints them, or redraws after a sync, doesn't ask twice.
 
 let mdb = { connected: false }; // the MDBList key's status, from Rust
-const refreshMdb = async (refresh = false) => (mdb = await invoke('mdblist_status', { refresh }).catch(() => ({ connected: false })));
+const refreshMdb = async (refresh = false) => (mdb = (await invoke('mdblist_status', { refresh }).catch(() => null)) ?? { connected: false });
 const usableRating = key => freeRating(key) || !!mdb.connected;
 const usableSources = () => RATING_SOURCES.filter(s => usableRating(s.key));
 // Every source but these needs MDBList, and so its quota.

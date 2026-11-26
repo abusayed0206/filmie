@@ -85,6 +85,8 @@
       case 'stats': case 'history_sync': return stats;
       case 'history_list': return [{ kind: 'tv', id: 1000, title: 'The Long Road', season: 2, episode: 2, position: 1900, duration: 2800 }, { kind: 'movie', id: 2003, title: 'Saltwater Kings', position: 3200, duration: 6900 }, { kind: 'tv', id: 1003, title: 'Glass Orchard', season: 1, episode: 5, position: 600, duration: 2600 }];
       case 'history_save': return null;
+      case 'mdblist_status': return { connected: false };
+      case 'ratings': return [];
       case 'cache_info': return { count: 1240, bytes: 18e6 };
       case 'art': return { poster: `/poster-${a.id}.svg`, backdrop: `/backdrop-${a.id}.svg` };
       case 'tmdb': {

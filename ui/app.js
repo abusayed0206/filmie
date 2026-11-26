@@ -457,6 +457,15 @@ function syncRailGroups() {
 for (const g of railGroups) g.querySelector('.rail-group-toggle').onclick = () => openRailGroup(g.classList.contains('open') ? null : g);
 openRailGroup(null);
 
+// The phone bottom bar's More sheet; these pages live in the rail on desktop.
+const moreSheet = document.getElementById('mobmore');
+const moreButton = document.querySelector('[data-more]');
+if (moreSheet && moreButton) {
+  moreButton.onclick = () => moreSheet.showModal();
+  moreSheet.addEventListener('click', ev => { if (ev.target === moreSheet) moreSheet.close(); });
+  moreSheet.querySelectorAll('a').forEach(a => a.addEventListener('click', () => moreSheet.close()));
+}
+
 // On a narrow rail the groups and the bottom menu open beside it, on hover or keyboard focus. The delay lets the pointer cross the gap.
 const railFlyouts = [...railGroups, document.getElementById('rail-bottom')];
 for (const el of railFlyouts) {

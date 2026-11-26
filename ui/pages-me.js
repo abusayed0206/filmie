@@ -242,6 +242,20 @@ Object.assign(pages, {
             <div class="row-actions"><a class="btn" href="#/hidden">Hidden items</a><button id="sync" class="btn">${icon('sync')}Sync now</button><button id="signout" class="btn">${icon('logout')}Sign out</button></div></div>`
           : `<div class="account-row"><p class="muted">Not connected.</p><div class="row-actions"><button id="connect" class="btn primary">Sign in with Trakt</button></div></div>`}
       </section>
+      <section class="card mob-only">
+        <div class="card-head"><h2>More pages</h2><p class="muted">Profile, history and the rest of the library.</p></div>
+        <div class="row-actions">
+          <a class="btn" href="#/profile">Profile</a>
+          <a class="btn" href="#/history">History</a>
+          <a class="btn" href="#/library">Library</a>
+          <a class="btn" href="#/calendar">Calendar</a>
+        </div>
+      </section>
+      <section class="card">
+        <div class="card-head"><h2>Connection</h2><p class="muted">Check that this build can reach TMDB and Trakt.</p></div>
+        <div class="row-actions"><button id="api-test" class="btn">Test connections</button></div>
+        <p class="muted" id="api-test-out"></p>
+      </section>
       <section class="card" id="servers"></section>
       <section class="card" id="ratings"></section>
       <section class="card">
@@ -281,6 +295,13 @@ Object.assign(pages, {
     busy($('clear-cache'), async () => { await invoke('cache_clear'); await showCache(); toast('Cache cleared'); });
     busy($('clear-recent'), async () => { await invoke('history_clear'); toast('Recently played cleared'); });
     $('quality').onchange = ev => { setQuality(ev.target.value); toast('Preferred quality saved'); };
+    busy($('api-test'), async () => {
+      const out = $('api-test-out');
+      const lines = [];
+      try { const d = await tmdb('/movie/550'); lines.push(`TMDB ok: ${d.title ?? d.id}`); } catch (e) { lines.push(`TMDB failed: ${e}`); }
+      try { await traktGet('/movies/trending?limit=1'); lines.push('Trakt ok'); } catch (e) { lines.push(`Trakt failed: ${e}`); }
+      out.textContent = lines.join(' · ');
+    });
     renderServers($('servers'));
     renderRatingSettings($('ratings'));
     if (sub === 'servers' || sub === 'ratings') $(sub).scrollIntoView({ block: 'start' });

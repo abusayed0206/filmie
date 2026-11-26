@@ -764,15 +764,17 @@ a.title-rating.main:hover { border-color: var(--accent-hover); }
     left: 0;
     height: calc(var(--topbar) + env(safe-area-inset-top, 0px));
     padding: env(safe-area-inset-top, 0px) var(--gutter) 0;
-    grid-template-columns: minmax(0, 1fr) minmax(0, auto) auto;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     gap: 8px;
   }
   .topbar-center { min-width: 0; overflow-x: auto; scrollbar-width: none; }
   .topbar-center::-webkit-scrollbar { display: none; }
   .topbar-center .segmented label { padding: 0 7px; font-size: 11.5px; }
-  .topbar-title b { font-size: 16px; }
-  .topbar-title small { display: none; }
+  /* The page already says where it is; the title only stole room from the switch. */
+  .topbar-title { display: none; }
   .sort-btn { padding: 0 8px; }
+  body.bar-bare .topbar { display: none; }
+  body.bar-bare main { padding-top: env(safe-area-inset-top, 0px); }
   /* The search page has no title, so its five-way switch can use the room the sort button takes. */
   body.searching .topbar { grid-template-columns: 0 minmax(0, 1fr) auto; }
   body.searching #sort-btn { display: none; }
@@ -841,6 +843,8 @@ a.title-rating.main:hover { border-color: var(--accent-hover); }
     text-decoration: none;
     font-size: 10.5px;
     font-weight: 600;
+    padding: 0;
+    margin: 0;
     background: none;
     border: 0;
   }
@@ -849,8 +853,7 @@ a.title-rating.main:hover { border-color: var(--accent-hover); }
   .mobnav-item.active .i { color: var(--accent-text); }
 }
 
-/* The phone bottom bar's More sheet stands in for the rail's secondary pages. */
-.mobmore { width: min(360px, calc(100vw - 20px)); }
-.mobmore[open] { display: grid; gap: 8px; }
-.mobmore h2 { margin: 0 0 8px; }
-.mobmore .btn { justify-content: flex-start; }
+/* Pages the phone bar leaves out are linked from Settings; desktop has the rail. */
+.mob-only { display: none; }
+.filter-btn:disabled { display: none; }
+@media (max-width: 720px) { .mob-only { display: block; } }

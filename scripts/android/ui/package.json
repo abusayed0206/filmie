@@ -1,0 +1,11 @@
+{
+  "name": "filmie-android-ui-check",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "node ui-check.mjs"
+  },
+  "devDependencies": {
+    "playwright-core": "^1.65.1"
+  }
+}

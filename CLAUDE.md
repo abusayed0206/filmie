@@ -28,6 +28,10 @@ node --test --test-name-pattern=episodeAfter tests/ui.test.js # one UI test
 - `cargo fmt` uses `src-tauri/rustfmt.toml` (140 columns). CI runs `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings`.
 - The website is in `site/`, a static-assets Cloudflare Worker configured in `site/wrangler.jsonc` and served on the custom domain `filmie.sayed.app`: `npm ci`, `npx wrangler dev`, then `npx wrangler deploy` (run locally; CI only dry-runs it). Its screenshots in `site/public/shots/` are taken from the running app on the owner's real Trakt account with `scripts/site-shots/capture.mjs` (`shoot.js` there is the mocked-data alternative), so retake them after a visible UI change. It uses the app's own colour tokens and Roboto, self-hosted in `site/public/fonts/`.
 
+## Android (experimental, `android` branch)
+
+See `docs/ANDROID-DEV.md`. From the repo root: `.\scripts\android\setup.ps1` once, `.\scripts\android\build.ps1`, `.\scripts\android\install.ps1 -Uninstall` when switching from a CI build, `.\scripts\android\logcat.ps1`, and `npm --prefix scripts/android/ui run check` for a 390x844 mocked layout render. Local and CI APKs use different debug keys.
+
 ## Running changes
 
 - `ui/` is embedded in the binary at compile time and there is no dev server, so UI edits only appear after a rebuild.

@@ -141,11 +141,22 @@ impl State {
     pub fn new(library_path: PathBuf, db: Db) -> Self {
         Self {
             // Without a limit, a stalled connection would leave a page or sync waiting forever.
-            http: reqwest::Client::builder()
-                .connect_timeout(Duration::from_secs(10))
-                .timeout(Duration::from_secs(30))
-                .build()
-                .unwrap_or_default(),
+            http: {
+                #[allow(unused_mut)]
+                let mut builder = reqwest::Client::builder().connect_timeout(Duration::from_secs(10)).timeout(Duration::from_secs(30));
+                // rustls-platform-verifier is not wired up in this Android build, so every HTTPS request failed
+                // before it left the device. Mozilla's roots verify the same sites without the keystore bridge.
+                #[cfg(target_os = "android")]
+                {
+                    builder = builder.tls_certs_only(
+                        webpki_root_certs::TLS_SERVER_ROOT_CERTS
+                            .iter()
+                            .map(|der| reqwest::Certificate::from_der(der.as_ref()).expect("webpki root certificate"))
+                            .collect::<Vec<_>>(),
+                    );
+                }
+                builder.build().unwrap_or_default()
+            },
             tokens: Mutex::new(None),
             last_write: Mutex::new(Instant::now()),
             history_step: Mutex::new(()),

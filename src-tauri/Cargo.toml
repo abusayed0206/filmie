@@ -25,6 +25,11 @@ windows-native-keyring-store = "1.1.0"
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
+[target.'cfg(target_os = "android")'.dependencies]
+# reqwest's rustls feature uses rustls-platform-verifier, which is not initialized on Android here.
+# Mozilla's roots let every request verify without the Android keystore bridge.
+webpki-root-certs = "1"
+
 # Smallest and fastest installer; only release builds pay the extra compile time.
 [profile.release]
 codegen-units = 1

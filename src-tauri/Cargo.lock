@@ -1096,6 +1096,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-opener",
  "tokio",
+ "webpki-root-certs",
  "windows-native-keyring-store",
 ]
 

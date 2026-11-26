@@ -75,9 +75,20 @@ jobs:
           restore-keys: |
             gradle-android-
 
+      # Without this every run makes a new debug key, and the APK can't install over the last one.
+      - name: Cache the debug signing key
+        uses: actions/cache@v6
+        with:
+          path: ~/.android/debug.keystore
+          key: android-debug-keystore-v1
+
       - uses: ./.github/actions/setup
         with:
           cache-key: android
+          # Real keys: with the placeholders nothing loads and Trakt rejects the client ID.
+          tmdb: ${{ secrets.TMDB }}
+          trakt: ${{ secrets.TRAKT }}
+          trakt-redirect-uri: ${{ secrets.TRAKT_REDIRECT_URI }}
 
       - name: Add the Android Rust target
         run: rustup target add aarch64-linux-android

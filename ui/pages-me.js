@@ -667,7 +667,9 @@ async function connectTrakt(box) {
   box.innerHTML = `<div class="card-head"><h2>Trakt account</h2></div><p>Open <a href="${esc(c.verification_url)}" target="_blank">${esc(c.verification_url)}</a> and enter this code (already copied):</p>
     <p class="code">${esc(c.user_code)}</p><p class="muted">Waiting for approval…</p>`;
   navigator.clipboard.writeText(c.user_code).catch(() => {});
-  window.open(c.verification_url);
+  // Android's WebView has no popup window, so the approval page goes to the system browser.
+  if (/Android/i.test(navigator.userAgent)) invoke('plugin:opener|open_url', { url: c.verification_url }).catch(() => {});
+  else window.open(c.verification_url);
   let interval = c.interval * 1000;
   const deadline = Date.now() + c.expires_in * 1000;
   while (Date.now() < deadline) {

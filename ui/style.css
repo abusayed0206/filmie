@@ -745,8 +745,10 @@ a.title-rating.main:hover { border-color: var(--accent-hover); }
 /* ---------- phones ---------- */
 /* The rail needs room a phone does not have, so below 720px it gives way to a bottom bar. */
 .mobnav { display: none; }
+/* The player bar's overflow menu is only for phones, where the bar cannot hold every control at once. */
+.player-more { display: none; }
 
-@media (max-width: 720px) {
+@media (max-width: 720px), (max-height: 500px) and (pointer: coarse) {
   :root { --rail: 0px; --gutter: 14px; --topbar: 52px; }
   body { padding-bottom: calc(58px + env(safe-area-inset-bottom, 0px)); }
   body.playing { padding-bottom: 0; }
@@ -804,8 +806,9 @@ a.title-rating.main:hover { border-color: var(--accent-hover); }
 
   .drawer { width: 100vw; border-radius: 0; }
   .drawer::after { display: none; }
-  .drawer-head { padding: 16px 16px 8px 18px; }
-  .drawer-body { padding: 8px 18px 24px; }
+  /* A full-screen drawer starts at the top edge, so its close button must clear the status bar. */
+  .drawer-head { padding: calc(16px + env(safe-area-inset-top, 0px)) 16px 8px 18px; }
+  .drawer-body { padding: 8px 18px calc(24px + env(safe-area-inset-bottom, 0px)); }
 
   .no-server { margin-top: 18px; padding: 18px; gap: 18px; border-radius: 18px; }
   .no-server-poster { width: 100%; max-width: 200px; }
@@ -832,6 +835,30 @@ a.title-rating.main:hover { border-color: var(--accent-hover); }
     backdrop-filter: blur(14px);
   }
   body.playing .mobnav { display: none; }
+
+  /* A phone player bar: back, the title, the episode picker, the server, more and fullscreen. Everything else is in
+     the more menu, so the bar never scrolls or cuts off a control. */
+  .player-bar { height: calc(48px + env(safe-area-inset-top, 0px)); padding: env(safe-area-inset-top, 0px) 8px 0; gap: 4px; }
+  .player-bar .player-extra, #mark, #wl { display: none; }
+  /* Android has no window fullscreen (the window plugin reports "not initialized"), and the video player in the
+     iframe brings its own fullscreen control. */
+  .fs-btn { display: none; }
+  .player-more { display: inline-flex; }
+  .player-title { flex: 1 1 0; margin-right: 0; }
+  .player-title span { display: none; }
+  .episode-btn { padding: 0 8px; gap: 4px; }
+  /* The list icon only repeated the S2E3 beside it, and on a phone that space belongs to the title. */
+  .episode-btn > .i:first-child { display: none; }
+  .server-btn { max-width: 26vw; padding: 0 8px; gap: 4px; }
+  /* Anchored to the bar, not the button: a 380px episode list under a button in the middle of a phone ran off-screen. */
+  .server-menu, .episode-menu {
+    position: fixed;
+    top: calc(48px + env(safe-area-inset-top, 0px) + 6px);
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-width: none;
+  }
   .mobnav-item {
     display: flex;
     flex-direction: column;
@@ -856,4 +883,4 @@ a.title-rating.main:hover { border-color: var(--accent-hover); }
 /* Pages the phone bar leaves out are linked from Settings; desktop has the rail. */
 .mob-only { display: none; }
 .filter-btn:disabled { display: none; }
-@media (max-width: 720px) { .mob-only { display: block; } }
+@media (max-width: 720px), (max-height: 500px) and (pointer: coarse) { .mob-only { display: block; } }

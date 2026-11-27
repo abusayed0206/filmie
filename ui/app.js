@@ -54,10 +54,10 @@ Object.assign(pages, {
     app.innerHTML = `<div class="player-page">
       <div class="player-bar">
         <a class="icon-btn ghost" href="${backHref}" data-player-back aria-label="Back" title="Back">${icon('back')}</a>
-        <a class="icon-btn ghost" href="#/" aria-label="Home" title="Home">${icon('home')}</a>
+        <a class="icon-btn ghost player-extra" href="#/" aria-label="Home" title="Home">${icon('home')}</a>
         <div class="player-title"><b>${esc(d.title ?? d.name)}</b>
           <span>${type === 'tv' ? `S${s} · E${e}${epName ? ` · ${esc(epName)}` : ''}` : esc(yearOf(d))}</span></div>
-        <a class="btn" href="${backHref}" title="Open the ${type === 'tv' ? 'show' : 'movie'}'s page">${icon('info')}<span class="label">Details</span></a>
+        <a class="btn player-extra" href="${backHref}" title="Open the ${type === 'tv' ? 'show' : 'movie'}'s page">${icon('info')}<span class="label">Details</span></a>
         ${episodeMenuHtml}
         <div class="server-picker">
           <button id="server" class="btn server-btn" aria-haspopup="true" aria-expanded="false" title="Change server">
@@ -68,8 +68,9 @@ Object.assign(pages, {
             <a class="server-menu-edit" href="#/settings">Edit servers</a>
           </div>
         </div>
-        ${user ? `<span class="divider"></span>${btn('mark', 'check', 'Mark watched')}${btn('wl', 'plus', 'Watchlist')}` : ''}
-        ${next ? `<a class="btn primary" href="#/play/tv/${id}/${next[0]}/${next[1]}" title="Next episode: S${next[0]} · E${next[1]}"><span class="label">Next</span>${icon('next')}</a>` : ''}
+        ${user ? `<span class="divider player-extra"></span>${btn('mark', 'check', 'Mark watched')}${btn('wl', 'plus', 'Watchlist')}` : ''}
+        ${next ? `<a class="btn primary player-extra" href="#/play/tv/${id}/${next[0]}/${next[1]}" title="Next episode: S${next[0]} · E${next[1]}"><span class="label">Next</span>${icon('next')}</a>` : ''}
+        <button id="player-more" class="icon-btn ghost player-more" aria-haspopup="true" aria-label="More actions" title="More actions">${icon('more')}</button>
         ${fsButton}
       </div>
       <iframe class="player" src="${esc(src)}" title="Video player" allow="autoplay *; fullscreen *; encrypted-media *; picture-in-picture *" allowfullscreen referrerpolicy="origin"></iframe></div>`;
@@ -181,6 +182,20 @@ Object.assign(pages, {
       setAutoServer(false); // a server picked by hand stays until Auto is picked again
       setServer(+option.dataset.server);
       switchTo(+option.dataset.server);
+    };
+    // A phone bar keeps only Back, the episode picker, the server and fullscreen, so the rest move into this menu.
+    // The hidden buttons still hold the state and the Trakt calls, so each item just presses one.
+    const moreBtn = document.getElementById('player-more');
+    moreBtn.onclick = () => {
+      const hidden = id => document.getElementById(id);
+      const on = id => hidden(id)?.classList.contains('on');
+      menu(moreBtn, [
+        { label: 'Home', icon: 'home', onClick: () => { location.hash = '#/'; } },
+        { label: 'Details', icon: 'info', onClick: () => { location.hash = backHref; } },
+        ...(hidden('mark') ? [{ label: on('mark') ? 'Watched' : 'Mark watched', icon: 'check', onClick: () => hidden('mark').click() }] : []),
+        ...(hidden('wl') ? [{ label: on('wl') ? 'On watchlist' : 'Watchlist', icon: 'plus', onClick: () => hidden('wl').click() }] : []),
+        ...(next ? [{ label: `Next: S${next[0]} · E${next[1]}`, icon: 'next', onClick: () => { location.hash = `#/play/tv/${id}/${next[0]}/${next[1]}`; } }] : []),
+      ]);
     };
     const episodePicker = app.querySelector('.episode-picker');
     if (episodePicker) {
@@ -482,6 +497,18 @@ window.addEventListener('hashchange', () => {
 });
 // Only text fields and selected text get a menu; the rest of the app shouldn't offer "Reload" or "Save as".
 document.addEventListener('contextmenu', ev => { if (!ev.target.closest('input, textarea') && !String(getSelection())) ev.preventDefault(); });
+// Android's back gesture closes the top dialog or menu first, then steps through the app's history, then leaves.
+// The listener replaces the webview's own behaviour, which would leave a page that has a drawer open.
+try {
+  window.__TAURI__?.app?.onBackButtonPress?.(({ canGoBack }) => {
+    const top = [...document.querySelectorAll('dialog[open]')].at(-1);
+    if (top) return top.close();
+    const popover = document.querySelector(':popover-open');
+    if (popover) return popover.hidePopover();
+    if (!canGoBack) return window.__TAURI__.app.exit();
+    return window.navigation?.canGoBack ? navigation.back() : history.back();
+  })?.catch(() => {});
+} catch {}
 setInterval(() => syncInBackground().catch(console.warn), 15 * 60e3);
 // The MDBList status comes from memory and the credential store, so it costs no request.
 Promise.all([refreshUser().catch(toast), refreshMdb()]).finally(() => { route(); syncInBackground().catch(console.warn); });

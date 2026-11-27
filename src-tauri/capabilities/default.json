@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Local app pages only. Remote pages (player iframes) get no IPC access.",
   "windows": ["main"],
-  "permissions": ["core:default", "core:window:allow-set-fullscreen"]
+  "permissions": ["core:default", "core:window:allow-set-fullscreen", "core:app:allow-register-listener", "core:app:allow-exit", "opener:default"]
 }

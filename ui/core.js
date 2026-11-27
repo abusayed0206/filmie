@@ -36,7 +36,7 @@ const busy = (el, fn) => el && (el.onclick = async () => { el.disabled = true; t
 let toastTimer;
 function toast(msg) {
   const t = document.getElementById('toast');
-  t.textContent = String(msg);
+  t.textContent = String(msg?.message ?? msg);
   t.classList.add('show');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.remove('show'), 5000);

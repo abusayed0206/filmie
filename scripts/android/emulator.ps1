@@ -18,7 +18,8 @@ if (-not $NoBuild) {
 
 $running = (& adb devices) | Where-Object { $_ -match 'emulator-\d+\s+device\s*$' }
 if (-not $running) {
-  $arguments = @('-avd', 'filmie', '-no-snapshot', '-no-boot-anim', '-gpu', 'swiftshader_indirect')
+  # A phone image with 2 GB ran the system UI out of memory and blocked the app, so give it more room.
+  $arguments = @('-avd', 'filmie', '-no-snapshot', '-no-boot-anim', '-gpu', 'swiftshader_indirect', '-memory', '4096', '-cores', '4')
   if ($Headless) { $arguments += '-no-window' }
   Start-Process -FilePath $emulator -ArgumentList $arguments
   & adb wait-for-device
@@ -26,6 +27,10 @@ if (-not $running) {
     $booted = ((& adb shell getprop sys.boot_completed) 2>$null).Trim()
     if ($booted -eq '1') { break }
     Start-Sleep -Seconds 3
+  }
+  # Animations only make a software-rendered emulator look slower than the app is.
+  foreach ($s in 'window_animation_scale', 'transition_animation_scale', 'animator_duration_scale') {
+    & adb shell settings put global $s 0
   }
 }
 

@@ -1,0 +1,4 @@
+<resources>
+    <!-- Matches the app background in ui/style.css, so the window never flashes white before the page paints. -->
+    <color name="filmie_bg">#FF151418</color>
+</resources>

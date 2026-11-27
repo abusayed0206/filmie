@@ -1,0 +1,10 @@
+<resources>
+    <!-- Same as values/themes.xml: the app is dark in light mode too. -->
+    <style name="Theme.filmie" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="android:windowBackground">@color/filmie_bg</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@color/filmie_bg</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>

@@ -1,0 +1,11 @@
+<resources>
+    <!-- Filmie only has a dark UI. Forcing the dark parent keeps the status bar icons and the WebView's launch
+         background dark on a phone set to light mode, where the template's DayNight theme drew white. -->
+    <style name="Theme.filmie" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="android:windowBackground">@color/filmie_bg</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@color/filmie_bg</item>
+        <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
+    </style>
+</resources>

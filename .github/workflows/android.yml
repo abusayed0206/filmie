@@ -106,6 +106,10 @@ jobs:
       - name: Apply the Filmie launcher icons
         run: cp -R src-tauri/icons/android/. src-tauri/gen/android/app/src/main/res/
 
+      # The template's DayNight theme drew a white window and white status bar icons on a light-mode phone.
+      - name: Apply the dark window theme
+        run: cp -R scripts/android/res/. src-tauri/gen/android/app/src/main/res/
+
       - name: Build the debug APK
         working-directory: src-tauri
         run: cargo tauri android build --debug --apk --ci --target aarch64

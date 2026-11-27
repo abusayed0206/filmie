@@ -47,7 +47,13 @@ const SHOTS = [
   ['settings', '#/settings'],
   ['search', '#/search'],
   ['lists', '#/lists'],
+  // The player bar carries the most controls, so a phone needs its own shot.
+  ['player', '#/play/tv/1000/2/3', true],
+  // A phone held sideways is wider than 720px, so these guard the short-viewport layout.
+  ['landscape-home', '#/', false, { width: 844, height: 390 }],
+  ['landscape-player', '#/play/tv/1000/2/3', true, { width: 844, height: 390 }],
 ];
+const SOURCES = [{ name: 'Northlight', movie: 'https://player.example/movie/{tmdb_id}', tv: 'https://player.example/tv/{tmdb_id}/{season}/{episode}', note: '1080p' }];
 
 let browser;
 try {
@@ -62,9 +68,9 @@ await new Promise(resolve => server.listen(0, resolve));
 const base = `http://127.0.0.1:${server.address().port}/`;
 let failed = false;
 
-for (const [name, hash] of SHOTS) {
+for (const [name, hash, sources, viewport = { width: 390, height: 844 }] of SHOTS) {
   const context = await browser.newContext({
-    viewport: { width: 390, height: 844 },
+    viewport,
     deviceScaleFactor: 2,
     isMobile: true,
     hasTouch: true,
@@ -74,11 +80,17 @@ for (const [name, hash] of SHOTS) {
     const file = new URL(route.request().url()).pathname.split('/').pop();
     return route.fulfill({ contentType: 'image/svg+xml', body: art(file) });
   });
+  // A player that never answers would stall the shot, so the video source is a dark placeholder.
+  await context.route('https://player.example/**', route => route.fulfill({
+    contentType: 'text/html',
+    body: '<body style="margin:0;display:grid;place-items:center;height:100vh;background:#000;color:#555;font:600 13px system-ui">video</body>',
+  }));
   await context.addInitScript(mock);
-  await context.addInitScript(() => {
+  await context.addInitScript(srcs => {
     localStorage.setItem('mode', 'media');
     localStorage.setItem('rail', 'narrow');
-  });
+    if (srcs) localStorage.setItem('sources', JSON.stringify(srcs));
+  }, sources ? SOURCES : null);
 
   const page = await context.newPage();
   page.on('pageerror', error => {

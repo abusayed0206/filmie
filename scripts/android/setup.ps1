@@ -27,7 +27,10 @@ if (-not (Test-Path (Join-Path $Jdk 'bin\java.exe'))) {
 
 $env:JAVA_HOME = $Jdk
 $env:Path = "$Jdk\bin;$env:Path"
+# java -version writes to stderr, which Stop turns into a terminating error.
+$ErrorActionPreference = 'Continue'
 & "$Jdk\bin\java.exe" -version 2>&1 | Select-Object -First 1
+$ErrorActionPreference = 'Stop'
 
 $sdkmanager = Join-Path $Sdk 'cmdline-tools\latest\bin\sdkmanager.bat'
 if (-not (Test-Path $sdkmanager)) {
@@ -44,7 +47,10 @@ if ($Emulator) {
   & $sdkmanager --sdk_root=$Sdk --install 'emulator' $image
   if ($LASTEXITCODE -ne 0) { throw 'Could not install the emulator image.' }
   $avdmanager = Join-Path $Sdk 'cmdline-tools\latest\bin\avdmanager.bat'
+  # avdmanager warns on stderr, which Stop turns into a terminating error.
+  $ErrorActionPreference = 'Continue'
   $avds = & $avdmanager list avd 2>&1
+  $ErrorActionPreference = 'Stop'
   if ($avds -notmatch 'Name: filmie') {
     'no' | & $avdmanager create avd -n filmie -k $image -d pixel_6 --force
   }

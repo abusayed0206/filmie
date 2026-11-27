@@ -24,8 +24,17 @@ if (-not $SkipInit -and -not (Test-Path 'src-tauri\gen\android')) {
   if ($LASTEXITCODE -ne 0) { throw 'tauri android init failed.' }
 }
 
+# The generated Gradle project runs its Rust step as `npm run -- tauri android android-studio-script`, so npm has to
+# find a `tauri` script. CI's older template calls the CLI directly; this file is only needed for local builds.
+if (-not (Test-Path 'src-tauri\package.json')) {
+  '{ "private": true, "scripts": { "tauri": "npx --yes @tauri-apps/cli@2" } }' |
+    Set-Content 'src-tauri\package.json' -Encoding ASCII
+}
+
 if (Test-Path 'src-tauri\gen\android\app\src\main\res') {
   Copy-Item 'src-tauri\icons\android\*' 'src-tauri\gen\android\app\src\main\res' -Recurse -Force
+  # The generated project's DayNight theme left a white window and white status bar icons on a light-mode phone.
+  Copy-Item 'scripts\android\res\*' 'src-tauri\gen\android\app\src\main\res' -Recurse -Force
 }
 
 Write-Host "Building the $Target debug APK..."

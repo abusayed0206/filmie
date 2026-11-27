@@ -113,32 +113,85 @@ fn tokens_from(v: &Value) -> Option<Tokens> {
 }
 
 // Windows Credential Manager caps a secret at 2560 bytes, so each token gets its own entry.
+#[cfg(not(target_os = "android"))]
 pub(crate) fn entry(name: &str) -> Result<keyring_core::Entry, String> {
     keyring_core::Entry::new("filmie", name).map_err(err)
 }
 
+// Android has no platform keyring, so secrets live in a JSON file in the app's private data dir, which other apps
+// cannot read. Without it every launch asked for the Trakt device code again and forgot the MDBList key. Set by `new`.
+#[cfg(target_os = "android")]
+static SECRETS: std::sync::OnceLock<PathBuf> = std::sync::OnceLock::new();
+
+#[cfg(target_os = "android")]
+fn read_secrets() -> std::collections::BTreeMap<String, String> {
+    SECRETS.get().and_then(|p| std::fs::read(p).ok()).and_then(|b| serde_json::from_slice(&b).ok()).unwrap_or_default()
+}
+
+#[cfg(target_os = "android")]
+fn write_secrets(v: &std::collections::BTreeMap<String, String>) -> Result<(), String> {
+    let path = SECRETS.get().ok_or("no secrets file")?;
+    std::fs::write(path, serde_json::to_vec(v).map_err(err)?).map_err(err)
+}
+
+#[cfg(target_os = "android")]
+pub(crate) fn secret_get(name: &str) -> Option<String> {
+    read_secrets().remove(name)
+}
+
+#[cfg(target_os = "android")]
+pub(crate) fn secret_set(name: &str, value: &str) -> Result<(), String> {
+    let mut v = read_secrets();
+    v.insert(name.into(), value.into());
+    write_secrets(&v)
+}
+
+#[cfg(target_os = "android")]
+pub(crate) fn secret_delete(name: &str) {
+    let mut v = read_secrets();
+    if v.remove(name).is_some() {
+        let _ = write_secrets(&v);
+    }
+}
+
+#[cfg(not(target_os = "android"))]
+pub(crate) fn secret_get(name: &str) -> Option<String> {
+    entry(name).ok()?.get_password().ok()
+}
+
+#[cfg(not(target_os = "android"))]
+pub(crate) fn secret_set(name: &str, value: &str) -> Result<(), String> {
+    entry(name)?.set_password(value).map_err(err)
+}
+
+#[cfg(not(target_os = "android"))]
+pub(crate) fn secret_delete(name: &str) {
+    if let Ok(e) = entry(name) {
+        let _ = e.delete_credential();
+    }
+}
+
 fn load_tokens() -> Option<Tokens> {
-    let access = entry("trakt-access").ok()?.get_password().ok()?;
-    let refresh = entry("trakt-refresh").ok()?.get_password().ok()?;
+    let access = secret_get("trakt-access")?;
+    let refresh = secret_get("trakt-refresh")?;
     let (expires_at, access) = access.split_once(' ')?;
     Some(Tokens { access: access.into(), refresh, expires_at: expires_at.parse().ok()? })
 }
 
 fn save_tokens(t: &Tokens) -> Result<(), String> {
-    entry("trakt-refresh")?.set_password(&t.refresh).map_err(err)?;
-    entry("trakt-access")?.set_password(&format!("{} {}", t.expires_at, t.access)).map_err(err)
+    secret_set("trakt-refresh", &t.refresh)?;
+    secret_set("trakt-access", &format!("{} {}", t.expires_at, t.access))
 }
 
 fn clear_tokens() {
-    for name in ["trakt-access", "trakt-refresh"] {
-        if let Ok(e) = entry(name) {
-            let _ = e.delete_credential();
-        }
-    }
+    secret_delete("trakt-access");
+    secret_delete("trakt-refresh");
 }
 
 impl State {
     pub fn new(library_path: PathBuf, db: Db) -> Self {
+        #[cfg(target_os = "android")]
+        let _ = SECRETS.set(library_path.with_file_name("secrets.json"));
         Self {
             // Without a limit, a stalled connection would leave a page or sync waiting forever.
             http: {

@@ -51,7 +51,7 @@ impl Default for MdbState {
 impl MdbState {
     async fn key(&self) -> Option<String> {
         let mut held = self.key.lock().await;
-        held.get_or_insert_with(|| crate::trakt::entry(KEY_ENTRY).ok().and_then(|e| e.get_password().ok())).clone()
+        held.get_or_insert_with(|| crate::trakt::secret_get(KEY_ENTRY)).clone()
     }
 
     /// Sends a request with the key and notes the quota headers. The key goes in the query, which is never logged.
@@ -147,16 +147,14 @@ pub async fn mdblist_set_key(s: tauri::State<'_, State>, md: tauri::State<'_, Md
     md.refresh_user(&s, &key, true)
         .await
         .map_err(|e| if e.starts_with("401") || e.starts_with("403") { "MDBList didn't accept that key.".to_string() } else { e })?;
-    crate::trakt::entry(KEY_ENTRY)?.set_password(&key).map_err(|e| e.to_string())?;
+    crate::trakt::secret_set(KEY_ENTRY, &key)?;
     *md.key.lock().await = Some(Some(key));
     Ok(md.status().await)
 }
 
 #[tauri::command]
 pub async fn mdblist_forget_key(md: tauri::State<'_, MdbState>) -> Result<(), String> {
-    if let Ok(e) = crate::trakt::entry(KEY_ENTRY) {
-        let _ = e.delete_credential();
-    }
+    crate::trakt::secret_delete(KEY_ENTRY);
     *md.key.lock().await = Some(None);
     *md.quota.lock().await = Quota::default();
     Ok(())

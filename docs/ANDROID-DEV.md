@@ -107,7 +107,8 @@ The script uses Microsoft Edge through `playwright-core`. If Edge is missing, ru
 ## Notes and limits
 
 - The Android UI is the phone layout below 720 px: bottom bar, full-width pages, no page title.
-- Trakt has no platform keyring on Android. Tokens are kept in memory for the session; closing the app signs you out.
+- Trakt has no platform keyring on Android, so the Trakt tokens and the MDBList key live in `secrets.json` in the app's private data dir. They survive a restart; **Settings → Sign out** still clears them.
+- The Android back gesture closes the top drawer or dialog, then steps through the app's history, then leaves the app.
 - Android TLS uses Mozilla's bundled roots (`tls_certs_only`) because `rustls-platform-verifier` is not initialized in this build. Desktop keeps the platform verifier.
 - The APK is arm64 unless built with `-Target x86_64`; the emulator needs the x86_64 one.
 - `src-tauri/extensions` is not bundled on Android (`tauri.android.conf.json` removes the desktop resource).
